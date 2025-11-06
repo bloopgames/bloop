@@ -1,0 +1,6 @@
+{
+  "name": "@bloop/bloop",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": "./src/mod.ts"
+}

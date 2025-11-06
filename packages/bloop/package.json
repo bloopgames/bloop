@@ -1,5 +1,6 @@
 {
-  "name": "@bloop.gg/bloop",
+  "name": "@bloopjs/bloop",
+  "version": "0.0.0",
   "type": "module",
   "exports": {
     ".": {
@@ -7,8 +8,13 @@
       "types": "./src/mod.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "bun build src/mod.ts --outdir=dist && tsc --emitDeclarationOnly --outDir dist --declaration",
+    "build": "bun build src/mod.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
+    "build:tsc": "tsc -p publish/tsconfig.publish.json",
+    "ci:tsc": "tsc --noEmit",
     "dev": "bun --watch src/mod.ts"
   },
   "devDependencies": {

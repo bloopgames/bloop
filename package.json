@@ -7,7 +7,8 @@
     "games/*"
   ],
   "scripts": {
-    "dev": "bun run --filter '*' dev"
+    "dev": "bun run --filter '*' dev",
+    "publish": "bun bin/publish.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"

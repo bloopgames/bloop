@@ -1,0 +1,25 @@
+name: Publish
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # needed for tags
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Publish package
+        run: bun run publish
