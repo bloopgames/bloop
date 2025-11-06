@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - nu11/publish
 
 jobs:
   publish:
