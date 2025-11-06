@@ -61,13 +61,17 @@ try {
 
 async function revertPackageJson(cwd: string) {
   await $`git checkout package.json`.cwd(cwd);
+  await $`git checkout jsr.json`.cwd(cwd);
 }
 
 async function prepPackage(cwd: string, version: [number, number, number]) {
   const packageJsonPath = path.join(cwd, "package.json");
-  const packageJson = await Bun.file(path.join(cwd, "package.json")).json();
+  const jsrJsonPath = path.join(cwd, "jsr.json");
+  const packageJson = await Bun.file(packageJsonPath).json();
+  const jsrJson = await Bun.file(jsrJsonPath).json();
   const versionString = version.join(".");
   packageJson.version = versionString;
+  jsrJson.version = versionString;
   for (const [key, value] of Object.entries(packageJson.exports)) {
     (packageJson.exports as Record<string, unknown>)[key] = {
       import: (value as any).import
@@ -80,6 +84,7 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
   }
 
   await pinWorkspaceDeps(packageJson, versionString);
+  await Bun.write(jsrJsonPath, JSON.stringify(jsrJson, null, 2));
   await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2));
   console.log(packageJson.name, packageJson.version);
 
@@ -153,7 +158,7 @@ function isVersionGreater(
 
 async function publishPackage(cwd: string) {
   await $`bun publish`.cwd(cwd);
-  // await $`bunx jsr publish`.cwd(cwd);
+  await $`bunx jsr publish`.cwd(cwd);
 }
 
 async function getRemoteVersion(name: string) {
