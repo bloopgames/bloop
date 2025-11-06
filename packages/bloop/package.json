@@ -1,0 +1,20 @@
+{
+  "name": "@bloop.gg/bloop",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/mod.ts",
+      "types": "./src/mod.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/mod.ts --outdir=dist && tsc --emitDeclarationOnly --outDir dist --declaration",
+    "dev": "bun --watch src/mod.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
