@@ -56,7 +56,7 @@ try {
     await revertPackageJson(packageCwd);
   }
 
-  // await unlink(path.join(__dirname, "..", ".npmrc"));
+  await unlink(path.join(__dirname, "..", ".npmrc"));
 }
 
 async function revertPackageJson(cwd: string) {
