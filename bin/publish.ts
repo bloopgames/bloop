@@ -158,7 +158,7 @@ function isVersionGreater(
 
 async function publishPackage(cwd: string) {
   await $`bun publish`.cwd(cwd);
-  await $`bunx jsr publish`.cwd(cwd);
+  await $`bunx jsr publish --allow-dirty`.cwd(cwd);
 }
 
 async function getRemoteVersion(name: string) {
