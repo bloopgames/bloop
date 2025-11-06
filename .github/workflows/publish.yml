@@ -1,9 +1,14 @@
 name: Publish
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - nu11/publish
+
+
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
 jobs:
   publish:
