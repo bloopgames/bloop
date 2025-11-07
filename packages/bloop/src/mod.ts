@@ -1,4 +1,4 @@
-import type { GameSchema } from "./data/schema";
+import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
 import { EngineInputs, type PlatformEvent } from "@bloopjs/engine";
@@ -25,15 +25,15 @@ export type BloopOpts<B extends Bag> = {
 	// schema: GS;
 };
 
-type MakeGS<B extends Bag> = GameSchema<B>;
+type MakeGS<B extends Bag> = BloopSchema<B>;
 
-export class Bloop<GS extends GameSchema> {
+export class Bloop<GS extends BloopSchema> {
 	#systems: System<GS>[] = [];
 	#bag: GS["B"];
 	#context: Context<GS>;
 
 	/**
-   * Bloop.create() is the way to create a new game instance.
+   * Bloop.create() is the way to create a new bloop instance.
    */
   static create<
     // S extends Schema,

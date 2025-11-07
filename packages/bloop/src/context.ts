@@ -1,8 +1,8 @@
 import type { InputSnapshot } from "@bloopjs/engine";
-import type { GameSchema } from "./data/schema";
+import type { BloopSchema } from "./data/schema";
 
 export type Context<
-  GS extends GameSchema = GameSchema,
+  GS extends BloopSchema = BloopSchema,
   // Q extends Query<GS["CS"]> = Query<GS["CS"]>,
   // QS extends readonly Query<GS["CS"]>[] = readonly Query<GS["CS"]>[],
 > = {

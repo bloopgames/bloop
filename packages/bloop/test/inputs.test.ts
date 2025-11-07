@@ -156,4 +156,7 @@ describe("loop", () => {
       mouseup: true,
     });
   });
+
+  it.skip("handles multiple frames between accumulated inputs", async () => {});
+  it.skip("handles down and up between frames", async () => {});
 });

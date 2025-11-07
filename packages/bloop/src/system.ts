@@ -5,9 +5,9 @@ import type {
   MouseWheelEvent,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
-import type { GameSchema } from "./data/schema";
+import type { BloopSchema } from "./data/schema";
 
-export type System<GS extends GameSchema = GameSchema> = {
+export type System<GS extends BloopSchema = BloopSchema> = {
   label?: string;
 
   update?: (context: Context<GS>) => void;

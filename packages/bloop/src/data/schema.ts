@@ -1,6 +1,6 @@
 import type { Bag } from "./bag";
 
-export type GameSchema<
+export type BloopSchema<
   // CS extends ComponentSchema = ComponentSchema,
   B extends Bag = Bag,
   // IM extends InputMap = InputMap,
