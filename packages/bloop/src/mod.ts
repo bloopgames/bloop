@@ -29,7 +29,6 @@ type MakeGS<B extends Bag> = BloopSchema<B>;
 
 export class Bloop<GS extends BloopSchema> {
 	#systems: System<GS>[] = [];
-	#bag: GS["B"];
 	#context: Context<GS>;
 
 	/**
@@ -52,9 +51,8 @@ export class Bloop<GS extends BloopSchema> {
 			);
 		}
 
-		this.#bag = opts.bag ?? {};
 		this.#context = {
-      bag: this.#bag,
+      bag: opts.bag ?? {},
       inputs: new EngineInputs.InputSnapshot(new DataView(new ArrayBuffer(100))),
       time: {
 				dt: 0,
@@ -67,14 +65,44 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	get bag() {
-		return this.#bag;
+		return this.#context.bag;
+	}
+
+	/**
+	 * Take a snapshot of the game state
+	 * @returns linear memory representation of the game state
+	 */
+	snapshot(): Uint8Array {
+		const str = JSON.stringify(this.#context.bag);
+		const encoder = new TextEncoder();
+		const textBytes = encoder.encode(str);
+
+		const buffer = new Uint8Array(1024*1024);
+		const view = new DataView(buffer.buffer);
+		let offset = 0;
+		view.setUint32(0, textBytes.length, true);
+		offset += 4;
+		buffer.set(textBytes, offset);
+		offset += textBytes.length;
+		return buffer;
+	}
+
+	restore(snapshot: Uint8Array) {
+		const view = new DataView(snapshot.buffer);
+		let offset = 0;
+		const length = view.getUint32(0, true);
+		offset += 4;
+		const bagBytes = snapshot.slice(offset, offset + length);
+		const decoder = new TextDecoder();
+		const str = decoder.decode(bagBytes);
+		this.#context.bag = JSON.parse(str);
 	}
 
 	/**
 	 * Register a system with the game loop.
 	 *
 	 */
-	system(label: string, system: System): number {
+	system(label: string, system: System<GS>): number {
 		system.label ??= label;
 		this.#systems.push(system);
 		return this.#systems.length;
