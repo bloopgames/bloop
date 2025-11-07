@@ -1,8 +1,9 @@
 import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
-import { EngineInputs, type PlatformEvent } from "@bloopjs/engine";
-import { decodeTimingSnapshot, encodeTimingSnapshot, TIMING_SNAPSHOT_SIZE, type Context } from "./context";
+import { EngineTiming, EngineInputs, type PlatformEvent } from "@bloopjs/engine";
+import { type Context } from "./context";
+import { TIMING_SNAPSHOT_SIZE } from "../../engine/js/timing";
 
 export type BloopOpts<B extends Bag> = {
   /** defaults to "Game" */
@@ -65,7 +66,7 @@ export class Bloop<GS extends BloopSchema> {
     };
 	}
 
-	get bag() {
+	get bag(): GS["B"] {
 		return this.#context.bag;
 	}
 
@@ -82,11 +83,11 @@ export class Bloop<GS extends BloopSchema> {
 		const encoder = new TextEncoder();
 		const textBytes = encoder.encode(str);
 
-		const size = TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
+		const size = EngineTiming.TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
 
 		const buffer = new Uint8Array(size);
 		const view = new DataView(buffer.buffer);
-		let offset = encodeTimingSnapshot(this.#context.time, buffer.subarray(0, TIMING_SNAPSHOT_SIZE));
+		let offset = EngineTiming.encodeTimingSnapshot(this.#context.time, buffer.subarray(0, EngineTiming.TIMING_SNAPSHOT_SIZE));
 		view.setUint32(offset, textBytes.length, true);
 		offset += 4;
 
@@ -96,16 +97,15 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	restore(snapshot: Uint8Array) {
-		const size = decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, 32), this.#context.time);
+		const size = EngineTiming.decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, EngineTiming.TIMING_SNAPSHOT_SIZE), this.#context.time);
 		const view = new DataView(snapshot.buffer);
 		let offset = size;
-		const length = view.getUint32(0, true);
+		const length = view.getUint32(offset, true);
 		offset += 4;
 		const bagBytes = snapshot.slice(offset, offset + length);
 		const decoder = new TextDecoder();
 		const str = decoder.decode(bagBytes);
 		this.#context.bag = JSON.parse(str);
-
 	}
 
 	/**

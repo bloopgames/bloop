@@ -5,6 +5,7 @@ export type * from "./events";
 
 export * as EngineEvents from "./events";
 export * as EngineInputs from "./inputs";
+export * as EngineTiming from "./timing";
 
 export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 
@@ -18,12 +19,21 @@ export type MountOpts = {
   /** A callback function for each system */
   // todo - get dt from ptr
   systemsCallback: (ptr: number, events: PlatformEvent[], dt: number) => void;
+
+  // todo - this should be an engine function
+  snapshot: () => Uint8Array;
+  restore: (snapshot: Uint8Array) => void;
   /** The size of the tape ring buffer. Defaults to 2mb */
   tapeBufferSize?: number;
 };
 
 export type Runtime = {
+  record: () => void;
+  isRecording?: boolean;
+  isPlayingBack?: boolean;
   step: (ms?: number) => void;
+  seek: (frame: number) => void;
+  stepBack: () => void;
 };
 
 /**
@@ -48,23 +58,61 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await Bun.file(opts.wasmUrl ?? DEFAULT_WASM_URL).arrayBuffer();
 
+  let frameCounter = 0;
+  let snapshot: Uint8Array;
   // todo - get platform events, inputs and dt from byte buffer
-  const platformEvents: PlatformEvent[] = [];
+  let platformEvents: PlatformEvent[] = [];
+  const hackEventsByFrame = new Map<number, PlatformEvent[]>();
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       __cb: function (cb_handle: number, ptr: number, dt: number) {
         opts.systemsCallback(ptr, platformEvents, dt);
-        platformEvents.splice(0, platformEvents.length);
       },
       console_log: function (ptr: number, len: number) {},
     },
   });
   const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;
 
+  // todo - this should be in the time context buffer thing
+
   return {
     runtime: {
       step(ms?: number) {
+        if (this.isPlayingBack) {
+          if (!hackEventsByFrame.has(frameCounter)) {
+            this.isPlayingBack = false;
+          } else {
+            platformEvents = [...hackEventsByFrame.get(frameCounter)!];
+          }
+        }
         wasm.step(ms || Math.floor(1000 / 60));
+        hackEventsByFrame.set(frameCounter, [...platformEvents]);
+        platformEvents.splice(0, platformEvents.length);
+        frameCounter++;
+      },
+      seek(frame: number) {
+        if (frame !== 0) {
+          throw new Error(`seeking to frame ${frame} not implemented`);
+        }
+        opts.restore(snapshot);
+        frameCounter = frame;
+      },
+      stepBack() {
+        const targetFrame = frameCounter - 1;
+        this.seek(0);
+        this.isPlayingBack = true;
+
+        while (frameCounter < targetFrame) {
+          this.step();
+        }
+      },
+      isRecording: true,
+      isPlayingBack: false,
+      record() {
+        snapshot = opts.snapshot();
+        // take a snapshot
+        this.isRecording = true;
+        this.isPlayingBack = false;
       },
     },
     wasm,

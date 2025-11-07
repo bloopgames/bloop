@@ -30,12 +30,21 @@ describe("tapes", () => {
       expect(bloop.bag.cool).toEqual(43);
     });
 
-    it("snapshots time", async () => {
+    it("can snapshot the bag on frame 0", async () => {
       const bloop = Bloop.create({
         bag: {
-          nope: 10,
+          score: 10,
         },
       });
+
+      await mount(bloop);
+      const snapshot = bloop.snapshot();
+      bloop.restore(snapshot);
+      expect(bloop.bag.score).toEqual(10);
+    });
+
+    it("snapshots time", async () => {
+      const bloop = Bloop.create();
 
       const timeCheck = {
         dt: 0,
@@ -75,6 +84,44 @@ describe("tapes", () => {
       expect(timeCheck.dt).toBeCloseTo(0.016);
       expect(timeCheck.time).toBeCloseTo(0.016 * 2);
       expect(bloop.context.time.frame).toEqual(2);
+    });
+  });
+
+  describe("playback", () => {
+    it("can play back inputs", async () => {
+      const bloop = Bloop.create({
+        bag: {
+          clicks: 0,
+        },
+      });
+
+      bloop.system("countClicks", {
+        update({ bag, inputs }) {
+          if (inputs.mouse.left.down) {
+            bag.clicks++;
+          }
+        },
+      });
+
+      const { runtime, emitter } = await mount(bloop);
+
+      runtime.record();
+      emitter.mousedown("Left");
+      runtime.step();
+      expect(bloop.context.time.frame).toEqual(1);
+      expect(bloop.bag.clicks).toEqual(1);
+      emitter.mouseup("Left");
+      runtime.step();
+      expect(bloop.context.time.frame).toEqual(2);
+      expect(bloop.bag.clicks).toEqual(1);
+
+      runtime.stepBack();
+      expect(bloop.context.time.frame).toEqual(1);
+      expect(bloop.bag.clicks).toEqual(1);
+
+      runtime.stepBack();
+      expect(bloop.context.time.frame).toEqual(0);
+      expect(bloop.bag.clicks).toEqual(0);
     });
   });
 });
