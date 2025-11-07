@@ -22,7 +22,7 @@ pub export fn initialize() void {
     const ptr = alloc(@sizeOf(TimeCtx));
     const ctx: *TimeCtx = @ptrFromInt(ptr);
     ctx.*.dt_ms = 0;
-    ctx.*.frame = 66;
+    ctx.*.frame = 0;
     ctx.*.total_ms = 0;
     time_ctx_ptr = ptr;
 }
@@ -48,8 +48,13 @@ pub export fn write_byte(ptr: u32) void {
 pub export fn step(ms: u32) void {
     accumulator += ms;
 
+    const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+
     while (accumulator >= hz) {
+        time.*.dt_ms = hz;
+        time.*.total_ms += hz;
         __cb(global_cb_handle, 0, hz);
+        time.*.frame += 1;
         accumulator -= hz;
     }
     accumulator = @max(accumulator, 0);

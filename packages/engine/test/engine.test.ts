@@ -17,8 +17,8 @@ it("hello wasm", async () => {
   expect(count).toBe(1);
 });
 
-describe("time context", () => {
-  it("marches frame", async () => {
+describe("time", () => {
+  it("injects frame and dt", async () => {
     const { runtime } = await mount({
       systemsCallback(ptr: number) {},
       snapshot() {
@@ -28,9 +28,7 @@ describe("time context", () => {
     });
 
     runtime.step(16);
-
-    const bufferPtr = runtime.wasm.time_ctx();
-    const dataView = new DataView(runtime.buffer, bufferPtr);
-    expect(dataView.getUint32(0, true)).toEqual(1);
+    expect(runtime.time.frame).toEqual(1);
+    expect(runtime.time.dt).toEqual(0.016);
   });
 });

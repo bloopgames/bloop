@@ -14,6 +14,26 @@ export type TimingSnapshot = {
   highResTime: bigint;
 };
 
+export class TimeContext {
+  dataView: DataView;
+
+  constructor(dataView: DataView) {
+    this.dataView = dataView;
+  }
+
+  get frame(): number {
+    return this.dataView.getUint32(0, true);
+  }
+
+  get dt(): number {
+    return this.dataView.getUint32(4, true) / 1000;
+  }
+
+  get time(): number {
+    return this.dataView.getUint32(8, true) / 1000;
+  }
+}
+
 export const TIMING_SNAPSHOT_SIZE = 32;
 
 // these functions should go in engine

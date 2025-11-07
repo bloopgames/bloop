@@ -1,4 +1,5 @@
 import type { WasmEngine } from "./engine";
+import { TimeContext } from "./timing";
 
 /**
  * The runtime is a portable runtime that is responsible for:
@@ -9,6 +10,7 @@ import type { WasmEngine } from "./engine";
 export class Runtime {
   wasm: WasmEngine;
   #memory: WebAssembly.Memory;
+  #time: TimeContext;
   #vcrState = {
     isRecording: false,
     isPlayingBack: false,
@@ -17,15 +19,25 @@ export class Runtime {
   constructor(wasm: WasmEngine, memory: WebAssembly.Memory) {
     this.wasm = wasm;
     this.#memory = memory;
+    this.#time = new TimeContext(
+      new DataView(this.#memory.buffer, this.wasm.time_ctx()),
+    );
   }
 
   step(ms: number) {
     this.wasm.step(ms);
   }
 
-  // pause() {
-
-  // }
+  get time(): TimeContext {
+    if (this.#time.dataView.buffer !== this.#memory.buffer) {
+      // update the data view to the latest memory buffer
+      this.#time.dataView = new DataView(
+        this.#memory.buffer,
+        this.wasm.time_ctx(),
+      );
+    }
+    return this.#time;
+  }
 
   get buffer() {
     return this.#memory.buffer;
