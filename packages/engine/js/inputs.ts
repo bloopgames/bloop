@@ -1,3 +1,5 @@
+import type { PlatformEvent } from "./events";
+
 /**
  * Conforms to the W3 UI Events spec
  */
@@ -415,6 +417,8 @@ export enum MouseButtonCode {
   X5 = 7,
 }
 
+const nullPointer: EnginePointer = -1;
+
 export function keyToKeyCode(key: Key): KeyCode {
   return KeyCode[key];
 }
@@ -427,13 +431,114 @@ export function mouseButtonToMouseButtonCode(
 
 type EnginePointer = number;
 
-const nullKeyState: KeyState = Object.freeze({
-  down: false,
-  held: false,
-  up: false,
-});
+const keysLength = Object.keys(KeyCode).length / 2; // js enum has both key and value entries
+
+export class InputSnapshot {
+  #dataView: DataView;
+  keys: KeyboardSnapshot;
+  mouse: MouseSnapshot;
+
+  constructor(dataView: DataView) {
+    this.#dataView = dataView;
+    this.keys = new KeyboardSnapshot(this.#dataView);
+
+    const paddingBytes = (4 - (keysLength % 4)) % 4;
+    this.mouse = new MouseSnapshot(this.#dataView, keysLength + paddingBytes);
+  }
+
+  update(events: PlatformEvent[]) {
+    for (const event of events) {
+      switch (event.type) {
+        case "keydown":
+        case "keyup":
+          this.keys.update(event);
+          break;
+        case "mousemove":
+        case "mousedown":
+        case "mouseup":
+        case "mousewheel":
+          this.mouse.update(event);
+          break;
+      }
+    }
+  }
+
+  flush() {
+    this.keys.flush();
+    this.mouse.flush();
+  }
+}
+
+export class MouseSnapshot {
+  x = 0;
+  y = 0;
+  wheel = { x: 0, y: 0 };
+  left = { down: false, held: false, up: false };
+  middle = { down: false, held: false, up: false };
+  right = { down: false, held: false, up: false };
+
+  #dataView: DataView;
+  #offset: number;
+
+  constructor(dataView: DataView, offset: number) {
+    this.#dataView = dataView;
+    this.#offset = offset;
+  }
+
+  update(event: PlatformEvent) {
+    switch (event.type) {
+      case "mousemove":
+        this.x = event.x;
+        this.y = event.y;
+        break;
+      case "mousedown":
+        if (event.button === "Left") {
+          this.left.down = true;
+          this.left.held = true;
+          this.left.up = false;
+        }
+        if (event.button === "Middle") {
+          this.middle.down = true;
+          this.middle.held = true;
+          this.middle.up = false;
+        }
+        if (event.button === "Right") {
+          this.right.down = true;
+          this.right.held = true;
+          this.right.up = false;
+        }
+        break;
+      case "mouseup":
+        if (event.button === "Left") {
+          this.left.down = false;
+          this.left.held = false;
+          this.left.up = true;
+        }
+        if (event.button === "Middle") {
+          this.middle.down = false;
+          this.middle.held = false;
+          this.middle.up = true;
+        }
+        if (event.button === "Right") {
+          this.right.down = false;
+          this.right.held = false;
+          this.right.up = true;
+        }
+        break;
+      case "mousewheel":
+        this.wheel.x = event.x;
+        this.wheel.y = event.y;
+        break;
+    }
+  }
+
+  flush() {
+    this.left.down = this.right.down = this.middle.down = false;
+    this.left.up = this.right.up = this.middle.up = false;
+  }
+}
+
 export class KeyboardSnapshot {
-  #pointer: EnginePointer;
   #dataView: DataView;
   #offset: number;
   // lazily allocated keystate objects
@@ -441,13 +546,36 @@ export class KeyboardSnapshot {
     new Map();
 
   constructor(dataView: DataView) {
-    this.#pointer = 0;
     this.#dataView = dataView;
     this.#offset = 0;
   }
 
-  setPointer(pointer: EnginePointer) {
-    this.#pointer = pointer;
+  update(event: PlatformEvent) {
+    switch (event.type) {
+      case "keyup": {
+        const keyCode = keyToKeyCode(event.key as Key);
+        const keystate = this.#keystate(keyCode);
+        keystate.down = false;
+        keystate.held = false;
+        keystate.up = true;
+        break;
+      }
+      case "keydown": {
+        const keyCode = keyToKeyCode(event.key as Key);
+        const keystate = this.#keystate(keyCode);
+        keystate.down = true;
+        keystate.held = true;
+        keystate.up = false;
+        break;
+      }
+    }
+  }
+
+  flush() {
+    for (const [, state] of this.#keystates) {
+      state.down = false;
+      state.up = false;
+    }
   }
 
   // modifier key helpers
@@ -1063,10 +1191,6 @@ export class KeyboardSnapshot {
       this.#keystates.set(code, state);
     }
 
-    const byte = this.#dataView.getUint8(this.#offset + code);
-    state.held = (byte & 0b0000001) === 1;
-    state.down = state.held && (byte & 0b00000010) === 0;
-    state.up = !state.held && (byte & 0b00000010) === 2;
     return state;
   }
 }

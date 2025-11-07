@@ -27,7 +27,6 @@ export function encodeEvent<T extends PlatformEvent>(
 
   switch (event.type) {
     case "keydown":
-    case "keyheld":
     case "keyup": {
       dataView.setUint8(0, keyToKeyCode(event.key));
       break;
@@ -39,7 +38,6 @@ export function encodeEvent<T extends PlatformEvent>(
       break;
     }
     case "mousedown":
-    case "mouseheld":
     case "mouseup": {
       dataView.setUint8(0, mouseButtonToMouseButtonCode(event.button));
     }

@@ -4,7 +4,7 @@ import { Bloop } from "../src/mod";
 
 describe("loop", () => {
   it("runs a single system", async () => {
-    const bloop = Bloop();
+    const bloop = Bloop.create();
     let count = 0;
 
     bloop.system("test", {
@@ -20,16 +20,14 @@ describe("loop", () => {
   });
 
   it("passes through input events", async () => {
-    const bloop = Bloop();
+    const bloop = Bloop.create();
 
     const events = {
       keydown: null as Key | null,
       keyup: null as Key | null,
-      keyheld: null as Key | null,
 
       mousemove: null as { x: number; y: number } | null,
       mousedown: null as MouseButton | null,
-      mouseheld: null as MouseButton | null,
       mouseup: null as MouseButton | null,
       mousewheel: null as { x: number; y: number } | null,
     };
@@ -40,9 +38,6 @@ describe("loop", () => {
       },
       keyup({ event }) {
         events.keyup = event.key;
-      },
-      keyheld({ event }) {
-        events.keyheld = event.key;
       },
       mousemove({ event }) {
         events.mousemove = { x: event.x, y: event.y };
@@ -83,7 +78,82 @@ describe("loop", () => {
     expect(events.mousemove).toEqual({ x: 3, y: 4 });
   });
 
-  it.skip("keeps track of keyboard and mouse snapshots", async () => {});
+  it("keeps track of keyboard and mouse snapshots", async () => {
+    const bloop = Bloop.create({
+      bag: {
+        cool: "nice",
+      },
+    });
 
-  it.skip('synthesizes "keyheld" and "mouseheld" events', async () => {});
+    const events = {
+      keydown: null as boolean | null,
+      keyheld: null as boolean | null,
+      keyup: null as boolean | null,
+      mouseheld: null as boolean | null,
+      mousedown: null as boolean | null,
+      mouseup: null as boolean | null,
+    };
+
+    bloop.system("input snapshots", {
+      update({ inputs }) {
+        events.keydown = inputs.keys.space.down;
+        events.keyheld = inputs.keys.space.held;
+        events.keyup = inputs.keys.space.up;
+
+        events.mousedown = inputs.mouse.left.down;
+        events.mouseheld = inputs.mouse.left.held;
+        events.mouseup = inputs.mouse.left.up;
+      },
+    });
+
+    const { runtime, emitter } = await mount(bloop);
+
+    // Initial state
+    runtime.step();
+    expect(events).toEqual({
+      keydown: false,
+      keyheld: false,
+      keyup: false,
+      mousedown: false,
+      mouseheld: false,
+      mouseup: false,
+    });
+
+    // down and held are both true on the first frame of a key down
+    emitter.keydown("Space");
+    emitter.mousedown("Left");
+    runtime.step();
+    expect(events).toEqual({
+      keydown: true,
+      keyheld: true,
+      keyup: false,
+      mousedown: true,
+      mouseheld: true,
+      mouseup: false,
+    });
+
+    // held remains true, down goes false
+    runtime.step();
+    expect(events).toEqual({
+      keydown: false,
+      keyheld: true,
+      keyup: false,
+      mousedown: false,
+      mouseheld: true,
+      mouseup: false,
+    });
+
+    // on key up, up is true, held and down are false
+    emitter.keyup("Space");
+    emitter.mouseup("Left");
+    runtime.step();
+    expect(events).toEqual({
+      keydown: false,
+      keyheld: false,
+      keyup: true,
+      mousedown: false,
+      mouseheld: false,
+      mouseup: true,
+    });
+  });
 });

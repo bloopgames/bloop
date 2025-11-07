@@ -5,10 +5,12 @@ import type {
   MouseWheelEvent,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
-import type { GameSchema } from "./schema";
+import type { GameSchema } from "./data/schema";
 
 export type System<GS extends GameSchema = GameSchema> = {
-  update?: () => void;
+  label?: string;
+
+  update?: (context: Context<GS>) => void;
 
   keydown?: (
     context: Context<GS> & {
@@ -17,12 +19,6 @@ export type System<GS extends GameSchema = GameSchema> = {
   ) => void;
 
   keyup?: (
-    context: Context<GS> & {
-      event: KeyEvent;
-    },
-  ) => void;
-
-  keyheld?: (
     context: Context<GS> & {
       event: KeyEvent;
     },
