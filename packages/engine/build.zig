@@ -18,6 +18,10 @@ pub fn build(b: *std.Build) void {
     // this is needed to export functions properly
     exe.rdynamic = true;
 
+    // read memory from JS side
+    exe.import_memory = true;
+    exe.export_memory = false;
+
     const install = b.addInstallArtifact(exe, .{
         .dest_sub_path = "bloop.wasm",
     });
