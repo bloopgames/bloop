@@ -2,7 +2,7 @@ import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
 import { EngineInputs, type PlatformEvent } from "@bloopjs/engine";
-import type { Context } from "./context";
+import { decodeTimingSnapshot, encodeTimingSnapshot, TIMING_SNAPSHOT_SIZE, type Context } from "./context";
 
 export type BloopOpts<B extends Bag> = {
   /** defaults to "Game" */
@@ -53,6 +53,7 @@ export class Bloop<GS extends BloopSchema> {
 
 		this.#context = {
       bag: opts.bag ?? {},
+			// todo: this should be a pointer to memory managed by the engine
       inputs: new EngineInputs.InputSnapshot(new DataView(new ArrayBuffer(100))),
       time: {
 				dt: 0,
@@ -68,6 +69,10 @@ export class Bloop<GS extends BloopSchema> {
 		return this.#context.bag;
 	}
 
+	get context() : Readonly<Context<GS>> {
+		return this.#context;
+	}
+
 	/**
 	 * Take a snapshot of the game state
 	 * @returns linear memory representation of the game state
@@ -77,25 +82,30 @@ export class Bloop<GS extends BloopSchema> {
 		const encoder = new TextEncoder();
 		const textBytes = encoder.encode(str);
 
-		const buffer = new Uint8Array(1024*1024);
+		const size = TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
+
+		const buffer = new Uint8Array(size);
 		const view = new DataView(buffer.buffer);
-		let offset = 0;
-		view.setUint32(0, textBytes.length, true);
+		let offset = encodeTimingSnapshot(this.#context.time, buffer.subarray(0, TIMING_SNAPSHOT_SIZE));
+		view.setUint32(offset, textBytes.length, true);
 		offset += 4;
+
 		buffer.set(textBytes, offset);
 		offset += textBytes.length;
 		return buffer;
 	}
 
 	restore(snapshot: Uint8Array) {
+		const size = decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, 32), this.#context.time);
 		const view = new DataView(snapshot.buffer);
-		let offset = 0;
+		let offset = size;
 		const length = view.getUint32(0, true);
 		offset += 4;
 		const bagBytes = snapshot.slice(offset, offset + length);
 		const decoder = new TextDecoder();
 		const str = decoder.decode(bagBytes);
 		this.#context.bag = JSON.parse(str);
+
 	}
 
 	/**
@@ -108,8 +118,14 @@ export class Bloop<GS extends BloopSchema> {
 		return this.#systems.length;
 	}
 
-	systemsCallback(events: PlatformEvent[]) {
+	// todo - get data from ptr
+	systemsCallback(ptr: number, events: PlatformEvent[], dt: number) {
 		this.#context.inputs.update(events);
+		const dtSeconds = dt / 1000;
+		this.#context.time.dt = dtSeconds;
+		this.#context.time.time += dtSeconds;
+		this.#context.time.highResTime += BigInt(dt);
+
 		for (const system of this.#systems) {
 			system.update?.(this.#context);
 
@@ -174,6 +190,11 @@ export class Bloop<GS extends BloopSchema> {
 				}
 			}
 		}
+
+		// do this in the engine snapshot
+		this.#context.time.frame++;
+		this.#context.time.highResFrame += 1n;
+
 		this.#context.inputs.flush();
 	}
 }

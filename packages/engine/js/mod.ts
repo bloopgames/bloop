@@ -3,20 +3,23 @@ import type { Key, MouseButton } from "./inputs";
 export type * from "./inputs";
 export type * from "./events";
 
+export * as EngineEvents from "./events";
 export * as EngineInputs from "./inputs";
 
-const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
+export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 
 export type WasmEngine = {
   register_systems: (cb_handle: number) => void;
   step: (ms: number) => void;
 };
 
-export type SystemsCallback = (events: PlatformEvent[]) => void;
-
 export type MountOpts = {
   wasmUrl?: URL;
-  systemsCallback: SystemsCallback;
+  /** A callback function for each system */
+  // todo - get dt from ptr
+  systemsCallback: (ptr: number, events: PlatformEvent[], dt: number) => void;
+  /** The size of the tape ring buffer. Defaults to 2mb */
+  tapeBufferSize?: number;
 };
 
 export type Runtime = {
@@ -45,11 +48,12 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await Bun.file(opts.wasmUrl ?? DEFAULT_WASM_URL).arrayBuffer();
 
+  // todo - get platform events, inputs and dt from byte buffer
   const platformEvents: PlatformEvent[] = [];
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
-      __cb: function (a: number) {
-        opts.systemsCallback(platformEvents);
+      __cb: function (cb_handle: number, ptr: number, dt: number) {
+        opts.systemsCallback(ptr, platformEvents, dt);
         platformEvents.splice(0, platformEvents.length);
       },
       console_log: function (ptr: number, len: number) {},
