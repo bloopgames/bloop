@@ -1,7 +1,12 @@
 import type { System } from "./system";
 import { EngineInputs, type PlatformEvent } from "@bloopjs/engine";
 
-export function Bloop() {
+type BloopLoop = {
+	system: (label: string, system: System) => void;
+	systemsCallback: (events: PlatformEvent[]) => void;
+}
+
+export function Bloop(): BloopLoop {
 	const systems = [] as System[];
 
 	return {

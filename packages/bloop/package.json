@@ -14,7 +14,9 @@
   "scripts": {
     "build": "bun build src/mod.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
     "build:tsc": "tsc -p publish/tsconfig.publish.json",
+    "ci": "bun run ci:tsc && bun run ci:jsr && bun run build",
     "ci:tsc": "tsc --noEmit",
+    "ci:jsr": "bunx jsr publish --dry-run --allow-dirty",
     "dev": "bun --watch src/mod.ts"
   },
   "devDependencies": {
