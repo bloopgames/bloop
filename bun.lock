@@ -13,6 +13,19 @@
     "packages/bloop": {
       "name": "@bloopjs/bloop",
       "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/engine": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "typescript": "^5",
+      },
+    },
+    "packages/engine": {
+      "name": "@bloopjs/engine",
+      "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "latest",
       },
@@ -23,6 +36,8 @@
   },
   "packages": {
     "@bloopjs/bloop": ["@bloopjs/bloop@workspace:packages/bloop"],
+
+    "@bloopjs/engine": ["@bloopjs/engine@workspace:packages/engine"],
 
     "@types/bun": ["@types/bun@1.3.1", "", { "dependencies": { "bun-types": "1.3.1" } }, "sha512-4jNMk2/K9YJtfqwoAa28c8wK+T7nvJFOjxI4h/7sORWcypRNxBpr+TPNaCfVWq70tLCJsqoFwcf0oI0JU/fvMQ=="],
 

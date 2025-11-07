@@ -1,0 +1,24 @@
+{
+  "name": "@bloopjs/engine",
+  "version": "0.0.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./js/mod.ts",
+      "types": "./js/mod.ts"
+    }
+  },
+  "scripts": {
+    "build:wasm": "zig build -p .",
+    "check:wasm": "wasm-objdump -x js/bloop.wasm"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

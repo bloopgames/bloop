@@ -76,9 +76,11 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
     (packageJson.exports as Record<string, unknown>)[key] = {
       import: (value as any).import
         .replace("src", "dist")
+        .replace("js/", "dist/")
         .replace(".ts", ".js"),
       types: (value as any).types
         .replace("src", "dist")
+        .replace("js/", "dist/")
         .replace(".ts", ".d.ts"),
     };
   }

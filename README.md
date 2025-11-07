@@ -24,6 +24,7 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Rewind any live or recorded gameplay sesison
 - [ ] Hot reload code changes during a rewinded play session
 - [ ] Input Handling
+- [ ] Single frame object pools
 - [ ] Bag for singleton game state
 - [ ] ECS
 - [ ] Transforms

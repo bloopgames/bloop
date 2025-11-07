@@ -20,6 +20,9 @@
   "devDependencies": {
     "@types/bun": "latest"
   },
+  "dependencies": {
+    "@bloopjs/engine": "workspace:*"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }

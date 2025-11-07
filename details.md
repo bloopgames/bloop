@@ -46,19 +46,19 @@ import { mount } from "@bloop.gg/bloop/headless"
 import { expect, it } from 'bun:test'
 
 it('moves the player right when the right arrow key is pressed', async () => {
-  const {bloop, inputs} = await mount(game)
+  const {runtime, query, inputEmitter} = await mount(game)
 
-  bloop.step()
+  runtime.step()
 
-  const player = bloop.query({
+  const player = query({
     position: 'read'
   }).first()
   expect(player.position.x).toEqual(0)
 
-  inputs.keyDown('ArrowRight')
-  bloop.step()
+  emitter.keydown('ArrowRight')
+  runtime.step()
 
-  const player = bloop.query({
+  const player = query({
     position: 'read'
   }).first()
   expect(player.position.x).toEqual(1)

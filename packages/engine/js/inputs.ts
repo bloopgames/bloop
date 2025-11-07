@@ -1,0 +1,426 @@
+/**
+ * Conforms to the W3 UI Events spec
+ */
+export enum KeyCode {
+  Backquote = 0,
+  Backslash = 1,
+  BracketLeft = 2,
+  BracketRight = 3,
+  Comma = 4,
+  Digit0 = 5,
+  Digit1 = 6,
+  Digit2 = 7,
+  Digit3 = 8,
+  Digit4 = 9,
+  Digit5 = 10,
+  Digit6 = 11,
+  Digit7 = 12,
+  Digit8 = 13,
+  Digit9 = 14,
+  Equal = 15,
+  IntlBackslash = 16,
+  IntlRo = 17,
+  IntlYen = 18,
+  KeyA = 19,
+  KeyB = 20,
+  KeyC = 21,
+  KeyD = 22,
+  KeyE = 23,
+  KeyF = 24,
+  KeyG = 25,
+  KeyH = 26,
+  KeyI = 27,
+  KeyJ = 28,
+  KeyK = 29,
+  KeyL = 30,
+  KeyM = 31,
+  KeyN = 32,
+  KeyO = 33,
+  KeyP = 34,
+  KeyQ = 35,
+  KeyR = 36,
+  KeyS = 37,
+  KeyT = 38,
+  KeyU = 39,
+  KeyV = 40,
+  KeyW = 41,
+  KeyX = 42,
+  KeyY = 43,
+  KeyZ = 44,
+  Minus = 45,
+  Period = 46,
+  Quote = 47,
+  Semicolon = 48,
+  Slash = 49,
+  AltLeft = 50,
+  AltRight = 51,
+  Backspace = 52,
+  CapsLock = 53,
+  ContextMenu = 54,
+  ControlLeft = 55,
+  ControlRight = 56,
+  Enter = 57,
+  MetaLeft = 58,
+  MetaRight = 59,
+  ShiftLeft = 60,
+  ShiftRight = 61,
+  Space = 62,
+  Tab = 63,
+  Convert = 64,
+  KanaMode = 65,
+  Lang1 = 66,
+  Lang2 = 67,
+  Lang3 = 68,
+  Lang4 = 69,
+  Lang5 = 70,
+  NonConvert = 71,
+  Delete = 72,
+  End = 73,
+  Help = 74,
+  Home = 75,
+  Insert = 76,
+  PageDown = 77,
+  PageUp = 78,
+  ArrowDown = 79,
+  ArrowLeft = 80,
+  ArrowRight = 81,
+  ArrowUp = 82,
+  NumLock = 83,
+  Numpad0 = 84,
+  Numpad1 = 85,
+  Numpad2 = 86,
+  Numpad3 = 87,
+  Numpad4 = 88,
+  Numpad5 = 89,
+  Numpad6 = 90,
+  Numpad7 = 91,
+  Numpad8 = 92,
+  Numpad9 = 93,
+  NumpadAdd = 94,
+  NumpadBackspace = 95,
+  NumpadClear = 96,
+  NumpadClearEntry = 97,
+  NumpadComma = 98,
+  NumpadDecimal = 99,
+  NumpadDivide = 100,
+  NumpadEnter = 101,
+  NumpadEqual = 102,
+  NumpadHash = 103,
+  NumpadMemoryAdd = 104,
+  NumpadMemoryClear = 105,
+  NumpadMemoryRecall = 106,
+  NumpadMemoryStore = 107,
+  NumpadMemorySubtract = 108,
+  NumpadMultiply = 109,
+  NumpadParenLeft = 110,
+  NumpadParenRight = 111,
+  NumpadStar = 112,
+  NumpadSubtract = 113,
+  Escape = 114,
+  Fn = 115,
+  FnLock = 116,
+  PrintScreen = 117,
+  ScrollLock = 118,
+  Pause = 119,
+  BrowserBack = 120,
+  BrowserFavorites = 121,
+  BrowserForward = 122,
+  BrowserHome = 123,
+  BrowserRefresh = 124,
+  BrowserSearch = 125,
+  BrowserStop = 126,
+  Eject = 127,
+  LaunchApp1 = 128,
+  LaunchApp2 = 129,
+  LaunchMail = 130,
+  MediaPlayPause = 131,
+  MediaSelect = 132,
+  MediaStop = 133,
+  MediaTrackNext = 134,
+  MediaTrackPrevious = 135,
+  Power = 136,
+  Sleep = 137,
+  AudioVolumeDown = 138,
+  AudioVolumeMute = 139,
+  AudioVolumeUp = 140,
+  WakeUp = 141,
+  Hyper = 142,
+  Super = 143,
+  Turbo = 144,
+  Abort = 145,
+  Resume = 146,
+  Suspend = 147,
+  Again = 148,
+  Copy = 149,
+  Cut = 150,
+  Find = 151,
+  Open = 152,
+  Paste = 153,
+  Props = 154,
+  Select = 155,
+  Undo = 156,
+  Hiragana = 157,
+  Katakana = 158,
+  F1 = 159,
+  F2 = 160,
+  F3 = 161,
+  F4 = 162,
+  F5 = 163,
+  F6 = 164,
+  F7 = 165,
+  F8 = 166,
+  F9 = 167,
+  F10 = 168,
+  F11 = 169,
+  F12 = 170,
+  F13 = 171,
+  F14 = 172,
+  F15 = 173,
+  F16 = 174,
+  F17 = 175,
+  F18 = 176,
+  F19 = 177,
+  F20 = 178,
+  F21 = 179,
+  F22 = 180,
+  F23 = 181,
+  F24 = 182,
+  F25 = 183,
+  F26 = 184,
+  F27 = 185,
+  F28 = 186,
+  F29 = 187,
+  F30 = 188,
+  F31 = 189,
+  F32 = 190,
+  F33 = 191,
+  F34 = 192,
+  F35 = 193,
+}
+
+export type Key =
+  | "Backquote"
+  | "Backslash"
+  | "BracketLeft"
+  | "BracketRight"
+  | "Comma"
+  | "Digit0"
+  | "Digit1"
+  | "Digit2"
+  | "Digit3"
+  | "Digit4"
+  | "Digit5"
+  | "Digit6"
+  | "Digit7"
+  | "Digit8"
+  | "Digit9"
+  | "Equal"
+  | "IntlBackslash"
+  | "IntlRo"
+  | "IntlYen"
+  | "KeyA"
+  | "KeyB"
+  | "KeyC"
+  | "KeyD"
+  | "KeyE"
+  | "KeyF"
+  | "KeyG"
+  | "KeyH"
+  | "KeyI"
+  | "KeyJ"
+  | "KeyK"
+  | "KeyL"
+  | "KeyM"
+  | "KeyN"
+  | "KeyO"
+  | "KeyP"
+  | "KeyQ"
+  | "KeyR"
+  | "KeyS"
+  | "KeyT"
+  | "KeyU"
+  | "KeyV"
+  | "KeyW"
+  | "KeyX"
+  | "KeyY"
+  | "KeyZ"
+  | "Minus"
+  | "Period"
+  | "Quote"
+  | "Semicolon"
+  | "Slash"
+  | "AltLeft"
+  | "AltRight"
+  | "Backspace"
+  | "CapsLock"
+  | "ContextMenu"
+  | "ControlLeft"
+  | "ControlRight"
+  | "Enter"
+  | "MetaLeft"
+  | "MetaRight"
+  | "ShiftLeft"
+  | "ShiftRight"
+  | "Space"
+  | "Tab"
+  | "Convert"
+  | "KanaMode"
+  | "Lang1"
+  | "Lang2"
+  | "Lang3"
+  | "Lang4"
+  | "Lang5"
+  | "NonConvert"
+  | "Delete"
+  | "End"
+  | "Help"
+  | "Home"
+  | "Insert"
+  | "PageDown"
+  | "PageUp"
+  | "ArrowDown"
+  | "ArrowLeft"
+  | "ArrowRight"
+  | "ArrowUp"
+  | "NumLock"
+  | "Numpad0"
+  | "Numpad1"
+  | "Numpad2"
+  | "Numpad3"
+  | "Numpad4"
+  | "Numpad5"
+  | "Numpad6"
+  | "Numpad7"
+  | "Numpad8"
+  | "Numpad9"
+  | "NumpadAdd"
+  | "NumpadBackspace"
+  | "NumpadClear"
+  | "NumpadClearEntry"
+  | "NumpadComma"
+  | "NumpadDecimal"
+  | "NumpadDivide"
+  | "NumpadEnter"
+  | "NumpadEqual"
+  | "NumpadHash"
+  | "NumpadMemoryAdd"
+  | "NumpadMemoryClear"
+  | "NumpadMemoryRecall"
+  | "NumpadMemoryStore"
+  | "NumpadMemorySubtract"
+  | "NumpadMultiply"
+  | "NumpadParenLeft"
+  | "NumpadParenRight"
+  | "NumpadStar"
+  | "NumpadSubtract"
+  | "Escape"
+  | "Fn"
+  | "FnLock"
+  | "PrintScreen"
+  | "ScrollLock"
+  | "Pause"
+  | "BrowserBack"
+  | "BrowserFavorites"
+  | "BrowserForward"
+  | "BrowserHome"
+  | "BrowserRefresh"
+  | "BrowserSearch"
+  | "BrowserStop"
+  | "Eject"
+  | "LaunchApp1"
+  | "LaunchApp2"
+  | "LaunchMail"
+  | "MediaPlayPause"
+  | "MediaSelect"
+  | "MediaStop"
+  | "MediaTrackNext"
+  | "MediaTrackPrevious"
+  | "Power"
+  | "Sleep"
+  | "AudioVolumeDown"
+  | "AudioVolumeMute"
+  | "AudioVolumeUp"
+  | "WakeUp"
+  | "Hyper"
+  | "Super"
+  | "Turbo"
+  | "Abort"
+  | "Resume"
+  | "Suspend"
+  | "Again"
+  | "Copy"
+  | "Cut"
+  | "Find"
+  | "Open"
+  | "Paste"
+  | "Props"
+  | "Select"
+  | "Undo"
+  | "Hiragana"
+  | "Katakana"
+  | "F1"
+  | "F2"
+  | "F3"
+  | "F4"
+  | "F5"
+  | "F6"
+  | "F7"
+  | "F8"
+  | "F9"
+  | "F10"
+  | "F11"
+  | "F12"
+  | "F13"
+  | "F14"
+  | "F15"
+  | "F16"
+  | "F17"
+  | "F18"
+  | "F19"
+  | "F20"
+  | "F21"
+  | "F22"
+  | "F23"
+  | "F24"
+  | "F25"
+  | "F26"
+  | "F27"
+  | "F28"
+  | "F29"
+  | "F30"
+  | "F31"
+  | "F32"
+  | "F33"
+  | "F34"
+  | "F35";
+
+export type MouseButton =
+  | "Left"
+  | "Middle"
+  | "Right"
+  | "X1"
+  | "X2"
+  | "X3"
+  | "X4"
+  | "X5";
+
+export enum MouseButtonCode {
+  Left = 0,
+  Middle = 1,
+  Right = 2,
+  X1 = 3,
+  X2 = 4,
+  X3 = 5,
+  X4 = 6,
+  X5 = 7,
+}
+
+export function keyToKeyCode(key: Key): KeyCode {
+  return KeyCode[key];
+}
+
+export function mouseButtonToMouseButtonCode(
+  button: MouseButton,
+): MouseButtonCode {
+  return MouseButtonCode[button];
+}
