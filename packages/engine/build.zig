@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     const install = b.addInstallArtifact(exe, .{
         .dest_sub_path = "bloop.wasm",
     });
-    install.dest_dir = .{ .custom = "js" };
+    install.dest_dir = .{ .custom = "wasm" };
 
     b.getInstallStep().dependOn(&install.step);
 

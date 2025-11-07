@@ -1,6 +1,7 @@
 import {
   KeyCode,
   keyToKeyCode,
+  MouseButtonCode,
   mouseButtonToMouseButtonCode,
   type Key,
   type MouseButton,
@@ -75,7 +76,7 @@ export function decodeEvent<T extends PlatformEvent>(buffer: Uint8Array): T {
       const buttonCode = dataView.getUint8(1);
       return {
         type: "mousedown",
-        button: MouseButton[buttonCode],
+        button: MouseButtonCode[buttonCode],
       } as T;
     }
     default:

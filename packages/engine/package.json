@@ -5,6 +5,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist",
+    "js",
+    "wasm"
+  ],
   "exports": {
     ".": {
       "import": "./js/mod.ts",
@@ -12,8 +17,11 @@
     }
   },
   "scripts": {
+    "build": "bun run build:wasm && bun build js/mod.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
+    "build:tsc": "tsc -p publish/tsconfig.publish.json",
     "build:wasm": "zig build -p .",
-    "check:wasm": "wasm-objdump -x js/bloop.wasm"
+    "ci:tsc": "tsc --noEmit",
+    "check:wasm": "wasm-objdump -x wasm/bloop.wasm"
   },
   "devDependencies": {
     "@types/bun": "latest"

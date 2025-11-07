@@ -1,10 +1,11 @@
-import wasmUrl from "./bloop.wasm";
 import type { PlatformEvent } from "./events";
 import type { Key, MouseButton } from "./inputs";
 export type * from "./inputs";
 export type * from "./events";
 
 export * as EngineInputs from "./inputs";
+
+const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 
 export type WasmEngine = {
   register_systems: (cb_handle: number) => void;
@@ -14,6 +15,7 @@ export type WasmEngine = {
 export type SystemsCallback = (events: PlatformEvent[]) => void;
 
 export type MountOpts = {
+  wasmUrl?: URL;
   systemsCallback: SystemsCallback;
 };
 
@@ -41,7 +43,7 @@ export type MountResult = {
 
 export async function mount(opts: MountOpts): Promise<MountResult> {
   // https://github.com/oven-sh/bun/issues/12434
-  const bytes = await Bun.file(wasmUrl).arrayBuffer();
+  const bytes = await Bun.file(opts.wasmUrl ?? DEFAULT_WASM_URL).arrayBuffer();
 
   const platformEvents: PlatformEvent[] = [];
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {

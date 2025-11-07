@@ -83,5 +83,7 @@ describe("loop", () => {
     expect(events.mousemove).toEqual({ x: 3, y: 4 });
   });
 
+  it.skip("keeps track of keyboard and mouse snapshots", async () => {});
+
   it.skip('synthesizes "keyheld" and "mouseheld" events', async () => {});
 });
