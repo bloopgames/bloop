@@ -1,5 +1,10 @@
 import type { PlatformEvent } from "./engine";
-import type { Key, MouseButton } from "./inputs";
+import {
+  keyToKeyCode,
+  mouseButtonToMouseButtonCode,
+  type Key,
+  type MouseButton,
+} from "./inputs";
 import { TimeContext } from "./contexts/timeContext";
 import type { WasmEngine } from "./wasmEngine";
 
@@ -79,22 +84,22 @@ export class Runtime {
 
   emit = {
     keydown: (key: Key) => {
-      this.#platformEvents.push({ type: "keydown", key });
+      this.wasm.emit_keydown(keyToKeyCode(key));
     },
     keyup: (key: Key) => {
-      this.#platformEvents.push({ type: "keyup", key });
+      this.wasm.emit_keyup(keyToKeyCode(key));
     },
     mousemove: (x: number, y: number) => {
-      this.#platformEvents.push({ type: "mousemove", x, y });
+      this.wasm.emit_mousemove(x, y);
     },
     mousedown: (button: MouseButton) => {
-      this.#platformEvents.push({ type: "mousedown", button, pressure: 1 });
+      this.wasm.emit_mousedown(mouseButtonToMouseButtonCode(button));
     },
     mouseup: (button: MouseButton) => {
-      this.#platformEvents.push({ type: "mouseup", button, pressure: 0 });
+      this.wasm.emit_mouseup(mouseButtonToMouseButtonCode(button));
     },
     mousewheel: (x: number, y: number) => {
-      this.#platformEvents.push({ type: "mousewheel", x, y });
+      this.wasm.emit_mousewheel(x, y);
     },
   };
 }

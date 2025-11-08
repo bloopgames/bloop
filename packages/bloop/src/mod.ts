@@ -187,6 +187,7 @@ export class Bloop<GS extends BloopSchema> {
 		setBuffer: (buffer: ArrayBuffer) => {
 			this.#engineBuffer = buffer;
 			this.#context.time.dataView = new DataView(this.#engineBuffer);
+			this.#context.inputs.dataView = new DataView(this.#engineBuffer);
 		}
 	}
 }

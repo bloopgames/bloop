@@ -4,7 +4,7 @@ import { mount } from "../js/engine";
 it("hello wasm", async () => {
   let count = 0;
   const { wasm } = await mount({
-    systemsCallback(handle, ptr) {
+    systemsCallback() {
       count++;
     },
   });
@@ -16,7 +16,7 @@ it("hello wasm", async () => {
 describe("time", () => {
   it("injects frame and dt", async () => {
     const { runtime } = await mount({
-      systemsCallback(handle, ptr) {},
+      systemsCallback() {},
     });
 
     runtime.step(16);
@@ -27,7 +27,7 @@ describe("time", () => {
   it("exposes time context pointer in system callback", async () => {
     let called = false;
     const { runtime } = await mount({
-      systemsCallback(handle, ptr) {
+      systemsCallback(_handle, ptr) {
         called = true;
         const dataView = new DataView(runtime.buffer, ptr);
         const timeCtxPtr = dataView.getUint32(0, true);
@@ -44,18 +44,10 @@ describe("time", () => {
   });
 });
 
-describe("platform events", () => {
-  it("allows caller to emit platform events between frames", async () => {
-    const { runtime } = await mount({
-      systemsCallback(handle, ptr) {},
-    });
-  });
-});
-
 describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
     const { runtime } = await mount({
-      systemsCallback(handle, ptr) {},
+      systemsCallback() {},
     });
 
     runtime.record();
@@ -74,5 +66,38 @@ describe("snapshots", () => {
 
     runtime.step(16);
     expect(runtime.time.frame).toEqual(3);
+  });
+});
+
+describe("input events", () => {
+  it("updates input context in response to input events", async () => {
+    let called = false;
+    const { runtime } = await mount({
+      systemsCallback(_handle, ptr) {
+        const dataView = new DataView(runtime.buffer, ptr);
+        const inputCtxPtr = dataView.getUint32(4, true);
+        const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+        const keystate = inputDataView.getUint8(0);
+        console.log({ keystate });
+        expect(keystate).toEqual(0b00000001);
+        called = true;
+      },
+    });
+
+    runtime.emit.keydown("Backquote");
+    runtime.step();
+    expect(called).toEqual(true);
+  });
+
+  it("updates platform events with input events", async () => {
+    let called = false;
+    const { runtime } = await mount({
+      systemsCallback(_handle, ptr) {
+        throw new Error("Events are not in yet");
+      },
+    });
+
+    runtime.emit.keydown("Space");
+    expect(called).toEqual(true);
   });
 });

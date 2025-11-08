@@ -12,10 +12,29 @@ const hz = 1000 / 60;
 var wasm_alloc = std.heap.wasm_allocator;
 var global_cb_handle: u32 = 0;
 var accumulator: u32 = 0;
-var time_ctx_ptr: wasmPointer = 0;
+
 var cb_ptr: wasmPointer = 0;
+var time_ctx_ptr: wasmPointer = 0;
+var input_ctx_ptr: wasmPointer = 0;
 
 pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
+
+pub const InputCtx = extern struct {
+    key_ctx: KeyCtx,
+    mouse_ctx: MouseCtx,
+};
+
+pub const KeyCtx = extern struct {
+    key_states: [256]u8,
+};
+
+pub const MouseCtx = extern struct {
+    x: f32,
+    y: f32,
+    wheel_x: f32,
+    wheel_y: f32,
+    button_states: [8]u8,
+};
 
 pub const Snapshot = extern struct {
     len: u32,
@@ -29,12 +48,17 @@ pub export fn alloc(size: usize) wasmPointer {
 }
 
 pub export fn initialize() void {
-    const ptr = alloc(@sizeOf(TimeCtx));
-    const ctx: *TimeCtx = @ptrFromInt(ptr);
+    // Allocate the time context and 0 it out
+    time_ctx_ptr = alloc(@sizeOf(TimeCtx));
+    const ctx: *TimeCtx = @ptrFromInt(time_ctx_ptr);
     ctx.*.dt_ms = 0;
     ctx.*.frame = 0;
     ctx.*.total_ms = 0;
-    time_ctx_ptr = ptr;
+
+    // Allocate the input context and 0 it out
+    input_ctx_ptr = alloc(@sizeOf(InputCtx));
+    var input_data: [*]u8 = @ptrFromInt(input_ctx_ptr);
+    @memset(input_data[0..@sizeOf(InputCtx)], 99);
 
     // the callback pointer injects:
     // 0 - pointer to time context
@@ -43,7 +67,7 @@ pub export fn initialize() void {
     cb_ptr = alloc(@sizeOf(u32) * 2);
     const cb_data: [*]u32 = @ptrFromInt(cb_ptr);
     cb_data[0] = time_ctx_ptr;
-    cb_data[1] = 0;
+    cb_data[1] = input_ctx_ptr;
 }
 
 pub export fn snapshot() wasmPointer {
@@ -95,9 +119,10 @@ pub export fn register_systems(cb_handle: u32) void {
     global_cb_handle = cb_handle;
 }
 
-pub export fn write_byte(ptr: u32) void {
-    const p: [*]u8 = @ptrFromInt(ptr);
-    p[0] = 123;
+pub export fn emit_keydown(key_code: u32) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    // todo - bit shift
+    input_ctx.*.key_ctx.key_states[key_code] = 1;
 }
 
 pub export fn step(ms: u32) void {

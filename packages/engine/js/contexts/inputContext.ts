@@ -5,27 +5,27 @@ import { KeyCode, keyToKeyCode, type Key, type KeyState } from "../inputs";
 const keysLength = Object.keys(KeyCode).length / 2; // js enum has both key and value entries
 
 export class InputContext {
-  #dataView?: DataView;
+  dataView?: DataView;
   #keys?: KeyboardContext;
   #mouse?: MouseContext;
 
   constructor(dataView?: DataView) {
-    this.#dataView = dataView;
+    this.dataView = dataView;
   }
 
   get keys() {
     if (!this.#keys) {
-      assert(this.#dataView, "DataView is not initialized on InputContext");
-      this.#keys = new KeyboardContext(this.#dataView);
+      assert(this.dataView, "DataView is not initialized on InputContext");
+      this.#keys = new KeyboardContext(this.dataView);
     }
     return this.#keys;
   }
 
   get mouse() {
     if (!this.#mouse) {
-      assert(this.#dataView, "DataView is not initialized on InputContext");
+      assert(this.dataView, "DataView is not initialized on InputContext");
       const paddingBytes = (4 - (keysLength % 4)) % 4;
-      this.#mouse = new MouseContext(this.#dataView, keysLength + paddingBytes);
+      this.#mouse = new MouseContext(this.dataView, keysLength + paddingBytes);
     }
     return this.#mouse;
   }
