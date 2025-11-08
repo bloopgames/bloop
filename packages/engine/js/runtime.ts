@@ -1,5 +1,7 @@
-import type { WasmEngine } from "./engine";
+import type { PlatformEvent } from "./engine";
+import type { Key, MouseButton } from "./inputs";
 import { TimeContext } from "./timing";
+import type { WasmEngine } from "./wasmEngine";
 
 /**
  * The runtime is a portable runtime that is responsible for:
@@ -11,9 +13,11 @@ export class Runtime {
   wasm: WasmEngine;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
-  #vcrState = {
+  #platformEvents: PlatformEvent[] = [];
+  #vcr = {
     isRecording: false,
     isPlayingBack: false,
+    snapshot: new Uint8Array(),
   };
 
   constructor(wasm: WasmEngine, memory: WebAssembly.Memory) {
@@ -26,6 +30,21 @@ export class Runtime {
 
   step(ms: number) {
     this.wasm.step(ms);
+  }
+
+  record() {
+    this.#vcr.isRecording = true;
+    this.#vcr.snapshot = this.snapshot();
+  }
+
+  snapshot(): Uint8Array<ArrayBuffer> {
+    const ptr = this.wasm.snapshot();
+    const length = new Uint32Array(this.#memory.buffer, ptr, 4)[0];
+    return new Uint8Array(this.#memory.buffer, ptr + 4, length);
+  }
+
+  restore(snapshot: Uint8Array) {
+    this.wasm.restore(snapshot.byteOffset, snapshot.byteLength);
   }
 
   get time(): TimeContext {
@@ -44,26 +63,31 @@ export class Runtime {
   }
 
   get isRecording(): boolean {
-    return this.#vcrState.isRecording;
+    return this.#vcr.isRecording;
   }
 
   get isPlayingBack(): boolean {
-    return this.#vcrState.isPlayingBack;
+    return this.#vcr.isPlayingBack;
   }
 
-  // record: () => void;
-  // isRecording?: boolean;
-  // isPlayingBack?: boolean;
-  // step: (ms?: number) => void;
-  // seek: (frame: number) => void;
-  // stepBack: () => void;
+  emit = {
+    keydown: (key: Key) => {
+      this.#platformEvents.push({ type: "keydown", key });
+    },
+    keyup: (key: Key) => {
+      this.#platformEvents.push({ type: "keyup", key });
+    },
+    mousemove: (x: number, y: number) => {
+      this.#platformEvents.push({ type: "mousemove", x, y });
+    },
+    mousedown: (button: MouseButton) => {
+      this.#platformEvents.push({ type: "mousedown", button, pressure: 1 });
+    },
+    mouseup: (button: MouseButton) => {
+      this.#platformEvents.push({ type: "mouseup", button, pressure: 0 });
+    },
+    mousewheel: (x: number, y: number) => {
+      this.#platformEvents.push({ type: "mousewheel", x, y });
+    },
+  };
 }
-
-// export type Runtime = {
-//   record: () => void;
-//   isRecording?: boolean;
-//   isPlayingBack?: boolean;
-//   step: (ms?: number) => void;
-//   seek: (frame: number) => void;
-//   stepBack: () => void;
-// };

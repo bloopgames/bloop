@@ -32,3 +32,32 @@ describe("time", () => {
     expect(runtime.time.dt).toEqual(0.016);
   });
 });
+
+describe("snapshots", () => {
+  it("can capture time to a snapshot", async () => {
+    const { runtime } = await mount({
+      systemsCallback(ptr: number) {},
+      snapshot() {
+        return new Uint8Array();
+      },
+      restore(_snapshot: Uint8Array) {},
+    });
+
+    runtime.record();
+    runtime.step(16);
+    runtime.step(16);
+    expect(runtime.time.frame).toEqual(2);
+    expect(runtime.time.dt).toEqual(0.016);
+
+    const snapshot = runtime.snapshot();
+
+    runtime.step(16);
+    expect(runtime.time.frame).toEqual(3);
+
+    runtime.restore(snapshot);
+    expect(runtime.time.frame).toEqual(2);
+
+    runtime.step(16);
+    expect(runtime.time.frame).toEqual(3);
+  });
+});
