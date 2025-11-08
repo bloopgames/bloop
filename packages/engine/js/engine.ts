@@ -4,8 +4,10 @@ export type * from "./events";
 export type * from "./inputs";
 
 export * as EngineEvents from "./events";
-export * as EngineInputs from "./inputs";
-export * as EngineTiming from "./timing";
+export * from "./contexts/timeContext";
+export * from "./contexts/inputContext";
+
+export * from "./assert";
 
 export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 

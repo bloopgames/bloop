@@ -1,9 +1,8 @@
 import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
-import { EngineTiming, EngineInputs, type PlatformEvent } from "@bloopjs/engine";
+import { InputContext, TimeContext, type EnginePointer } from "@bloopjs/engine";
 import { type Context } from "./context";
-import { TIMING_SNAPSHOT_SIZE } from "../../engine/js/timing";
 
 export type BloopOpts<B extends Bag> = {
   /** defaults to "Game" */
@@ -26,11 +25,10 @@ export type BloopOpts<B extends Bag> = {
 	// schema: GS;
 };
 
-type MakeGS<B extends Bag> = BloopSchema<B>;
-
 export class Bloop<GS extends BloopSchema> {
 	#systems: System<GS>[] = [];
 	#context: Context<GS>;
+	#engineBuffer: ArrayBuffer = new ArrayBuffer(0);
 
 	/**
    * Bloop.create() is the way to create a new bloop instance.
@@ -54,15 +52,8 @@ export class Bloop<GS extends BloopSchema> {
 
 		this.#context = {
       bag: opts.bag ?? {},
-			// todo: this should be a pointer to memory managed by the engine
-      inputs: new EngineInputs.InputSnapshot(new DataView(new ArrayBuffer(100))),
-      time: {
-				dt: 0,
-				time: 0,
-				frame: 0,
-				highResFrame: 0n,
-				highResTime: 0n,
-			},
+			time: new TimeContext(),
+			inputs: new InputContext(),
     };
 	}
 
@@ -79,33 +70,36 @@ export class Bloop<GS extends BloopSchema> {
 	 * @returns linear memory representation of the game state
 	 */
 	snapshot(): Uint8Array {
-		const str = JSON.stringify(this.#context.bag);
-		const encoder = new TextEncoder();
-		const textBytes = encoder.encode(str);
+		throw new Error("Not implemented");
 
-		const size = EngineTiming.TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
+		// const str = JSON.stringify(this.#context.bag);
+		// const encoder = new TextEncoder();
+		// const textBytes = encoder.encode(str);
 
-		const buffer = new Uint8Array(size);
-		const view = new DataView(buffer.buffer);
-		let offset = EngineTiming.encodeTimingSnapshot(this.#context.time, buffer.subarray(0, EngineTiming.TIMING_SNAPSHOT_SIZE));
-		view.setUint32(offset, textBytes.length, true);
-		offset += 4;
+		// const size = EngineTiming.TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
 
-		buffer.set(textBytes, offset);
-		offset += textBytes.length;
-		return buffer;
+		// const buffer = new Uint8Array(size);
+		// const view = new DataView(buffer.buffer);
+		// let offset = EngineTiming.encodeTimingSnapshot(this.#context.time, buffer.subarray(0, EngineTiming.TIMING_SNAPSHOT_SIZE));
+		// view.setUint32(offset, textBytes.length, true);
+		// offset += 4;
+
+		// buffer.set(textBytes, offset);
+		// offset += textBytes.length;
+		// return buffer;
 	}
 
 	restore(snapshot: Uint8Array) {
-		const size = EngineTiming.decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, EngineTiming.TIMING_SNAPSHOT_SIZE), this.#context.time);
-		const view = new DataView(snapshot.buffer);
-		let offset = size;
-		const length = view.getUint32(offset, true);
-		offset += 4;
-		const bagBytes = snapshot.slice(offset, offset + length);
-		const decoder = new TextDecoder();
-		const str = decoder.decode(bagBytes);
-		this.#context.bag = JSON.parse(str);
+		throw new Error("Not implemented");
+		// const size = EngineTiming.decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, EngineTiming.TIMING_SNAPSHOT_SIZE), this.#context.time);
+		// const view = new DataView(snapshot.buffer);
+		// let offset = size;
+		// const length = view.getUint32(offset, true);
+		// offset += 4;
+		// const bagBytes = snapshot.slice(offset, offset + length);
+		// const decoder = new TextDecoder();
+		// const str = decoder.decode(bagBytes);
+		// this.#context.bag = JSON.parse(str);
 	}
 
 	/**
@@ -118,84 +112,85 @@ export class Bloop<GS extends BloopSchema> {
 		return this.#systems.length;
 	}
 
-	// todo - get data from ptr
-	systemsCallback(ptr: number, events: PlatformEvent[], dt: number) {
-		this.#context.inputs.update(events);
-		const dtSeconds = dt / 1000;
-		this.#context.time.dt = dtSeconds;
-		this.#context.time.time += dtSeconds;
-		this.#context.time.highResTime += BigInt(dt);
-
+	systemsCallback(system_handle: number, ptr: EnginePointer) {
 		for (const system of this.#systems) {
 			system.update?.(this.#context);
-
-			for (const event of events) {
-				switch(event.type) {
-					case "keydown":
-						system.keydown?.({
-							...this.#context,
-							event: {
-								key: event.key,
-								pressure: 1,
-							}
-						})
-						break;
-					case "keyup":
-						system.keyup?.({
-							...this.#context,
-							event: {
-								key: event.key,
-								pressure: 0,
-							}
-						})
-						break;
-					case "mousemove":
-						system.mousemove?.({
-							...this.#context,
-							event: {
-								x: event.x,
-								y: event.y,
-							}
-						})
-						break;
-					case "mousedown":
-						system.mousedown?.({
-							...this.#context,
-							event: {
-								button: event.button,
-								pressure: event.pressure,
-							}
-						})
-						break;
-					case "mouseup":
-						system.mouseup?.({
-							...this.#context,
-							event: {
-								button: event.button,
-								pressure: event.pressure,
-							}
-						})
-						break;
-					case "mousewheel":
-						system.mousewheel?.({
-							...this.#context,
-							event: {
-								x: event.x,
-								y: event.y,
-							}
-						})
-						break;
-					default:
-						break;
-				}
-			}
 		}
 
-		// do this in the engine snapshot
-		this.#context.time.frame++;
-		this.#context.time.highResFrame += 1n;
+		// 	for (const event of events) {
+		// 		switch(event.type) {
+		// 			case "keydown":
+		// 				system.keydown?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						key: event.key,
+		// 						pressure: 1,
+		// 					}
+		// 				})
+		// 				break;
+		// 			case "keyup":
+		// 				system.keyup?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						key: event.key,
+		// 						pressure: 0,
+		// 					}
+		// 				})
+		// 				break;
+		// 			case "mousemove":
+		// 				system.mousemove?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						x: event.x,
+		// 						y: event.y,
+		// 					}
+		// 				})
+		// 				break;
+		// 			case "mousedown":
+		// 				system.mousedown?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						button: event.button,
+		// 						pressure: event.pressure,
+		// 					}
+		// 				})
+		// 				break;
+		// 			case "mouseup":
+		// 				system.mouseup?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						button: event.button,
+		// 						pressure: event.pressure,
+		// 					}
+		// 				})
+		// 				break;
+		// 			case "mousewheel":
+		// 				system.mousewheel?.({
+		// 					...this.#context,
+		// 					event: {
+		// 						x: event.x,
+		// 						y: event.y,
+		// 					}
+		// 				})
+		// 				break;
+		// 			default:
+		// 				break;
+		// 		}
+		// 	}
+		// }
 
-		this.#context.inputs.flush();
+
+		// this.#context.inputs.flush();
+	}
+
+	extra = {
+		setBuffer: (buffer: ArrayBuffer) => {
+			this.#engineBuffer = buffer;
+			this.#context.time.dataView = new DataView(this.#engineBuffer);
+		}
 	}
 }
+
+type MakeGS<B extends Bag> = BloopSchema<B>;
+
 

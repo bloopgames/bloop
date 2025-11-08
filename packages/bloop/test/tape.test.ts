@@ -103,14 +103,14 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime, emitter } = await mount(bloop);
+      const { runtime } = await mount(bloop);
 
       runtime.record();
-      emitter.mousedown("Left");
+      runtime.emit.mousedown("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
-      emitter.mouseup("Left");
+      runtime.emit.mouseup("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(2);
       expect(bloop.bag.clicks).toEqual(1);

@@ -53,12 +53,12 @@ describe("loop", () => {
       },
     });
 
-    const { runtime, emitter } = await mount(bloop);
+    const { runtime } = await mount(bloop);
 
-    emitter.keydown("Space");
-    emitter.mousemove(100, 150);
-    emitter.mousedown("Left");
-    emitter.mousewheel(1, 2);
+    runtime.emit.keydown("Space");
+    runtime.emit.mousemove(100, 150);
+    runtime.emit.mousedown("Left");
+    runtime.emit.mousewheel(1, 2);
 
     runtime.step();
 
@@ -67,9 +67,9 @@ describe("loop", () => {
     expect(events.mousedown).toEqual("Left");
     expect(events.mousewheel).toEqual({ x: 1, y: 2 });
 
-    emitter.keyup("Space");
-    emitter.mouseup("Left");
-    emitter.mousemove(3, 4);
+    runtime.emit.keyup("Space");
+    runtime.emit.mouseup("Left");
+    runtime.emit.mousemove(3, 4);
 
     runtime.step();
 
@@ -96,17 +96,18 @@ describe("loop", () => {
 
     bloop.system("input snapshots", {
       update({ inputs }) {
-        events.keydown = inputs.keys.space.down;
-        events.keyheld = inputs.keys.space.held;
-        events.keyup = inputs.keys.space.up;
+        throw new Error("Input context not hooked up");
+        // events.keydown = inputs.keys.space.down;
+        // events.keyheld = inputs.keys.space.held;
+        // events.keyup = inputs.keys.space.up;
 
-        events.mousedown = inputs.mouse.left.down;
-        events.mouseheld = inputs.mouse.left.held;
-        events.mouseup = inputs.mouse.left.up;
+        // events.mousedown = inputs.mouse.left.down;
+        // events.mouseheld = inputs.mouse.left.held;
+        // events.mouseup = inputs.mouse.left.up;
       },
     });
 
-    const { runtime, emitter } = await mount(bloop);
+    const { runtime } = await mount(bloop);
 
     // Initial state
     runtime.step();
@@ -120,8 +121,8 @@ describe("loop", () => {
     });
 
     // down and held are both true on the first frame of a key down
-    emitter.keydown("Space");
-    emitter.mousedown("Left");
+    runtime.emit.keydown("Space");
+    runtime.emit.mousedown("Left");
     runtime.step();
     expect(events).toEqual({
       keydown: true,
@@ -144,8 +145,8 @@ describe("loop", () => {
     });
 
     // on key up, up is true, held and down are false
-    emitter.keyup("Space");
-    emitter.mouseup("Left");
+    runtime.emit.keyup("Space");
+    runtime.emit.mouseup("Left");
     runtime.step();
     expect(events).toEqual({
       keydown: false,

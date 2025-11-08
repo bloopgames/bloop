@@ -1,4 +1,4 @@
-import type { EngineTiming, InputSnapshot } from "@bloopjs/engine";
+import type { InputContext, TimeContext } from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
 
 export type Context<
@@ -18,8 +18,8 @@ export type Context<
   // queries: QueriesResults<GS["CS"], QS>;
   /** The bag of values for the system */
   bag: GS["B"];
-  /** The input snapshot */
-  inputs: InputSnapshot;
   /** The timing information for the current frame */
-  time: EngineTiming.TimingSnapshot;
+  time: TimeContext;
+  /** The input snapshot */
+  inputs: InputContext;
 };

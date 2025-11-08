@@ -1,6 +1,6 @@
 import type { PlatformEvent } from "./engine";
 import type { Key, MouseButton } from "./inputs";
-import { TimeContext } from "./timing";
+import { TimeContext } from "./contexts/timeContext";
 import type { WasmEngine } from "./wasmEngine";
 
 /**
@@ -28,8 +28,12 @@ export class Runtime {
     );
   }
 
-  step(ms: number) {
-    this.wasm.step(ms);
+  step(ms?: number) {
+    this.wasm.step(ms ?? 16);
+  }
+
+  stepBack() {
+    throw new Error("Not implemented");
   }
 
   record() {
@@ -48,7 +52,10 @@ export class Runtime {
   }
 
   get time(): TimeContext {
-    if (this.#time.dataView.buffer !== this.#memory.buffer) {
+    if (
+      !this.#time.dataView ||
+      this.#time.dataView.buffer !== this.#memory.buffer
+    ) {
       // update the data view to the latest memory buffer
       this.#time.dataView = new DataView(
         this.#memory.buffer,
