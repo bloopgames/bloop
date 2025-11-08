@@ -13,6 +13,15 @@ var wasm_alloc = std.heap.wasm_allocator;
 var global_cb_handle: u32 = 0;
 var accumulator: u32 = 0;
 var time_ctx_ptr: wasmPointer = 0;
+var cb_ptr: wasmPointer = 0;
+
+pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
+
+pub const Snapshot = extern struct {
+    len: u32,
+    time: TimeCtx,
+    extra: [4]u8,
+};
 
 pub export fn alloc(size: usize) wasmPointer {
     const slice = wasm_alloc.alloc(u8, size) catch return 0;
@@ -26,6 +35,15 @@ pub export fn initialize() void {
     ctx.*.frame = 0;
     ctx.*.total_ms = 0;
     time_ctx_ptr = ptr;
+
+    // the callback pointer injects:
+    // 0 - pointer to time context
+    // 1 - pointer to events buffer
+    // cb_ptr = time_ctx_ptr;
+    cb_ptr = alloc(@sizeOf(u32) * 2);
+    const cb_data: [*]u32 = @ptrFromInt(cb_ptr);
+    cb_data[0] = time_ctx_ptr;
+    cb_data[1] = 0;
 }
 
 pub export fn snapshot() wasmPointer {
@@ -90,17 +108,9 @@ pub export fn step(ms: u32) void {
     while (accumulator >= hz) {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
-        __cb(global_cb_handle, 0, hz);
+        __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
     }
     accumulator = @max(accumulator, 0);
 }
-
-pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
-
-pub const Snapshot = extern struct {
-    len: u32,
-    time: TimeCtx,
-    extra: [4]u8,
-};
