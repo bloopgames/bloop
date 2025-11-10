@@ -60,6 +60,10 @@ pub export fn alloc(size: usize) wasmPointer {
 }
 
 pub export fn initialize() void {
+    // Validate Event struct layout for js-side assumptions
+    std.debug.assert(@sizeOf(Events.EventPayload) == 8);
+    std.debug.assert(@alignOf(Events.EventPayload) == 4);
+
     // Allocate the time context and 0 it out
     time_ctx_ptr = alloc(@sizeOf(TimeCtx));
     const ctx: *TimeCtx = @ptrFromInt(time_ctx_ptr);
