@@ -3,6 +3,7 @@ import type { Bag } from "./data/bag";
 import type { System } from "./system";
 import { EngineEvents, Enums, InputContext, keyCodeToKey, mouseButtonCodeToMouseButton, TimeContext, type EnginePointer } from "@bloopjs/engine";
 import { type Context } from "./context";
+import { toHexString } from "./data/helpers";
 
 export type BloopOpts<B extends Bag> = {
   /** defaults to "Game" */
@@ -121,11 +122,15 @@ export class Bloop<GS extends BloopSchema> {
 			const eventCount = eventsDataView.getUint32(0, true);
 
 			let offset = 4;
+
+			console.log(toHexString(eventsDataView, 100));
 			for (let i = 0; i < eventCount; i++) {
 				const eventType = eventsDataView.getUint8(offset);
-				const payloadSize = eventType === Enums.EventType.MouseMove || eventType === Enums.EventType.MouseWheel ? 8 : 4;
+				// const payloadSize = eventType === Enums.EventType.MouseMove || eventType === Enums.EventType.MouseWheel ? 8 : 4;
+				const payloadSize = 8;
 				const payloadByte = eventsDataView.getUint8(offset + 4);
 				const payloadVec2 = { x: eventsDataView.getFloat32(offset + 4, true), y: eventsDataView.getFloat32(offset + 8, true) };
+
 				switch(eventType) {
 					case Enums.EventType.KeyDown:
 						system.keydown?.({

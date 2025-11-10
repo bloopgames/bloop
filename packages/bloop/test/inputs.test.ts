@@ -75,8 +75,8 @@ describe("loop", () => {
     const { runtime } = await mount(bloop);
 
     runtime.emit.keydown("Space");
-    runtime.emit.mousemove(100, 150);
     runtime.emit.mousedown("Left");
+    runtime.emit.mousemove(100, 150);
     runtime.emit.mousewheel(1, 2);
 
     runtime.step();
