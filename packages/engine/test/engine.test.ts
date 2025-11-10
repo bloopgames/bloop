@@ -78,7 +78,6 @@ describe("input events", () => {
         const inputCtxPtr = dataView.getUint32(4, true);
         const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
         const keystate = inputDataView.getUint8(0);
-        console.log({ keystate });
         expect(keystate).toEqual(0b00000001);
         called = true;
       },
@@ -93,11 +92,21 @@ describe("input events", () => {
     let called = false;
     const { runtime } = await mount({
       systemsCallback(_handle, ptr) {
-        throw new Error("Events are not in yet");
+        const dataView = new DataView(runtime.buffer, ptr);
+        const eventsPtr = dataView.getUint32(8, true);
+        const eventsDataView = new DataView(runtime.buffer, eventsPtr);
+        const eventCount = eventsDataView.getUint32(0, true);
+        expect(eventCount).toEqual(1);
+        const eventType = eventsDataView.getUint8(4 + 0);
+        const eventPayload = eventsDataView.getUint8(4 + 1);
+        expect(eventCount).toEqual(1);
+        expect(eventType).toEqual(1);
+        expect(eventPayload).toEqual(2); // KeyCode for BracketLeft
       },
     });
 
-    runtime.emit.keydown("Space");
+    runtime.emit.keydown("BracketLeft");
+    runtime.step();
     expect(called).toEqual(true);
   });
 });
