@@ -6,17 +6,30 @@ import * as Enums from "../codegen/enums";
 const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
 
 export class InputContext {
-  dataView?: DataView;
+  #dataView?: DataView;
   #keys?: KeyboardContext;
   #mouse?: MouseContext;
 
   constructor(dataView?: DataView) {
-    this.dataView = dataView;
+    if (dataView) {
+      this.#dataView = dataView;
+    }
+  }
+
+  get dataView(): NonNullable<DataView> {
+    assert(this.#dataView, "DataView is not initialized on InputContext");
+    return this.#dataView!;
+  }
+
+  set dataView(dataView: DataView) {
+    this.#dataView = dataView;
+    this.#keys = undefined;
+    this.#mouse = undefined;
   }
 
   get keys() {
     if (!this.#keys) {
-      assert(this.dataView, "DataView is not initialized on InputContext");
+      assert(this.#dataView, "DataView is not initialized on InputContext");
       this.#keys = new KeyboardContext(this.dataView);
     }
     return this.#keys;
@@ -24,33 +37,11 @@ export class InputContext {
 
   get mouse() {
     if (!this.#mouse) {
-      assert(this.dataView, "DataView is not initialized on InputContext");
+      assert(this.#dataView, "DataView is not initialized on InputContext");
       const paddingBytes = (4 - (keysLength % 4)) % 4;
-      this.#mouse = new MouseContext(this.dataView, keysLength + paddingBytes);
+      this.#mouse = new MouseContext(this.#dataView, keysLength + paddingBytes);
     }
     return this.#mouse;
-  }
-
-  update(events: PlatformEvent[]) {
-    for (const event of events) {
-      switch (event.type) {
-        case "keydown":
-        case "keyup":
-          this.keys.update(event);
-          break;
-        case "mousemove":
-        case "mousedown":
-        case "mouseup":
-        case "mousewheel":
-          this.mouse.update(event);
-          break;
-      }
-    }
-  }
-
-  flush() {
-    this.keys.flush();
-    this.mouse.flush();
   }
 }
 
@@ -125,42 +116,11 @@ export class MouseContext {
 
 export class KeyboardContext {
   #dataView: DataView;
-  #offset: number;
-  // lazily allocated keystate objects
-  #keystates: Map<Enums.Key, { down: boolean; held: boolean; up: boolean }> =
-    new Map();
+
+  #keystates: Map<Enums.Key, KeyState> = new Map();
 
   constructor(dataView: DataView) {
     this.#dataView = dataView;
-    this.#offset = 0;
-  }
-
-  update(event: PlatformEvent) {
-    switch (event.type) {
-      case "keyup": {
-        const keyCode = keyToKeyCode(event.key as Key);
-        const keystate = this.#keystate(keyCode);
-        keystate.down = false;
-        keystate.held = false;
-        keystate.up = true;
-        break;
-      }
-      case "keydown": {
-        const keyCode = keyToKeyCode(event.key as Key);
-        const keystate = this.#keystate(keyCode);
-        keystate.down = true;
-        keystate.held = true;
-        keystate.up = false;
-        break;
-      }
-    }
-  }
-
-  flush() {
-    for (const [, state] of this.#keystates) {
-      state.down = false;
-      state.up = false;
-    }
   }
 
   // modifier key helpers
@@ -768,13 +728,16 @@ export class KeyboardContext {
     if (this.#keystates.has(code)) {
       state = this.#keystates.get(code)!;
     } else {
-      state = {
-        down: false,
-        held: false,
-        up: false,
-      };
+      state = { down: false, held: false, up: false };
       this.#keystates.set(code, state);
     }
+
+    // xxxx xxx1 = held
+    // xxxx xx01 = down
+    // xxxx xx10 = up
+    state.held = !!(this.#dataView.getUint8(code) & 1);
+    state.down = state.held && !(this.#dataView.getUint8(code) & 2);
+    state.up = !state.held && !!(this.#dataView.getUint8(code) & 2);
 
     return state;
   }

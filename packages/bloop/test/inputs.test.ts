@@ -38,7 +38,7 @@ describe("loop", () => {
     expect(receivedKey!).toEqual("Space");
   });
 
-  it.only("routes all input events", async () => {
+  it("routes all input events", async () => {
     const bloop = Bloop.create();
 
     const events = {
@@ -97,32 +97,20 @@ describe("loop", () => {
     expect(events.mousemove).toEqual({ x: 3, y: 4 });
   });
 
-  it("keeps track of keyboard and mouse contexts", async () => {
+  it.only("exposes keyboard context", async () => {
     const bloop = Bloop.create({
       bag: {
-        cool: "nice",
+        down: null as boolean | null,
+        held: null as boolean | null,
+        up: null as boolean | null,
       },
     });
 
-    const events = {
-      keydown: null as boolean | null,
-      keyheld: null as boolean | null,
-      keyup: null as boolean | null,
-      mouseheld: null as boolean | null,
-      mousedown: null as boolean | null,
-      mouseup: null as boolean | null,
-    };
-
-    bloop.system("input snapshots", {
-      update({ inputs }) {
-        throw new Error("Input context not hooked up");
-        // events.keydown = inputs.keys.space.down;
-        // events.keyheld = inputs.keys.space.held;
-        // events.keyup = inputs.keys.space.up;
-
-        // events.mousedown = inputs.mouse.left.down;
-        // events.mouseheld = inputs.mouse.left.held;
-        // events.mouseup = inputs.mouse.left.up;
+    bloop.system("key state", {
+      update({ inputs, bag }) {
+        bag.down = inputs.keys.backquote.down;
+        bag.held = inputs.keys.backquote.held;
+        bag.up = inputs.keys.backquote.up;
       },
     });
 
@@ -130,50 +118,36 @@ describe("loop", () => {
 
     // Initial state
     runtime.step();
-    expect(events).toEqual({
-      keydown: false,
-      keyheld: false,
-      keyup: false,
-      mousedown: false,
-      mouseheld: false,
-      mouseup: false,
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: false,
     });
 
     // down and held are both true on the first frame of a key down
-    runtime.emit.keydown("Space");
-    runtime.emit.mousedown("Left");
+    runtime.emit.keydown("Backquote");
     runtime.step();
-    expect(events).toEqual({
-      keydown: true,
-      keyheld: true,
-      keyup: false,
-      mousedown: true,
-      mouseheld: true,
-      mouseup: false,
+    expect(bloop.bag).toEqual({
+      down: true,
+      held: true,
+      up: false,
     });
 
     // held remains true, down goes false
     runtime.step();
-    expect(events).toEqual({
-      keydown: false,
-      keyheld: true,
-      keyup: false,
-      mousedown: false,
-      mouseheld: true,
-      mouseup: false,
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: true,
+      up: false,
     });
 
     // on key up, up is true, held and down are false
-    runtime.emit.keyup("Space");
-    runtime.emit.mouseup("Left");
+    runtime.emit.keyup("Backquote");
     runtime.step();
-    expect(events).toEqual({
-      keydown: false,
-      keyheld: false,
-      keyup: true,
-      mousedown: false,
-      mouseheld: false,
-      mouseup: true,
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: true,
     });
   });
 

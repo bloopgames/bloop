@@ -114,16 +114,27 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	systemsCallback(system_handle: number, ptr: EnginePointer) {
+		// todo - move this to engine
+		const dv = new DataView(this.#engineBuffer, ptr);
+		const timeCtxPtr = dv.getUint32(0, true);
+		const inputCtxPtr = dv.getUint32(4, true);
+		const eventsPtr = dv.getUint32(8, true);
+
+		this.#context.inputs.dataView = new DataView(this.#engineBuffer, inputCtxPtr);
+		this.#context.time.dataView = new DataView(this.#engineBuffer, timeCtxPtr);
+
+		console.log(toHexString(this.#context.inputs.dataView, 64));
+		console.log(this.#context.inputs.dataView.getUint8(1));
+
+		const eventsDataView = new DataView(this.#engineBuffer, eventsPtr);
+
 		for (const system of this.#systems) {
 			system.update?.(this.#context);
 
-			const dv = new DataView(this.#engineBuffer, ptr);
-			const eventsDataView = new DataView(this.#engineBuffer, dv.getUint32(8, true));
 			const eventCount = eventsDataView.getUint32(0, true);
 
 			let offset = 4;
 
-			console.log(toHexString(eventsDataView, 100));
 			for (let i = 0; i < eventCount; i++) {
 				const eventType = eventsDataView.getUint8(offset);
 				// const payloadSize = eventType === Enums.EventType.MouseMove || eventType === Enums.EventType.MouseWheel ? 8 : 4;
@@ -189,6 +200,7 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	setBuffer(buffer: ArrayBuffer) {
+		console.trace('setBuffer called', !!buffer);
 		this.#engineBuffer = buffer;
 	}
 }

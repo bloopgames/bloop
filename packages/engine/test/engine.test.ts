@@ -1,5 +1,5 @@
 import { it, expect, describe } from "bun:test";
-import { mount } from "../js/engine";
+import { Enums, KeyboardContext, mount, type KeyState } from "../js/engine";
 
 it("hello wasm", async () => {
   let count = 0;
@@ -73,24 +73,49 @@ describe("snapshots", () => {
   });
 });
 
-describe("input events", () => {
+describe("inputs", () => {
   it("updates input context in response to input events", async () => {
     let called = false;
+    const states: KeyState[] = [];
+
     const { runtime } = await mount({
       systemsCallback(_handle, ptr) {
         const dataView = new DataView(runtime.buffer, ptr);
         const inputCtxPtr = dataView.getUint32(4, true);
         const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
-        const keystate = inputDataView.getUint8(1);
-        expect(keystate).toEqual(0b00000001);
+
+        const keyboardContext = new KeyboardContext(inputDataView);
+        states.push(keyboardContext.digit8);
+
         called = true;
       },
       setBuffer() {},
     });
 
-    runtime.emit.keydown("Backquote");
+    runtime.emit.keydown("Digit8");
+    runtime.step();
+    runtime.step();
+    runtime.emit.keyup("Digit8");
     runtime.step();
     expect(called).toEqual(true);
+
+    expect(states[0]).toEqual({
+      down: true,
+      held: true,
+      up: false,
+    });
+
+    expect(states[1]).toEqual({
+      down: false,
+      held: true,
+      up: false,
+    });
+
+    expect(states[2]).toEqual({
+      down: false,
+      held: false,
+      up: true,
+    });
   });
 
   it("updates platform events with input events", async () => {

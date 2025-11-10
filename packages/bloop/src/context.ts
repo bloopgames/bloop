@@ -1,4 +1,4 @@
-import type { InputContext, TimeContext } from "@bloopjs/engine";
+import type { EnginePointer, InputContext, TimeContext } from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
 
 export type Context<
@@ -8,8 +8,6 @@ export type Context<
 > = {
   /** The wrapper to the engine instance */
   // engine: Bridge<GS["CS"]>;
-  /** The engine pointer to the injected system arguments (for advanced use cases) */
-  // rawPointer: EnginePointer;
   /** Result of any resources requested */
   // resources: ResourcesResult<GS["RS"], R>;
   /** Result of the main query if there was one */
@@ -22,4 +20,6 @@ export type Context<
   time: TimeContext;
   /** The input snapshot */
   inputs: InputContext;
+  /** The engine pointer to the injected system arguments (for advanced use cases) */
+  rawPointer: EnginePointer;
 };

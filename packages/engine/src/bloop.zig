@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 
 // Imported from JS. Calls console.log
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
@@ -74,7 +75,7 @@ pub export fn initialize() void {
     // Allocate the input context and 0 it out
     input_ctx_ptr = alloc(@sizeOf(InputCtx));
     var input_data: [*]u8 = @ptrFromInt(input_ctx_ptr);
-    @memset(input_data[0..@sizeOf(InputCtx)], 99);
+    @memset(input_data[0..@sizeOf(InputCtx)], 0);
 
     // Allocate the events buffer and 0 it out
     events_ptr = alloc(@sizeOf(EventBuffer));
@@ -174,6 +175,14 @@ pub export fn step(ms: u32) void {
         time.*.frame += 1;
         accumulator -= hz;
     }
+
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    for (&input_ctx.*.key_ctx.key_states) |*key_state| {
+        // Shift left by 1 to age the state, keep the current value
+        const is_held = key_state.* & 1;
+        key_state.* = key_state.* << 1;
+        key_state.* |= is_held;
+    }
     accumulator = @max(accumulator, 0);
 }
 
@@ -190,16 +199,14 @@ fn append_event(event: Event) void {
 
 pub export fn emit_keydown(key_code: Events.Key) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    // todo - bit shift
-    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 1;
+    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] |= 1;
 
     append_event(Event.keyDown(key_code));
 }
 
 pub export fn emit_keyup(key_code: Events.Key) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    // todo - bit shift
-    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 0;
+    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] &= 0b11111110;
 
     append_event(Event.keyUp(key_code));
 }

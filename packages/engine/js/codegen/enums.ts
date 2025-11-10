@@ -218,4 +218,3 @@ export enum Key {
   F34 = 193,
   F35 = 194,
 }
-
