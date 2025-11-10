@@ -5,6 +5,12 @@ export type * from "./wasmEngine";
 
 export * from "./assert";
 export * as EngineEvents from "./events";
+export {
+  keyCodeToKey,
+  keyToKeyCode,
+  mouseButtonToMouseButtonCode,
+  mouseButtonCodeToMouseButton,
+} from "./inputs";
 export * from "./contexts/timeContext";
 export * from "./contexts/inputContext";
 export * from "./mount";

@@ -1,7 +1,7 @@
 import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
-import { InputContext, TimeContext, type EnginePointer } from "@bloopjs/engine";
+import { EngineEvents, InputContext, keyCodeToKey, TimeContext, type EnginePointer } from "@bloopjs/engine";
 import { type Context } from "./context";
 
 export type BloopOpts<B extends Bag> = {
@@ -115,7 +115,34 @@ export class Bloop<GS extends BloopSchema> {
 	systemsCallback(system_handle: number, ptr: EnginePointer) {
 		for (const system of this.#systems) {
 			system.update?.(this.#context);
+
+			const dv = new DataView(this.#engineBuffer, ptr);
+			const eventsDataView = new DataView(this.#engineBuffer, dv.getUint32(8, true));
+			const eventCount = eventsDataView.getUint32(0, true);
+
+		let offset = 4;
+		for (let i = 0; i < eventCount; i++) {
+			const eventType = eventsDataView.getUint8(offset);
+			const eventPayload = eventsDataView.getUint8(offset + 4);
+			switch(eventType) {
+				case EngineEvents.EngineEventType.KeyDown:
+					system.keydown?.({
+						...this.#context,
+						event: {
+							key: keyCodeToKey(eventPayload),
+							pressure: 1,
+						}
+					})
+					break;
+				default:
+					throw new Error(`Unknown event type: ${eventType}`);
+			}
+			offset += 8;
 		}
+
+		}
+
+		// const eventsCount =
 
 		// 	for (const event of events) {
 		// 		switch(event.type) {
@@ -178,17 +205,10 @@ export class Bloop<GS extends BloopSchema> {
 		// 		}
 		// 	}
 		// }
-
-
-		// this.#context.inputs.flush();
 	}
 
-	extra = {
-		setBuffer: (buffer: ArrayBuffer) => {
-			this.#engineBuffer = buffer;
-			this.#context.time.dataView = new DataView(this.#engineBuffer);
-			this.#context.inputs.dataView = new DataView(this.#engineBuffer);
-		}
+	setBuffer(buffer: ArrayBuffer) {
+		this.#engineBuffer = buffer;
 	}
 }
 

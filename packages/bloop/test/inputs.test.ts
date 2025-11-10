@@ -19,6 +19,25 @@ describe("loop", () => {
     expect(count).toEqual(1);
   });
 
+  it("routes keydown event", async () => {
+    const bloop = Bloop.create();
+    let receivedKey: Key | null = null;
+    let called = false;
+    bloop.system("input", {
+      keydown({ event }) {
+        receivedKey = event.key;
+        called = true;
+      },
+    });
+
+    const { runtime } = await mount(bloop);
+    runtime.emit.keydown("Space");
+    runtime.step();
+
+    expect(called).toBe(true);
+    expect(receivedKey!).toEqual("Space");
+  });
+
   it("passes through input events", async () => {
     const bloop = Bloop.create();
 
@@ -78,7 +97,7 @@ describe("loop", () => {
     expect(events.mousemove).toEqual({ x: 3, y: 4 });
   });
 
-  it("keeps track of keyboard and mouse snapshots", async () => {
+  it("keeps track of keyboard and mouse contexts", async () => {
     const bloop = Bloop.create({
       bag: {
         cool: "nice",

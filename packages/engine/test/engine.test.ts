@@ -7,6 +7,7 @@ it("hello wasm", async () => {
     systemsCallback() {
       count++;
     },
+    setBuffer() {},
   });
 
   wasm.step(16);
@@ -17,6 +18,7 @@ describe("time", () => {
   it("injects frame and dt", async () => {
     const { runtime } = await mount({
       systemsCallback() {},
+      setBuffer() {},
     });
 
     runtime.step(16);
@@ -37,6 +39,7 @@ describe("time", () => {
         expect(frame).toEqual(0);
         expect(dt).toEqual(16);
       },
+      setBuffer() {},
     });
     runtime.step(16);
 
@@ -48,6 +51,7 @@ describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
     const { runtime } = await mount({
       systemsCallback() {},
+      setBuffer() {},
     });
 
     runtime.record();
@@ -77,10 +81,11 @@ describe("input events", () => {
         const dataView = new DataView(runtime.buffer, ptr);
         const inputCtxPtr = dataView.getUint32(4, true);
         const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
-        const keystate = inputDataView.getUint8(0);
+        const keystate = inputDataView.getUint8(1);
         expect(keystate).toEqual(0b00000001);
         called = true;
       },
+      setBuffer() {},
     });
 
     runtime.emit.keydown("Backquote");
@@ -105,9 +110,10 @@ describe("input events", () => {
         const eventPayload = eventsDataView.getUint8(payloadOffset + 1);
         expect(eventCount).toEqual(1);
         expect(eventType).toEqual(1);
-        expect(eventPayload).toEqual(2); // KeyCode for BracketLeft
+        expect(eventPayload).toEqual(3); // KeyCode for BracketLeft
         called = true;
       },
+      setBuffer() {},
     });
 
     runtime.emit.keydown("BracketLeft");

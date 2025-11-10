@@ -7,6 +7,16 @@ import {
   type MouseButton,
 } from "./inputs";
 
+// todo - autogenerate
+export enum EngineEventType {
+  KeyDown = 1,
+  KeyUp = 2,
+  MouseMove = 3,
+  MouseDown = 4,
+  MouseUp = 5,
+  MouseWheel = 6,
+}
+
 export function encodeEvent<T extends PlatformEvent>(
   event: T,
   target?: Uint8Array,

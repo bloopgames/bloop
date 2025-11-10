@@ -17,7 +17,16 @@ export type MountOpts = {
    */
   systemsCallback: (system_handle: number, ptr: EnginePointer) => void;
 
+  /**
+   * Sets buffer to the latest engine memory buffer
+   *
+   * Note that if the engine wasm memory grows, all dataviews into the memory must be updated
+   */
+  setBuffer: (buffer: ArrayBuffer) => void;
+
+  /** Optional hook to serialize some data when snapshotting */
   snapshot?: () => Uint8Array;
+  /** Optional hook to deserialize some data when restoring */
   restore?: (snapshot: Uint8Array) => void;
 
   /** Options for tape recording, not yet implemented */
@@ -51,6 +60,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       __cb: function (system_handle: number, ptr: number) {
+        opts.setBuffer(memory.buffer);
         opts.systemsCallback(system_handle, ptr);
       },
       console_log: function (ptr: number, len: number) {

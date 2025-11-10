@@ -148,21 +148,6 @@ pub export fn register_systems(cb_handle: u32) void {
     global_cb_handle = cb_handle;
 }
 
-pub export fn emit_keydown(key_code: Events.Key) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    // todo - bit shift
-    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 1;
-
-    const events: *EventBuffer = @ptrFromInt(events_ptr);
-    const idx = events.*.count;
-    if (idx < 256) {
-        events.*.count += 1;
-        events.*.events[idx] = Event.keyDown(key_code);
-    } else {
-        @panic("Event buffer full");
-    }
-}
-
 fn log(msg: []const u8) void {
     console_log(msg.ptr, msg.len);
 }
@@ -190,4 +175,63 @@ pub export fn step(ms: u32) void {
         accumulator -= hz;
     }
     accumulator = @max(accumulator, 0);
+}
+
+fn append_event(event: Event) void {
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    const idx = events.*.count;
+    if (idx < 256) {
+        events.*.count += 1;
+        events.*.events[idx] = event;
+    } else {
+        @panic("Event buffer full");
+    }
+}
+
+pub export fn emit_keydown(key_code: Events.Key) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    // todo - bit shift
+    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 1;
+
+    append_event(Event.keyDown(key_code));
+}
+
+pub export fn emit_keyup(key_code: Events.Key) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    // todo - bit shift
+    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 0;
+
+    append_event(Event.keyUp(key_code));
+}
+
+pub export fn emit_mousedown(button: Events.MouseButton) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    // todo - bit shift
+    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] = 1;
+
+    append_event(Event.mouseDown(button));
+}
+
+pub export fn emit_mouseup(button: Events.MouseButton) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    // todo - bit shift
+    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] = 0;
+
+    append_event(Event.mouseUp(button));
+}
+
+pub export fn emit_mousemove(x: f32, y: f32) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    input_ctx.*.mouse_ctx.x = x;
+    input_ctx.*.mouse_ctx.y = y;
+
+    append_event(Event.mouseMove(x, y));
+}
+
+pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    input_ctx.*.mouse_ctx.wheel_x += delta_x;
+    input_ctx.*.mouse_ctx.wheel_y += delta_y;
+
+    append_event(Event.mouseWheel(delta_x, delta_y));
 }
