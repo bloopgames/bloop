@@ -11,9 +11,13 @@ const hz = 1000 / 60;
 
 pub const Events = @import("events.zig");
 const Event = Events.Event;
-const EventBuffer = Events.EventBuffer;
+const EventBuffer = extern struct {
+    count: u8,
+    events: [256]Event,
+};
 
 var wasm_alloc = std.heap.wasm_allocator;
+var arena_alloc: ?std.heap.ArenaAllocator = null;
 var global_cb_handle: u32 = 0;
 var accumulator: u32 = 0;
 
@@ -30,7 +34,7 @@ pub const InputCtx = extern struct {
 };
 
 pub const KeyCtx = extern struct {
-    // Each byte represents last 8 frames of input
+    /// Each byte represents last 8 frames of input
     key_states: [256]u8,
 };
 
@@ -39,14 +43,14 @@ pub const MouseCtx = extern struct {
     y: f32,
     wheel_x: f32,
     wheel_y: f32,
-    // Each byte represents last 8 frames of input
+    /// Each byte represents last 8 frames of input
     button_states: [8]u8,
 };
 
 pub const Snapshot = extern struct {
     len: u32,
     time: TimeCtx,
-    // inputs: InputCtx
+    // inputs: InputCtx,
     extra: [4]u8,
 };
 
@@ -82,6 +86,13 @@ pub export fn initialize() void {
     cb_data[0] = time_ctx_ptr;
     cb_data[1] = input_ctx_ptr;
     cb_data[2] = events_ptr;
+}
+
+fn get_arena() std.mem.Allocator {
+    if (arena_alloc == null) {
+        arena_alloc = std.heap.ArenaAllocator.init(wasm_alloc);
+    }
+    return arena_alloc.?.allocator();
 }
 
 pub export fn snapshot() wasmPointer {
@@ -133,27 +144,36 @@ pub export fn register_systems(cb_handle: u32) void {
     global_cb_handle = cb_handle;
 }
 
-pub export fn emit_keydown(key_code: u8) void {
+pub export fn emit_keydown(key_code: Events.Key) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
     // todo - bit shift
-    input_ctx.*.key_ctx.key_states[key_code] = 1;
+    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] = 1;
 
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     const idx = events.*.count;
     if (idx < 256) {
-        events.*.events[idx] = Event.keyDown(key_code);
         events.*.count += 1;
+        events.*.events[idx] = Event.keyDown(key_code);
     } else {
         @panic("Event buffer full");
     }
 }
 
+fn log(msg: []const u8) void {
+    console_log(msg.ptr, msg.len);
+}
+
 pub export fn flush_events() void {
-    const events: *Events.EventBuffer = @ptrFromInt(events_ptr);
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
     events.*.count = 0;
 }
 
 pub export fn step(ms: u32) void {
+    defer {
+        if (arena_alloc != null) {
+            _ = arena_alloc.?.reset(.retain_capacity);
+        }
+    }
     accumulator += ms;
 
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);

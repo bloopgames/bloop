@@ -97,11 +97,16 @@ describe("input events", () => {
         const eventsDataView = new DataView(runtime.buffer, eventsPtr);
         const eventCount = eventsDataView.getUint32(0, true);
         expect(eventCount).toEqual(1);
-        const eventType = eventsDataView.getUint8(4 + 0);
-        const eventPayload = eventsDataView.getUint8(4 + 1);
+        // kind = 1 byte + 3 bytes padding
+        // payload = 8 bytes
+        const typeOffset = 4;
+        const payloadOffset = 7;
+        const eventType = eventsDataView.getUint8(typeOffset + 0);
+        const eventPayload = eventsDataView.getUint8(payloadOffset + 1);
         expect(eventCount).toEqual(1);
         expect(eventType).toEqual(1);
         expect(eventPayload).toEqual(2); // KeyCode for BracketLeft
+        called = true;
       },
     });
 

@@ -53,7 +53,11 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
       __cb: function (system_handle: number, ptr: number) {
         opts.systemsCallback(system_handle, ptr);
       },
-      console_log: function (ptr: number, len: number) {},
+      console_log: function (ptr: number, len: number) {
+        const bytes = new Uint8Array(memory.buffer, ptr, len);
+        const string = new TextDecoder("utf-8").decode(bytes);
+        console.log(string);
+      },
       memory,
     },
   });
