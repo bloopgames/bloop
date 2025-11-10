@@ -38,7 +38,7 @@ describe("loop", () => {
     expect(receivedKey!).toEqual("Space");
   });
 
-  it("passes through input events", async () => {
+  it.only("routes all input events", async () => {
     const bloop = Bloop.create();
 
     const events = {
