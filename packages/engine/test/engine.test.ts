@@ -1,5 +1,11 @@
 import { it, expect, describe } from "bun:test";
-import { Enums, KeyboardContext, mount, type KeyState } from "../js/engine";
+import {
+  Enums,
+  KeyboardContext,
+  mount,
+  MouseContext,
+  type KeyState,
+} from "../js/engine";
 
 it("hello wasm", async () => {
   let count = 0;
@@ -74,7 +80,7 @@ describe("snapshots", () => {
 });
 
 describe("inputs", () => {
-  it("updates input context in response to input events", async () => {
+  it("updates input context in response to keyboard events", async () => {
     let called = false;
     const states: KeyState[] = [];
 
@@ -115,6 +121,87 @@ describe("inputs", () => {
       down: false,
       held: false,
       up: true,
+    });
+  });
+
+  it("updates input context in response to mouse events", async () => {
+    let called = false;
+    type MouseState = {
+      x: number;
+      y: number;
+      wheelX: number;
+      wheelY: number;
+      left: KeyState;
+    };
+    const states: MouseState[] = [];
+
+    const { runtime } = await mount({
+      systemsCallback(_handle, ptr) {
+        const dataView = new DataView(runtime.buffer, ptr);
+        const inputCtxPtr = dataView.getUint32(4, true);
+        const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+
+        // TODO - codegen this offset
+        const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
+        const paddingBytes = (4 - (keysLength % 4)) % 4;
+
+        const mouseContext = new MouseContext(
+          new DataView(
+            inputDataView.buffer,
+            inputDataView.byteOffset + keysLength + paddingBytes,
+          ),
+        );
+        states.push({
+          x: mouseContext.x,
+          y: mouseContext.y,
+          left: mouseContext.left,
+          wheelX: mouseContext.wheelX,
+          wheelY: mouseContext.wheelY,
+        });
+
+        called = true;
+      },
+      setBuffer() {},
+    });
+
+    runtime.emit.mousedown("Left");
+    runtime.step();
+
+    runtime.emit.mousemove(123, 456);
+    runtime.emit.mousewheel(789, 101);
+    runtime.step();
+
+    runtime.emit.mouseup("Left");
+    runtime.step();
+
+    expect(called).toEqual(true);
+
+    expect(states[0]).toMatchObject({
+      left: {
+        down: true,
+        held: true,
+        up: false,
+      },
+    });
+
+    expect(states[1]).toMatchObject({
+      left: {
+        down: false,
+        held: true,
+        up: false,
+      },
+      x: 123,
+      y: 456,
+      wheelX: 789,
+      wheelY: 101,
+    });
+
+    expect(states[2]).toMatchObject({
+      left: {
+        down: false,
+        held: false,
+        up: true,
+      },
     });
   });
 

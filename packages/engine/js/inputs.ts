@@ -29,3 +29,12 @@ export type KeyState = {
   held: boolean;
   up: boolean;
 };
+
+export type MouseState = {
+  left: KeyState;
+  middle: KeyState;
+  right: KeyState;
+  wheel: { x: number; y: number };
+  x: number;
+  y: number;
+};

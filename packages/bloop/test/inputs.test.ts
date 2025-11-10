@@ -2,7 +2,7 @@ import { it, expect, describe } from "bun:test";
 import { mount, type Key, type MouseButton } from "@bloopjs/engine";
 import { Bloop } from "../src/mod";
 
-describe("loop", () => {
+describe("inputs", () => {
   it("runs a single system", async () => {
     const bloop = Bloop.create();
     let count = 0;
@@ -97,7 +97,7 @@ describe("loop", () => {
     expect(events.mousemove).toEqual({ x: 3, y: 4 });
   });
 
-  it.only("exposes keyboard context", async () => {
+  it("exposes keyboard context", async () => {
     const bloop = Bloop.create({
       bag: {
         down: null as boolean | null,
@@ -145,6 +145,76 @@ describe("loop", () => {
     runtime.emit.keyup("Backquote");
     runtime.step();
     expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: true,
+    });
+  });
+
+  it("exposes mouse context", async () => {
+    const bloop = Bloop.create({
+      bag: {
+        down: null as boolean | null,
+        held: null as boolean | null,
+        up: null as boolean | null,
+        position: null as { x: number; y: number } | null,
+        wheel: null as { x: number; y: number } | null,
+      },
+    });
+
+    bloop.system("mouse state", {
+      update({ inputs, bag }) {
+        bag.down = inputs.mouse.left.down;
+        bag.held = inputs.mouse.left.held;
+        bag.up = inputs.mouse.left.up;
+        bag.position = { x: inputs.mouse.x, y: inputs.mouse.y };
+        bag.wheel = inputs.mouse.wheel;
+      },
+    });
+
+    const { runtime } = await mount(bloop);
+
+    // Initial state
+    runtime.step();
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: false,
+      position: { x: 0, y: 0 },
+      wheel: { x: 0, y: 0 },
+    });
+
+    // down and held are both true on the first frame of a key down
+    runtime.emit.mousedown("Left");
+    runtime.step();
+    expect(bloop.bag).toMatchObject({
+      down: true,
+      held: true,
+      up: false,
+    });
+
+    runtime.emit.mousemove(123, 456);
+    runtime.step();
+    expect(bloop.bag).toMatchObject({
+      down: false,
+      held: true,
+      up: false,
+      position: { x: 123, y: 456 },
+    });
+
+    runtime.emit.mousewheel(5, -3);
+    runtime.step();
+    expect(bloop.bag).toMatchObject({
+      down: false,
+      held: true,
+      up: false,
+      position: { x: 123, y: 456 },
+      wheel: { x: 5, y: -3 },
+    });
+
+    runtime.emit.mouseup("Left");
+    runtime.step();
+    expect(bloop.bag).toMatchObject({
       down: false,
       held: false,
       up: true,

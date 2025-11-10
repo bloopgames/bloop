@@ -1,6 +1,6 @@
 import { assert } from "../assert";
 import type { PlatformEvent } from "../events";
-import { keyToKeyCode, type Key, type KeyState } from "../inputs";
+import { type KeyState } from "../inputs";
 import * as Enums from "../codegen/enums";
 
 const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
@@ -39,78 +39,73 @@ export class InputContext {
     if (!this.#mouse) {
       assert(this.#dataView, "DataView is not initialized on InputContext");
       const paddingBytes = (4 - (keysLength % 4)) % 4;
-      this.#mouse = new MouseContext(this.#dataView, keysLength + paddingBytes);
+      this.#mouse = new MouseContext(
+        new DataView(
+          this.#dataView.buffer,
+          this.#dataView.byteOffset + keysLength + paddingBytes,
+        ),
+      );
     }
     return this.#mouse;
   }
 }
 
 export class MouseContext {
-  x = 0;
-  y = 0;
-  wheel = { x: 0, y: 0 };
-  left = { down: false, held: false, up: false };
-  middle = { down: false, held: false, up: false };
-  right = { down: false, held: false, up: false };
-
   #dataView: DataView;
-  #offset: number;
+  #buttonStates: Map<Enums.MouseButton, KeyState> = new Map();
 
-  constructor(dataView: DataView, offset: number) {
+  constructor(dataView: DataView) {
     this.#dataView = dataView;
-    this.#offset = offset;
   }
 
-  update(event: PlatformEvent) {
-    switch (event.type) {
-      case "mousemove":
-        this.x = event.x;
-        this.y = event.y;
-        break;
-      case "mousedown":
-        if (event.button === "Left") {
-          this.left.down = true;
-          this.left.held = true;
-          this.left.up = false;
-        }
-        if (event.button === "Middle") {
-          this.middle.down = true;
-          this.middle.held = true;
-          this.middle.up = false;
-        }
-        if (event.button === "Right") {
-          this.right.down = true;
-          this.right.held = true;
-          this.right.up = false;
-        }
-        break;
-      case "mouseup":
-        if (event.button === "Left") {
-          this.left.down = false;
-          this.left.held = false;
-          this.left.up = true;
-        }
-        if (event.button === "Middle") {
-          this.middle.down = false;
-          this.middle.held = false;
-          this.middle.up = true;
-        }
-        if (event.button === "Right") {
-          this.right.down = false;
-          this.right.held = false;
-          this.right.up = true;
-        }
-        break;
-      case "mousewheel":
-        this.wheel.x = event.x;
-        this.wheel.y = event.y;
-        break;
+  get x() {
+    return this.#dataView.getFloat32(0, true);
+  }
+
+  get y() {
+    return this.#dataView.getFloat32(4, true);
+  }
+
+  get wheel() {
+    return { x: this.wheelX, y: this.wheelY };
+  }
+
+  get wheelX() {
+    return this.#dataView.getFloat32(8, true);
+  }
+
+  get wheelY() {
+    return this.#dataView.getFloat32(12, true);
+  }
+
+  get left() {
+    return this.#buttonState(Enums.MouseButton.Left);
+  }
+
+  get right() {
+    return this.#buttonState(Enums.MouseButton.Right);
+  }
+  get middle() {
+    return this.#buttonState(Enums.MouseButton.Middle);
+  }
+
+  #buttonState(code: Enums.MouseButton): KeyState {
+    let state: KeyState;
+    if (this.#buttonStates.has(code)) {
+      state = this.#buttonStates.get(code)!;
+    } else {
+      state = { down: false, held: false, up: false };
+      this.#buttonStates.set(code, state);
     }
-  }
 
-  flush() {
-    this.left.down = this.right.down = this.middle.down = false;
-    this.left.up = this.right.up = this.middle.up = false;
+    // xxxx xxx1 = held
+    // xxxx xx01 = down
+    // xxxx xx10 = up
+    state.held = !!(this.#dataView.getUint8(code) & 1);
+    state.down = state.held && !(this.#dataView.getUint8(code) & 2);
+    state.up = !state.held && !!(this.#dataView.getUint8(code) & 2);
+
+    return state;
   }
 }
 

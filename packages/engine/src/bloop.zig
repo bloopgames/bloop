@@ -183,6 +183,11 @@ pub export fn step(ms: u32) void {
         key_state.* = key_state.* << 1;
         key_state.* |= is_held;
     }
+    for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
+        const is_held = button_state.* & 1;
+        button_state.* = button_state.* << 1;
+        button_state.* |= is_held;
+    }
     accumulator = @max(accumulator, 0);
 }
 
@@ -213,16 +218,14 @@ pub export fn emit_keyup(key_code: Events.Key) void {
 
 pub export fn emit_mousedown(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    // todo - bit shift
-    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] = 1;
+    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] |= 1;
 
     append_event(Event.mouseDown(button));
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    // todo - bit shift
-    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] = 0;
+    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] &= 0b11111110;
 
     append_event(Event.mouseUp(button));
 }
