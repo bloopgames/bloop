@@ -1,16 +1,11 @@
 export type * from "./events";
-export type * from "./inputs";
 export type * from "./runtime";
 export type * from "./wasmEngine";
 
 export * from "./assert";
 export * as EngineEvents from "./events";
-export {
-  keyCodeToKey,
-  keyToKeyCode,
-  mouseButtonToMouseButtonCode,
-  mouseButtonCodeToMouseButton,
-} from "./inputs";
+export * as Enums from "./codegen/enums";
+export * from "./inputs";
 export * from "./contexts/timeContext";
 export * from "./contexts/inputContext";
 export * from "./mount";

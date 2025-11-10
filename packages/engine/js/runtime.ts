@@ -18,7 +18,6 @@ export class Runtime {
   wasm: WasmEngine;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
-  #platformEvents: PlatformEvent[] = [];
   #vcr = {
     isRecording: false,
     isPlayingBack: false,

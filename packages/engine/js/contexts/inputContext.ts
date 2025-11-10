@@ -1,8 +1,9 @@
 import { assert } from "../assert";
 import type { PlatformEvent } from "../events";
-import { KeyCode, keyToKeyCode, type Key, type KeyState } from "../inputs";
+import { keyToKeyCode, type Key, type KeyState } from "../inputs";
+import * as Enums from "../codegen/enums";
 
-const keysLength = Object.keys(KeyCode).length / 2; // js enum has both key and value entries
+const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
 
 export class InputContext {
   dataView?: DataView;
@@ -126,7 +127,7 @@ export class KeyboardContext {
   #dataView: DataView;
   #offset: number;
   // lazily allocated keystate objects
-  #keystates: Map<KeyCode, { down: boolean; held: boolean; up: boolean }> =
+  #keystates: Map<Enums.Key, { down: boolean; held: boolean; up: boolean }> =
     new Map();
 
   constructor(dataView: DataView) {
@@ -180,589 +181,589 @@ export class KeyboardContext {
   // (unlikely to change often)
   // with the exception of KeyA etc being converted to just a, b, c etc
   get backquote() {
-    return this.#keystate(KeyCode.Backquote);
+    return this.#keystate(Enums.Key.Backquote);
   }
   get backslash() {
-    return this.#keystate(KeyCode.Backslash);
+    return this.#keystate(Enums.Key.Backslash);
   }
   get bracketLeft() {
-    return this.#keystate(KeyCode.BracketLeft);
+    return this.#keystate(Enums.Key.BracketLeft);
   }
   get bracketRight() {
-    return this.#keystate(KeyCode.BracketRight);
+    return this.#keystate(Enums.Key.BracketRight);
   }
   get comma() {
-    return this.#keystate(KeyCode.Comma);
+    return this.#keystate(Enums.Key.Comma);
   }
   get digit0() {
-    return this.#keystate(KeyCode.Digit0);
+    return this.#keystate(Enums.Key.Digit0);
   }
   get digit1() {
-    return this.#keystate(KeyCode.Digit1);
+    return this.#keystate(Enums.Key.Digit1);
   }
   get digit2() {
-    return this.#keystate(KeyCode.Digit2);
+    return this.#keystate(Enums.Key.Digit2);
   }
   get digit3() {
-    return this.#keystate(KeyCode.Digit3);
+    return this.#keystate(Enums.Key.Digit3);
   }
   get digit4() {
-    return this.#keystate(KeyCode.Digit4);
+    return this.#keystate(Enums.Key.Digit4);
   }
   get digit5() {
-    return this.#keystate(KeyCode.Digit5);
+    return this.#keystate(Enums.Key.Digit5);
   }
   get digit6() {
-    return this.#keystate(KeyCode.Digit6);
+    return this.#keystate(Enums.Key.Digit6);
   }
   get digit7() {
-    return this.#keystate(KeyCode.Digit7);
+    return this.#keystate(Enums.Key.Digit7);
   }
   get digit8() {
-    return this.#keystate(KeyCode.Digit8);
+    return this.#keystate(Enums.Key.Digit8);
   }
   get digit9() {
-    return this.#keystate(KeyCode.Digit9);
+    return this.#keystate(Enums.Key.Digit9);
   }
   get equal() {
-    return this.#keystate(KeyCode.Equal);
+    return this.#keystate(Enums.Key.Equal);
   }
   get intlBackslash() {
-    return this.#keystate(KeyCode.IntlBackslash);
+    return this.#keystate(Enums.Key.IntlBackslash);
   }
   get intlRo() {
-    return this.#keystate(KeyCode.IntlRo);
+    return this.#keystate(Enums.Key.IntlRo);
   }
   get intlYen() {
-    return this.#keystate(KeyCode.IntlYen);
+    return this.#keystate(Enums.Key.IntlYen);
   }
   get a() {
-    return this.#keystate(KeyCode.KeyA);
+    return this.#keystate(Enums.Key.KeyA);
   }
   get b() {
-    return this.#keystate(KeyCode.KeyB);
+    return this.#keystate(Enums.Key.KeyB);
   }
   get c() {
-    return this.#keystate(KeyCode.KeyC);
+    return this.#keystate(Enums.Key.KeyC);
   }
   get d() {
-    return this.#keystate(KeyCode.KeyD);
+    return this.#keystate(Enums.Key.KeyD);
   }
   get e() {
-    return this.#keystate(KeyCode.KeyE);
+    return this.#keystate(Enums.Key.KeyE);
   }
   get f() {
-    return this.#keystate(KeyCode.KeyF);
+    return this.#keystate(Enums.Key.KeyF);
   }
   get g() {
-    return this.#keystate(KeyCode.KeyG);
+    return this.#keystate(Enums.Key.KeyG);
   }
   get h() {
-    return this.#keystate(KeyCode.KeyH);
+    return this.#keystate(Enums.Key.KeyH);
   }
   get i() {
-    return this.#keystate(KeyCode.KeyI);
+    return this.#keystate(Enums.Key.KeyI);
   }
   get j() {
-    return this.#keystate(KeyCode.KeyJ);
+    return this.#keystate(Enums.Key.KeyJ);
   }
   get k() {
-    return this.#keystate(KeyCode.KeyK);
+    return this.#keystate(Enums.Key.KeyK);
   }
   get l() {
-    return this.#keystate(KeyCode.KeyL);
+    return this.#keystate(Enums.Key.KeyL);
   }
   get m() {
-    return this.#keystate(KeyCode.KeyM);
+    return this.#keystate(Enums.Key.KeyM);
   }
   get n() {
-    return this.#keystate(KeyCode.KeyN);
+    return this.#keystate(Enums.Key.KeyN);
   }
   get o() {
-    return this.#keystate(KeyCode.KeyO);
+    return this.#keystate(Enums.Key.KeyO);
   }
   get p() {
-    return this.#keystate(KeyCode.KeyP);
+    return this.#keystate(Enums.Key.KeyP);
   }
   get q() {
-    return this.#keystate(KeyCode.KeyQ);
+    return this.#keystate(Enums.Key.KeyQ);
   }
   get r() {
-    return this.#keystate(KeyCode.KeyR);
+    return this.#keystate(Enums.Key.KeyR);
   }
   get s() {
-    return this.#keystate(KeyCode.KeyS);
+    return this.#keystate(Enums.Key.KeyS);
   }
   get t() {
-    return this.#keystate(KeyCode.KeyT);
+    return this.#keystate(Enums.Key.KeyT);
   }
   get u() {
-    return this.#keystate(KeyCode.KeyU);
+    return this.#keystate(Enums.Key.KeyU);
   }
   get v() {
-    return this.#keystate(KeyCode.KeyV);
+    return this.#keystate(Enums.Key.KeyV);
   }
   get w() {
-    return this.#keystate(KeyCode.KeyW);
+    return this.#keystate(Enums.Key.KeyW);
   }
   get x() {
-    return this.#keystate(KeyCode.KeyX);
+    return this.#keystate(Enums.Key.KeyX);
   }
   get y() {
-    return this.#keystate(KeyCode.KeyY);
+    return this.#keystate(Enums.Key.KeyY);
   }
   get z() {
-    return this.#keystate(KeyCode.KeyZ);
+    return this.#keystate(Enums.Key.KeyZ);
   }
   get minus() {
-    return this.#keystate(KeyCode.Minus);
+    return this.#keystate(Enums.Key.Minus);
   }
   get period() {
-    return this.#keystate(KeyCode.Period);
+    return this.#keystate(Enums.Key.Period);
   }
   get quote() {
-    return this.#keystate(KeyCode.Quote);
+    return this.#keystate(Enums.Key.Quote);
   }
   get semicolon() {
-    return this.#keystate(KeyCode.Semicolon);
+    return this.#keystate(Enums.Key.Semicolon);
   }
   get slash() {
-    return this.#keystate(KeyCode.Slash);
+    return this.#keystate(Enums.Key.Slash);
   }
   get altLeft() {
-    return this.#keystate(KeyCode.AltLeft);
+    return this.#keystate(Enums.Key.AltLeft);
   }
   get altRight() {
-    return this.#keystate(KeyCode.AltRight);
+    return this.#keystate(Enums.Key.AltRight);
   }
   get backspace() {
-    return this.#keystate(KeyCode.Backspace);
+    return this.#keystate(Enums.Key.Backspace);
   }
   get capsLock() {
-    return this.#keystate(KeyCode.CapsLock);
+    return this.#keystate(Enums.Key.CapsLock);
   }
   get contextMenu() {
-    return this.#keystate(KeyCode.ContextMenu);
+    return this.#keystate(Enums.Key.ContextMenu);
   }
   get controlLeft() {
-    return this.#keystate(KeyCode.ControlLeft);
+    return this.#keystate(Enums.Key.ControlLeft);
   }
   get controlRight() {
-    return this.#keystate(KeyCode.ControlRight);
+    return this.#keystate(Enums.Key.ControlRight);
   }
   get enter() {
-    return this.#keystate(KeyCode.Enter);
+    return this.#keystate(Enums.Key.Enter);
   }
   get metaLeft() {
-    return this.#keystate(KeyCode.MetaLeft);
+    return this.#keystate(Enums.Key.MetaLeft);
   }
   get metaRight() {
-    return this.#keystate(KeyCode.MetaRight);
+    return this.#keystate(Enums.Key.MetaRight);
   }
   get shiftLeft() {
-    return this.#keystate(KeyCode.ShiftLeft);
+    return this.#keystate(Enums.Key.ShiftLeft);
   }
   get shiftRight() {
-    return this.#keystate(KeyCode.ShiftRight);
+    return this.#keystate(Enums.Key.ShiftRight);
   }
   get space() {
-    return this.#keystate(KeyCode.Space);
+    return this.#keystate(Enums.Key.Space);
   }
   get tab() {
-    return this.#keystate(KeyCode.Tab);
+    return this.#keystate(Enums.Key.Tab);
   }
   get convert() {
-    return this.#keystate(KeyCode.Convert);
+    return this.#keystate(Enums.Key.Convert);
   }
   get kanaMode() {
-    return this.#keystate(KeyCode.KanaMode);
+    return this.#keystate(Enums.Key.KanaMode);
   }
   get lang1() {
-    return this.#keystate(KeyCode.Lang1);
+    return this.#keystate(Enums.Key.Lang1);
   }
   get lang2() {
-    return this.#keystate(KeyCode.Lang2);
+    return this.#keystate(Enums.Key.Lang2);
   }
   get lang3() {
-    return this.#keystate(KeyCode.Lang3);
+    return this.#keystate(Enums.Key.Lang3);
   }
   get lang4() {
-    return this.#keystate(KeyCode.Lang4);
+    return this.#keystate(Enums.Key.Lang4);
   }
   get lang5() {
-    return this.#keystate(KeyCode.Lang5);
+    return this.#keystate(Enums.Key.Lang5);
   }
   get nonConvert() {
-    return this.#keystate(KeyCode.NonConvert);
+    return this.#keystate(Enums.Key.NonConvert);
   }
   get delete() {
-    return this.#keystate(KeyCode.Delete);
+    return this.#keystate(Enums.Key.Delete);
   }
   get end() {
-    return this.#keystate(KeyCode.End);
+    return this.#keystate(Enums.Key.End);
   }
   get help() {
-    return this.#keystate(KeyCode.Help);
+    return this.#keystate(Enums.Key.Help);
   }
   get home() {
-    return this.#keystate(KeyCode.Home);
+    return this.#keystate(Enums.Key.Home);
   }
   get insert() {
-    return this.#keystate(KeyCode.Insert);
+    return this.#keystate(Enums.Key.Insert);
   }
   get pageDown() {
-    return this.#keystate(KeyCode.PageDown);
+    return this.#keystate(Enums.Key.PageDown);
   }
   get pageUp() {
-    return this.#keystate(KeyCode.PageUp);
+    return this.#keystate(Enums.Key.PageUp);
   }
   get arrowDown() {
-    return this.#keystate(KeyCode.ArrowDown);
+    return this.#keystate(Enums.Key.ArrowDown);
   }
   get arrowLeft() {
-    return this.#keystate(KeyCode.ArrowLeft);
+    return this.#keystate(Enums.Key.ArrowLeft);
   }
   get arrowRight() {
-    return this.#keystate(KeyCode.ArrowRight);
+    return this.#keystate(Enums.Key.ArrowRight);
   }
   get arrowUp() {
-    return this.#keystate(KeyCode.ArrowUp);
+    return this.#keystate(Enums.Key.ArrowUp);
   }
   get numLock() {
-    return this.#keystate(KeyCode.NumLock);
+    return this.#keystate(Enums.Key.NumLock);
   }
   get numpad0() {
-    return this.#keystate(KeyCode.Numpad0);
+    return this.#keystate(Enums.Key.Numpad0);
   }
   get numpad1() {
-    return this.#keystate(KeyCode.Numpad1);
+    return this.#keystate(Enums.Key.Numpad1);
   }
   get numpad2() {
-    return this.#keystate(KeyCode.Numpad2);
+    return this.#keystate(Enums.Key.Numpad2);
   }
   get numpad3() {
-    return this.#keystate(KeyCode.Numpad3);
+    return this.#keystate(Enums.Key.Numpad3);
   }
   get numpad4() {
-    return this.#keystate(KeyCode.Numpad4);
+    return this.#keystate(Enums.Key.Numpad4);
   }
   get numpad5() {
-    return this.#keystate(KeyCode.Numpad5);
+    return this.#keystate(Enums.Key.Numpad5);
   }
   get numpad6() {
-    return this.#keystate(KeyCode.Numpad6);
+    return this.#keystate(Enums.Key.Numpad6);
   }
   get numpad7() {
-    return this.#keystate(KeyCode.Numpad7);
+    return this.#keystate(Enums.Key.Numpad7);
   }
   get numpad8() {
-    return this.#keystate(KeyCode.Numpad8);
+    return this.#keystate(Enums.Key.Numpad8);
   }
   get numpad9() {
-    return this.#keystate(KeyCode.Numpad9);
+    return this.#keystate(Enums.Key.Numpad9);
   }
   get numpadAdd() {
-    return this.#keystate(KeyCode.NumpadAdd);
+    return this.#keystate(Enums.Key.NumpadAdd);
   }
   get numpadBackspace() {
-    return this.#keystate(KeyCode.NumpadBackspace);
+    return this.#keystate(Enums.Key.NumpadBackspace);
   }
   get numpadClear() {
-    return this.#keystate(KeyCode.NumpadClear);
+    return this.#keystate(Enums.Key.NumpadClear);
   }
   get numpadClearEntry() {
-    return this.#keystate(KeyCode.NumpadClearEntry);
+    return this.#keystate(Enums.Key.NumpadClearEntry);
   }
   get numpadComma() {
-    return this.#keystate(KeyCode.NumpadComma);
+    return this.#keystate(Enums.Key.NumpadComma);
   }
   get numpadDecimal() {
-    return this.#keystate(KeyCode.NumpadDecimal);
+    return this.#keystate(Enums.Key.NumpadDecimal);
   }
   get numpadDivide() {
-    return this.#keystate(KeyCode.NumpadDivide);
+    return this.#keystate(Enums.Key.NumpadDivide);
   }
   get numpadEnter() {
-    return this.#keystate(KeyCode.NumpadEnter);
+    return this.#keystate(Enums.Key.NumpadEnter);
   }
   get numpadEqual() {
-    return this.#keystate(KeyCode.NumpadEqual);
+    return this.#keystate(Enums.Key.NumpadEqual);
   }
   get numpadHash() {
-    return this.#keystate(KeyCode.NumpadHash);
+    return this.#keystate(Enums.Key.NumpadHash);
   }
   get numpadMemoryAdd() {
-    return this.#keystate(KeyCode.NumpadMemoryAdd);
+    return this.#keystate(Enums.Key.NumpadMemoryAdd);
   }
   get numpadMemoryClear() {
-    return this.#keystate(KeyCode.NumpadMemoryClear);
+    return this.#keystate(Enums.Key.NumpadMemoryClear);
   }
   get numpadMemoryRecall() {
-    return this.#keystate(KeyCode.NumpadMemoryRecall);
+    return this.#keystate(Enums.Key.NumpadMemoryRecall);
   }
   get numpadMemoryStore() {
-    return this.#keystate(KeyCode.NumpadMemoryStore);
+    return this.#keystate(Enums.Key.NumpadMemoryStore);
   }
   get numpadMemorySubtract() {
-    return this.#keystate(KeyCode.NumpadMemorySubtract);
+    return this.#keystate(Enums.Key.NumpadMemorySubtract);
   }
   get numpadMultiply() {
-    return this.#keystate(KeyCode.NumpadMultiply);
+    return this.#keystate(Enums.Key.NumpadMultiply);
   }
   get numpadParenLeft() {
-    return this.#keystate(KeyCode.NumpadParenLeft);
+    return this.#keystate(Enums.Key.NumpadParenLeft);
   }
   get numpadParenRight() {
-    return this.#keystate(KeyCode.NumpadParenRight);
+    return this.#keystate(Enums.Key.NumpadParenRight);
   }
   get numpadStar() {
-    return this.#keystate(KeyCode.NumpadStar);
+    return this.#keystate(Enums.Key.NumpadStar);
   }
   get numpadSubtract() {
-    return this.#keystate(KeyCode.NumpadSubtract);
+    return this.#keystate(Enums.Key.NumpadSubtract);
   }
   get escape() {
-    return this.#keystate(KeyCode.Escape);
+    return this.#keystate(Enums.Key.Escape);
   }
   get fn() {
-    return this.#keystate(KeyCode.Fn);
+    return this.#keystate(Enums.Key.Fn);
   }
   get fnLock() {
-    return this.#keystate(KeyCode.FnLock);
+    return this.#keystate(Enums.Key.FnLock);
   }
   get printScreen() {
-    return this.#keystate(KeyCode.PrintScreen);
+    return this.#keystate(Enums.Key.PrintScreen);
   }
   get scrollLock() {
-    return this.#keystate(KeyCode.ScrollLock);
+    return this.#keystate(Enums.Key.ScrollLock);
   }
   get pause() {
-    return this.#keystate(KeyCode.Pause);
+    return this.#keystate(Enums.Key.Pause);
   }
   get browserBack() {
-    return this.#keystate(KeyCode.BrowserBack);
+    return this.#keystate(Enums.Key.BrowserBack);
   }
   get browserFavorites() {
-    return this.#keystate(KeyCode.BrowserFavorites);
+    return this.#keystate(Enums.Key.BrowserFavorites);
   }
   get browserForward() {
-    return this.#keystate(KeyCode.BrowserForward);
+    return this.#keystate(Enums.Key.BrowserForward);
   }
   get browserHome() {
-    return this.#keystate(KeyCode.BrowserHome);
+    return this.#keystate(Enums.Key.BrowserHome);
   }
   get browserRefresh() {
-    return this.#keystate(KeyCode.BrowserRefresh);
+    return this.#keystate(Enums.Key.BrowserRefresh);
   }
   get browserSearch() {
-    return this.#keystate(KeyCode.BrowserSearch);
+    return this.#keystate(Enums.Key.BrowserSearch);
   }
   get browserStop() {
-    return this.#keystate(KeyCode.BrowserStop);
+    return this.#keystate(Enums.Key.BrowserStop);
   }
   get eject() {
-    return this.#keystate(KeyCode.Eject);
+    return this.#keystate(Enums.Key.Eject);
   }
   get launchApp1() {
-    return this.#keystate(KeyCode.LaunchApp1);
+    return this.#keystate(Enums.Key.LaunchApp1);
   }
   get launchApp2() {
-    return this.#keystate(KeyCode.LaunchApp2);
+    return this.#keystate(Enums.Key.LaunchApp2);
   }
   get launchMail() {
-    return this.#keystate(KeyCode.LaunchMail);
+    return this.#keystate(Enums.Key.LaunchMail);
   }
   get mediaPlayPause() {
-    return this.#keystate(KeyCode.MediaPlayPause);
+    return this.#keystate(Enums.Key.MediaPlayPause);
   }
   get mediaSelect() {
-    return this.#keystate(KeyCode.MediaSelect);
+    return this.#keystate(Enums.Key.MediaSelect);
   }
   get mediaStop() {
-    return this.#keystate(KeyCode.MediaStop);
+    return this.#keystate(Enums.Key.MediaStop);
   }
   get mediaTrackNext() {
-    return this.#keystate(KeyCode.MediaTrackNext);
+    return this.#keystate(Enums.Key.MediaTrackNext);
   }
   get mediaTrackPrevious() {
-    return this.#keystate(KeyCode.MediaTrackPrevious);
+    return this.#keystate(Enums.Key.MediaTrackPrevious);
   }
   get power() {
-    return this.#keystate(KeyCode.Power);
+    return this.#keystate(Enums.Key.Power);
   }
   get sleep() {
-    return this.#keystate(KeyCode.Sleep);
+    return this.#keystate(Enums.Key.Sleep);
   }
   get audioVolumeDown() {
-    return this.#keystate(KeyCode.AudioVolumeDown);
+    return this.#keystate(Enums.Key.AudioVolumeDown);
   }
   get audioVolumeMute() {
-    return this.#keystate(KeyCode.AudioVolumeMute);
+    return this.#keystate(Enums.Key.AudioVolumeMute);
   }
   get audioVolumeUp() {
-    return this.#keystate(KeyCode.AudioVolumeUp);
+    return this.#keystate(Enums.Key.AudioVolumeUp);
   }
   get wakeUp() {
-    return this.#keystate(KeyCode.WakeUp);
+    return this.#keystate(Enums.Key.WakeUp);
   }
   get hyper() {
-    return this.#keystate(KeyCode.Hyper);
+    return this.#keystate(Enums.Key.Hyper);
   }
   get super() {
-    return this.#keystate(KeyCode.Super);
+    return this.#keystate(Enums.Key.Super);
   }
   get turbo() {
-    return this.#keystate(KeyCode.Turbo);
+    return this.#keystate(Enums.Key.Turbo);
   }
   get abort() {
-    return this.#keystate(KeyCode.Abort);
+    return this.#keystate(Enums.Key.Abort);
   }
   get resume() {
-    return this.#keystate(KeyCode.Resume);
+    return this.#keystate(Enums.Key.Resume);
   }
   get suspend() {
-    return this.#keystate(KeyCode.Suspend);
+    return this.#keystate(Enums.Key.Suspend);
   }
   get again() {
-    return this.#keystate(KeyCode.Again);
+    return this.#keystate(Enums.Key.Again);
   }
   get copy() {
-    return this.#keystate(KeyCode.Copy);
+    return this.#keystate(Enums.Key.Copy);
   }
   get cut() {
-    return this.#keystate(KeyCode.Cut);
+    return this.#keystate(Enums.Key.Cut);
   }
   get find() {
-    return this.#keystate(KeyCode.Find);
+    return this.#keystate(Enums.Key.Find);
   }
   get open() {
-    return this.#keystate(KeyCode.Open);
+    return this.#keystate(Enums.Key.Open);
   }
   get paste() {
-    return this.#keystate(KeyCode.Paste);
+    return this.#keystate(Enums.Key.Paste);
   }
   get props() {
-    return this.#keystate(KeyCode.Props);
+    return this.#keystate(Enums.Key.Props);
   }
   get select() {
-    return this.#keystate(KeyCode.Select);
+    return this.#keystate(Enums.Key.Select);
   }
   get undo() {
-    return this.#keystate(KeyCode.Undo);
+    return this.#keystate(Enums.Key.Undo);
   }
   get hiragana() {
-    return this.#keystate(KeyCode.Hiragana);
+    return this.#keystate(Enums.Key.Hiragana);
   }
   get katakana() {
-    return this.#keystate(KeyCode.Katakana);
+    return this.#keystate(Enums.Key.Katakana);
   }
   get f1() {
-    return this.#keystate(KeyCode.F1);
+    return this.#keystate(Enums.Key.F1);
   }
   get f2() {
-    return this.#keystate(KeyCode.F2);
+    return this.#keystate(Enums.Key.F2);
   }
   get f3() {
-    return this.#keystate(KeyCode.F3);
+    return this.#keystate(Enums.Key.F3);
   }
   get f4() {
-    return this.#keystate(KeyCode.F4);
+    return this.#keystate(Enums.Key.F4);
   }
   get f5() {
-    return this.#keystate(KeyCode.F5);
+    return this.#keystate(Enums.Key.F5);
   }
   get f6() {
-    return this.#keystate(KeyCode.F6);
+    return this.#keystate(Enums.Key.F6);
   }
   get f7() {
-    return this.#keystate(KeyCode.F7);
+    return this.#keystate(Enums.Key.F7);
   }
   get f8() {
-    return this.#keystate(KeyCode.F8);
+    return this.#keystate(Enums.Key.F8);
   }
   get f9() {
-    return this.#keystate(KeyCode.F9);
+    return this.#keystate(Enums.Key.F9);
   }
   get f10() {
-    return this.#keystate(KeyCode.F10);
+    return this.#keystate(Enums.Key.F10);
   }
   get f11() {
-    return this.#keystate(KeyCode.F11);
+    return this.#keystate(Enums.Key.F11);
   }
   get f12() {
-    return this.#keystate(KeyCode.F12);
+    return this.#keystate(Enums.Key.F12);
   }
   get f13() {
-    return this.#keystate(KeyCode.F13);
+    return this.#keystate(Enums.Key.F13);
   }
   get f14() {
-    return this.#keystate(KeyCode.F14);
+    return this.#keystate(Enums.Key.F14);
   }
   get f15() {
-    return this.#keystate(KeyCode.F15);
+    return this.#keystate(Enums.Key.F15);
   }
   get f16() {
-    return this.#keystate(KeyCode.F16);
+    return this.#keystate(Enums.Key.F16);
   }
   get f17() {
-    return this.#keystate(KeyCode.F17);
+    return this.#keystate(Enums.Key.F17);
   }
   get f18() {
-    return this.#keystate(KeyCode.F18);
+    return this.#keystate(Enums.Key.F18);
   }
   get f19() {
-    return this.#keystate(KeyCode.F19);
+    return this.#keystate(Enums.Key.F19);
   }
   get f20() {
-    return this.#keystate(KeyCode.F20);
+    return this.#keystate(Enums.Key.F20);
   }
   get f21() {
-    return this.#keystate(KeyCode.F21);
+    return this.#keystate(Enums.Key.F21);
   }
   get f22() {
-    return this.#keystate(KeyCode.F22);
+    return this.#keystate(Enums.Key.F22);
   }
   get f23() {
-    return this.#keystate(KeyCode.F23);
+    return this.#keystate(Enums.Key.F23);
   }
   get f24() {
-    return this.#keystate(KeyCode.F24);
+    return this.#keystate(Enums.Key.F24);
   }
   get f25() {
-    return this.#keystate(KeyCode.F25);
+    return this.#keystate(Enums.Key.F25);
   }
   get f26() {
-    return this.#keystate(KeyCode.F26);
+    return this.#keystate(Enums.Key.F26);
   }
   get f27() {
-    return this.#keystate(KeyCode.F27);
+    return this.#keystate(Enums.Key.F27);
   }
   get f28() {
-    return this.#keystate(KeyCode.F28);
+    return this.#keystate(Enums.Key.F28);
   }
   get f29() {
-    return this.#keystate(KeyCode.F29);
+    return this.#keystate(Enums.Key.F29);
   }
   get f30() {
-    return this.#keystate(KeyCode.F30);
+    return this.#keystate(Enums.Key.F30);
   }
   get f31() {
-    return this.#keystate(KeyCode.F31);
+    return this.#keystate(Enums.Key.F31);
   }
   get f32() {
-    return this.#keystate(KeyCode.F32);
+    return this.#keystate(Enums.Key.F32);
   }
   get f33() {
-    return this.#keystate(KeyCode.F33);
+    return this.#keystate(Enums.Key.F33);
   }
   get f34() {
-    return this.#keystate(KeyCode.F34);
+    return this.#keystate(Enums.Key.F34);
   }
   get f35() {
-    return this.#keystate(KeyCode.F35);
+    return this.#keystate(Enums.Key.F35);
   }
 
-  #keystate(code: KeyCode) {
+  #keystate(code: Enums.Key) {
     let state: KeyState;
     if (this.#keystates.has(code)) {
       state = this.#keystates.get(code)!;

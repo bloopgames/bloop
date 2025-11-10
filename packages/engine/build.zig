@@ -22,6 +22,17 @@ pub fn build(b: *std.Build) void {
     exe.import_memory = true;
     exe.export_memory = false;
 
+    const codegen = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/codegen.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSmall,
+        }),
+    });
+    const codegen_step = b.addRunArtifact(codegen);
+    exe.step.dependOn(&codegen_step.step);
+
     const install = b.addInstallArtifact(exe, .{
         .dest_sub_path = "bloop.wasm",
     });

@@ -1,7 +1,7 @@
 import type { BloopSchema } from "./data/schema";
 import type { Bag } from "./data/bag";
 import type { System } from "./system";
-import { EngineEvents, InputContext, keyCodeToKey, TimeContext, type EnginePointer } from "@bloopjs/engine";
+import { EngineEvents, Enums, InputContext, keyCodeToKey, mouseButtonCodeToMouseButton, TimeContext, type EnginePointer } from "@bloopjs/engine";
 import { type Context } from "./context";
 
 export type BloopOpts<B extends Bag> = {
@@ -120,91 +120,67 @@ export class Bloop<GS extends BloopSchema> {
 			const eventsDataView = new DataView(this.#engineBuffer, dv.getUint32(8, true));
 			const eventCount = eventsDataView.getUint32(0, true);
 
-		let offset = 4;
-		for (let i = 0; i < eventCount; i++) {
-			const eventType = eventsDataView.getUint8(offset);
-			const eventPayload = eventsDataView.getUint8(offset + 4);
-			switch(eventType) {
-				case EngineEvents.EngineEventType.KeyDown:
-					system.keydown?.({
-						...this.#context,
-						event: {
-							key: keyCodeToKey(eventPayload),
-							pressure: 1,
-						}
-					})
-					break;
-				default:
-					throw new Error(`Unknown event type: ${eventType}`);
+			let offset = 4;
+			for (let i = 0; i < eventCount; i++) {
+				const eventType = eventsDataView.getUint8(offset);
+				const payloadSize = eventType === Enums.EventType.MouseMove || eventType === Enums.EventType.MouseWheel ? 8 : 4;
+				const payloadByte = eventsDataView.getUint8(offset + 4);
+				const payloadVec2 = { x: eventsDataView.getFloat32(offset + 4, true), y: eventsDataView.getFloat32(offset + 8, true) };
+				switch(eventType) {
+					case Enums.EventType.KeyDown:
+						system.keydown?.({
+							...this.#context,
+							event: {
+								key: keyCodeToKey(payloadByte),
+								pressure: 1,
+							}
+						})
+						break;
+					case Enums.EventType.KeyUp:
+						system.keyup?.({
+							...this.#context,
+							event: {
+								key: keyCodeToKey(payloadByte),
+								pressure: 0,
+							}
+						})
+						break;
+					case Enums.EventType.MouseDown:
+						system.mousedown?.({
+							...this.#context,
+							event: {
+								button: mouseButtonCodeToMouseButton(payloadByte),
+								pressure: 1,
+							}
+						})
+						break;
+					case Enums.EventType.MouseUp:
+						system.mouseup?.({
+							...this.#context,
+							event: {
+								button: mouseButtonCodeToMouseButton(payloadByte),
+								pressure: 0,
+							}
+						})
+						break;
+					case Enums.EventType.MouseMove:
+						system.mousemove?.({
+							...this.#context,
+							event: payloadVec2,
+						})
+						break;
+					case Enums.EventType.MouseWheel:
+						system.mousewheel?.({
+							...this.#context,
+							event: payloadVec2,
+						})
+						break;
+					default:
+						throw new Error(`Unknown event type: ${eventType}`);
+				}
+				offset += 4 + payloadSize;
 			}
-			offset += 8;
 		}
-
-		}
-
-		// const eventsCount =
-
-		// 	for (const event of events) {
-		// 		switch(event.type) {
-		// 			case "keydown":
-		// 				system.keydown?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						key: event.key,
-		// 						pressure: 1,
-		// 					}
-		// 				})
-		// 				break;
-		// 			case "keyup":
-		// 				system.keyup?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						key: event.key,
-		// 						pressure: 0,
-		// 					}
-		// 				})
-		// 				break;
-		// 			case "mousemove":
-		// 				system.mousemove?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						x: event.x,
-		// 						y: event.y,
-		// 					}
-		// 				})
-		// 				break;
-		// 			case "mousedown":
-		// 				system.mousedown?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						button: event.button,
-		// 						pressure: event.pressure,
-		// 					}
-		// 				})
-		// 				break;
-		// 			case "mouseup":
-		// 				system.mouseup?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						button: event.button,
-		// 						pressure: event.pressure,
-		// 					}
-		// 				})
-		// 				break;
-		// 			case "mousewheel":
-		// 				system.mousewheel?.({
-		// 					...this.#context,
-		// 					event: {
-		// 						x: event.x,
-		// 						y: event.y,
-		// 					}
-		// 				})
-		// 				break;
-		// 			default:
-		// 				break;
-		// 		}
-		// 	}
-		// }
 	}
 
 	setBuffer(buffer: ArrayBuffer) {
