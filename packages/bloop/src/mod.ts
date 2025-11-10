@@ -123,9 +123,6 @@ export class Bloop<GS extends BloopSchema> {
 		this.#context.inputs.dataView = new DataView(this.#engineBuffer, inputCtxPtr);
 		this.#context.time.dataView = new DataView(this.#engineBuffer, timeCtxPtr);
 
-		console.log(toHexString(this.#context.inputs.dataView, 64));
-		console.log(this.#context.inputs.dataView.getUint8(1));
-
 		const eventsDataView = new DataView(this.#engineBuffer, eventsPtr);
 
 		for (const system of this.#systems) {
@@ -200,7 +197,6 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	setBuffer(buffer: ArrayBuffer) {
-		console.trace('setBuffer called', !!buffer);
 		this.#engineBuffer = buffer;
 	}
 }
