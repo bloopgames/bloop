@@ -68,40 +68,34 @@ export class Bloop<GS extends BloopSchema> {
 	}
 
 	/**
-	 * Take a snapshot of the game state
-	 * @returns linear memory representation of the game state
+	 * Take a snapshot of the game state outside the engine
+	 * @returns linear memory representation of the game state that the engine is unaware of
 	 */
 	snapshot(): Uint8Array {
-		throw new Error("Not implemented");
+		const str = JSON.stringify(this.#context.bag);
+		const encoder = new TextEncoder();
+		const textBytes = encoder.encode(str);
 
-		// const str = JSON.stringify(this.#context.bag);
-		// const encoder = new TextEncoder();
-		// const textBytes = encoder.encode(str);
-
-		// const size = EngineTiming.TIMING_SNAPSHOT_SIZE + 4 + textBytes.length;
-
-		// const buffer = new Uint8Array(size);
-		// const view = new DataView(buffer.buffer);
-		// let offset = EngineTiming.encodeTimingSnapshot(this.#context.time, buffer.subarray(0, EngineTiming.TIMING_SNAPSHOT_SIZE));
-		// view.setUint32(offset, textBytes.length, true);
-		// offset += 4;
-
-		// buffer.set(textBytes, offset);
-		// offset += textBytes.length;
-		// return buffer;
+		const size = Uint32Array.BYTES_PER_ELEMENT + textBytes.length;
+		const buffer = new Uint8Array(size);
+		const view = new DataView(buffer.buffer);
+		const offset = Uint32Array.BYTES_PER_ELEMENT;
+		view.setUint32(0, textBytes.length, true);
+		buffer.set(textBytes, offset);
+		return buffer;
 	}
 
+	/**
+	 * Restore a snapshot of the game state outside the engine
+	 * @returns linear memory representation of the game state that the engine is unaware of
+	 */
 	restore(snapshot: Uint8Array) {
-		throw new Error("Not implemented");
-		// const size = EngineTiming.decodeTimingSnapshot(new Uint8Array(snapshot.buffer, 0, EngineTiming.TIMING_SNAPSHOT_SIZE), this.#context.time);
-		// const view = new DataView(snapshot.buffer);
-		// let offset = size;
-		// const length = view.getUint32(offset, true);
-		// offset += 4;
-		// const bagBytes = snapshot.slice(offset, offset + length);
-		// const decoder = new TextDecoder();
-		// const str = decoder.decode(bagBytes);
-		// this.#context.bag = JSON.parse(str);
+		const size = new DataView(snapshot.buffer, snapshot.byteOffset, 4).getUint32(0, true);
+		const offset = Uint32Array.BYTES_PER_ELEMENT;
+		const bagBytes = snapshot.slice(offset, offset + size);
+		const decoder = new TextDecoder();
+		const str = decoder.decode(bagBytes);
+		this.#context.bag = JSON.parse(str);
 	}
 
 	/**

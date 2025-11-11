@@ -1,3 +1,8 @@
+pub const EventBuffer = extern struct {
+    count: u8,
+    events: [128]Event,
+};
+
 pub const Event = extern struct {
     kind: EventType,
     payload: EventPayload,

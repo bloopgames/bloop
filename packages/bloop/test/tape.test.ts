@@ -2,7 +2,7 @@ import { it, expect, describe } from "bun:test";
 import { mount } from "@bloopjs/engine";
 import { Bloop } from "../src/mod";
 
-describe.skip("tapes", () => {
+describe("tapes", () => {
   describe("snapshots", () => {
     it("can snapshot the bag", async () => {
       const bloop = Bloop.create({

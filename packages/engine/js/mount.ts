@@ -24,10 +24,36 @@ export type MountOpts = {
    */
   setBuffer: (buffer: ArrayBuffer) => void;
 
-  /** Optional hook to serialize some data when snapshotting */
-  snapshot?: () => Uint8Array;
-  /** Optional hook to deserialize some data when restoring */
-  restore?: (snapshot: Uint8Array) => void;
+  /**
+   * Optional hook to serialize some data when snapshotting
+   *
+   * @param alloc - allocator function to allocate shared memory in the engine
+   * note that you must use the provided allocator to allocate memory that the engine can read
+   *
+   * @example
+   *
+   * serialize(alloc) {
+   *   const size = 4;
+   *   const ptr = alloc(size);
+   *   const data = new Uint8Array(memory.buffer, ptr, size);
+   *   data[0] = 0xDE;
+   *   data[1] = 0xAD;
+   *   data[2] = 0xBE;
+   *   data[3] = 0xEF;
+   *   return { ptr, length: size };
+   * }
+   */
+  serialize?: (alloc: (size: number) => EnginePointer) => {
+    ptr: EnginePointer;
+    length: number;
+  };
+  /**
+   * Optional hook to deserialize some data when restoring
+   *
+   * @param ptr - pointer to the data you serialized in engine memory
+   * @param length - length of the data you serialized in bytes
+   */
+  deserialize?: (ptr: EnginePointer, length: number) => void;
 
   /** Options for tape recording, not yet implemented */
   tape?: {
@@ -51,6 +77,13 @@ export type MountResult = {
 };
 
 export async function mount(opts: MountOpts): Promise<MountResult> {
+  if (
+    (opts.serialize && !opts.deserialize) ||
+    (!opts.serialize && opts.deserialize)
+  ) {
+    throw new Error("Snapshot and restore hooks must be provided together");
+  }
+
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await Bun.file(opts.wasmUrl ?? DEFAULT_WASM_URL).arrayBuffer();
 
@@ -76,7 +109,10 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   wasm.initialize();
 
   return {
-    runtime: new Runtime(wasm, memory),
+    runtime: new Runtime(wasm, memory, {
+      serialize: opts.serialize,
+      deserialize: opts.deserialize,
+    }),
     wasm,
   };
 }

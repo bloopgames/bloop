@@ -1,4 +1,4 @@
-import type { PlatformEvent } from "./engine";
+import { assert, type EnginePointer } from "./engine";
 import {
   keyToKeyCode,
   mouseButtonToMouseButtonCode,
@@ -7,6 +7,13 @@ import {
 } from "./inputs";
 import { TimeContext } from "./contexts/timeContext";
 import type { WasmEngine } from "./wasmEngine";
+
+export type SerializeFn = (alloc: WasmEngine["alloc"]) => {
+  ptr: EnginePointer;
+  length: number;
+};
+
+export type DeserializeFn = (ptr: EnginePointer, length: number) => void;
 
 /**
  * The runtime is a portable runtime that is responsible for:
@@ -23,13 +30,20 @@ export class Runtime {
     isPlayingBack: false,
     snapshot: new Uint8Array(),
   };
-
-  constructor(wasm: WasmEngine, memory: WebAssembly.Memory) {
+  #serialize?: SerializeFn;
+  #deserialize?: DeserializeFn;
+  constructor(
+    wasm: WasmEngine,
+    memory: WebAssembly.Memory,
+    opts?: { serialize?: SerializeFn; deserialize?: DeserializeFn },
+  ) {
     this.wasm = wasm;
     this.#memory = memory;
     this.#time = new TimeContext(
       new DataView(this.#memory.buffer, this.wasm.time_ctx()),
     );
+    this.#serialize = opts?.serialize;
+    this.#deserialize = opts?.deserialize;
   }
 
   step(ms?: number) {
@@ -47,8 +61,11 @@ export class Runtime {
 
   snapshot(): Uint8Array<ArrayBuffer> {
     const ptr = this.wasm.snapshot();
-    const length = new Uint32Array(this.#memory.buffer, ptr, 4)[0];
-    return new Uint8Array(this.#memory.buffer, ptr + 4, length);
+    const header = new Uint32Array(this.#memory.buffer, ptr, 4);
+    assert(header[1], `header user length missing`);
+    assert(header[2], `header extra length missing`);
+    const length = header[1] + header[2];
+    return new Uint8Array(this.#memory.buffer, ptr, length);
   }
 
   restore(snapshot: Uint8Array) {

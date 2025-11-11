@@ -1,5 +1,7 @@
 const std = @import("std");
 const util = @import("util.zig");
+const Ctx = @import("context.zig");
+const Events = @import("events.zig");
 
 // Imported from JS. Calls console.log
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
@@ -8,18 +10,17 @@ extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 extern "env" fn __cb(fn_handle: u32, ptr: u32, dt: u32) void;
 
 const wasmPointer = u32;
+const cb_handle = u32;
 const hz = 1000 / 60;
 
-pub const Events = @import("events.zig");
+const TimeCtx = Ctx.TimeCtx;
+const InputCtx = Ctx.InputCtx;
+
 const Event = Events.Event;
-const EventBuffer = extern struct {
-    count: u8,
-    events: [256]Event,
-};
+const EventBuffer = Events.EventBuffer;
 
 var wasm_alloc = std.heap.wasm_allocator;
 var arena_alloc: ?std.heap.ArenaAllocator = null;
-var global_cb_handle: u32 = 0;
 var accumulator: u32 = 0;
 
 var cb_ptr: wasmPointer = 0;
@@ -27,38 +28,9 @@ var time_ctx_ptr: wasmPointer = 0;
 var input_ctx_ptr: wasmPointer = 0;
 var events_ptr: wasmPointer = 0;
 
-pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
-
-pub const InputCtx = extern struct {
-    key_ctx: KeyCtx,
-    mouse_ctx: MouseCtx,
-};
-
-pub const KeyCtx = extern struct {
-    /// Each byte represents last 8 frames of input
-    key_states: [256]u8,
-};
-
-pub const MouseCtx = extern struct {
-    x: f32,
-    y: f32,
-    wheel_x: f32,
-    wheel_y: f32,
-    /// Each byte represents last 8 frames of input
-    button_states: [8]u8,
-};
-
-pub const Snapshot = extern struct {
-    len: u32,
-    time: TimeCtx,
-    // inputs: InputCtx,
-    extra: [4]u8,
-};
-
-pub export fn alloc(size: usize) wasmPointer {
-    const slice = wasm_alloc.alloc(u8, size) catch return 0;
-    return @intFromPtr(slice.ptr);
-}
+var global_cb_handle: cb_handle = 0;
+var global_snapshot_handle: cb_handle = 0;
+var global_restore_handle: cb_handle = 0;
 
 pub export fn initialize() void {
     // Validate Event struct layout for js-side assumptions
@@ -93,23 +65,18 @@ pub export fn initialize() void {
     cb_data[2] = events_ptr;
 }
 
-fn get_arena() std.mem.Allocator {
-    if (arena_alloc == null) {
-        arena_alloc = std.heap.ArenaAllocator.init(wasm_alloc);
-    }
-    return arena_alloc.?.allocator();
+pub export fn alloc(size: usize) wasmPointer {
+    const slice = wasm_alloc.alloc(u8, size) catch return 0;
+    return @intFromPtr(slice.ptr);
 }
 
 pub export fn snapshot() wasmPointer {
     // Get a slice of bytes for the TimeCtx pointer
     const time_size = @sizeOf(TimeCtx);
-    const time_bytes = std.mem.asBytes(@as(*const TimeCtx, @ptrFromInt(time_ctx())));
-
-    // this is a stand-in for other structs I'll want to serialize
-    const extra = &[4]u8{ 0xDE, 0xAD, 0xBE, 0xEF };
+    const time_bytes = std.mem.asBytes(@as(*const TimeCtx, @ptrFromInt(time_ctx_ptr)));
 
     // Allocate memory for the snapshot
-    const size: u32 = @sizeOf(u32) + time_bytes.len + extra.len;
+    const size: u32 = @sizeOf(u32) + time_bytes.len;
     const ptr = alloc(size);
     const out: [*]u8 = @ptrFromInt(ptr);
 
@@ -119,7 +86,6 @@ pub export fn snapshot() wasmPointer {
     offset += 4;
     @memcpy(out[offset .. offset + time_size], time_bytes);
     offset += time_size;
-    @memcpy(out[offset..size], extra);
     return ptr;
 }
 
@@ -131,7 +97,7 @@ pub export fn restore(ptr: u32, len: u32) void {
     if (len < time_size + 4) @panic("nope");
 
     // Copy TimeCtx back into live context
-    const ctx: *TimeCtx = @ptrFromInt(time_ctx());
+    const ctx: *TimeCtx = @ptrFromInt(time_ctx_ptr);
     const dst = std.mem.asBytes(ctx);
     @memcpy(dst[0..time_size], src[0..time_size]);
 
@@ -141,21 +107,12 @@ pub export fn restore(ptr: u32, len: u32) void {
         @panic("Invalid snapshot data");
 }
 
-pub export fn time_ctx() wasmPointer {
-    return time_ctx_ptr;
+pub export fn register_systems(handle: cb_handle) void {
+    global_cb_handle = handle;
 }
 
-pub export fn register_systems(cb_handle: u32) void {
-    global_cb_handle = cb_handle;
-}
-
-fn log(msg: []const u8) void {
-    console_log(msg.ptr, msg.len);
-}
-
-pub export fn flush_events() void {
-    const events: *EventBuffer = @ptrFromInt(events_ptr);
-    events.*.count = 0;
+pub export fn register_snapshot(handle: cb_handle) void {
+    global_cb_handle = handle;
 }
 
 pub export fn step(ms: u32) void {
@@ -174,6 +131,7 @@ pub export fn step(ms: u32) void {
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
+        flush_events();
     }
 
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
@@ -189,17 +147,6 @@ pub export fn step(ms: u32) void {
         button_state.* |= is_held;
     }
     accumulator = @max(accumulator, 0);
-}
-
-fn append_event(event: Event) void {
-    const events: *EventBuffer = @ptrFromInt(events_ptr);
-    const idx = events.*.count;
-    if (idx < 256) {
-        events.*.count += 1;
-        events.*.events[idx] = event;
-    } else {
-        @panic("Event buffer full");
-    }
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {
@@ -244,4 +191,35 @@ pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
     input_ctx.*.mouse_ctx.wheel_y += delta_y;
 
     append_event(Event.mouseWheel(delta_x, delta_y));
+}
+
+pub export fn time_ctx() wasmPointer {
+    return time_ctx_ptr;
+}
+
+fn append_event(event: Event) void {
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    const idx = events.*.count;
+    if (idx < 256) {
+        events.*.count += 1;
+        events.*.events[idx] = event;
+    } else {
+        @panic("Event buffer full");
+    }
+}
+
+fn flush_events() void {
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    events.*.count = 0;
+}
+
+fn log(msg: []const u8) void {
+    console_log(msg.ptr, msg.len);
+}
+
+fn arena() std.mem.Allocator {
+    if (arena_alloc == null) {
+        arena_alloc = std.heap.ArenaAllocator.init(wasm_alloc);
+    }
+    return arena_alloc.?.allocator();
 }

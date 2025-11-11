@@ -40,12 +40,14 @@ pub fn build(b: *std.Build) void {
 
     b.getInstallStep().dependOn(&install.step);
 
-    const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
+    const snapshot_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tapes.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
     });
-
-    const run_exe_tests = b.addRunArtifact(exe_tests);
-
+    const run_snapshot_tests = b.addRunArtifact(snapshot_tests);
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_snapshot_tests.step);
 }

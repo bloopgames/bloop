@@ -1,5 +1,6 @@
 import { it, expect, describe } from "bun:test";
 import {
+  assert,
   KeyboardContext,
   mount,
   MOUSE_OFFSET,
@@ -227,6 +228,64 @@ describe("inputs", () => {
     runtime.emit.keydown("BracketLeft");
     runtime.step();
     expect(called).toEqual(true);
+  });
+});
+
+describe("tapes", () => {
+  describe("engine snapshot", () => {
+    it("saves and restores time context", async () => {
+      const { runtime } = await mount({
+        systemsCallback() {},
+        setBuffer() {},
+      });
+
+      const snapshot = runtime.snapshot();
+      expect(runtime.time.frame).toEqual(0);
+      runtime.step();
+      expect(runtime.time.frame).toEqual(1);
+      runtime.step();
+      expect(runtime.time.frame).toEqual(2);
+      runtime.restore(snapshot);
+
+      expect(runtime.time.frame).toEqual(0);
+    });
+  });
+
+  describe.skip("caller payload", () => {
+    it("can capture and restore arbitrary payloads", async () => {
+      let called = false;
+      let buffer: ArrayBuffer;
+      const { runtime } = await mount({
+        systemsCallback() {},
+        setBuffer(engineBuffer) {
+          buffer = engineBuffer;
+        },
+        serialize(alloc) {
+          const ptr = alloc(1);
+          const bytes = new Uint8Array(buffer, ptr, 1);
+          bytes[0] = 66;
+          return { ptr, length: 1 };
+        },
+        deserialize(ptr, length) {
+          called = true;
+          assert(buffer, `Buffer not set by Runtime`);
+          const data = new Uint8Array(buffer!, ptr, length);
+          expect(data.byteLength).toBe(1);
+          expect(length).toEqual(1);
+          expect(data[0]).toBe(66);
+        },
+      });
+
+      const snapshot = runtime.snapshot();
+      const dv = new DataView(
+        snapshot.buffer,
+        snapshot.byteOffset,
+        snapshot.byteLength,
+      );
+      expect(dv.getUint32(0, true)).toEqual(1);
+      expect(snapshot[1]).toEqual(66);
+      expect(called).toEqual(true);
+    });
   });
 });
 

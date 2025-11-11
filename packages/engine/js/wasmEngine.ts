@@ -18,7 +18,7 @@ export type WasmEngine = {
   emit_mousemove: (x: number, y: number) => void;
   emit_mousewheel: (x: number, y: number) => void;
 
-  /** Returns a pointer to the snapshot data. First 4 bytes are the length. */
+  /** Returns a pointer to the snapshot data. */
   snapshot: () => EngineBuffer;
   /** Restores the engine state from a snapshot */
   restore: (ptr: EnginePointer, len: EngineLen) => void;
