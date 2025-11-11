@@ -1,6 +1,5 @@
 import { it, expect, describe } from "bun:test";
 import {
-  Enums,
   KeyboardContext,
   mount,
   MouseContext,
@@ -142,15 +141,14 @@ describe("inputs", () => {
         const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
 
         // TODO - codegen this offset
-        const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
-        const paddingBytes = (4 - (keysLength % 4)) % 4;
+        const mouseOffset = 256;
 
-        const mouseContext = new MouseContext(
-          new DataView(
-            inputDataView.buffer,
-            inputDataView.byteOffset + keysLength + paddingBytes,
-          ),
+        const dv = new DataView(
+          inputDataView.buffer,
+          inputDataView.byteOffset + mouseOffset,
         );
+        const mouseContext = new MouseContext(dv);
+
         states.push({
           x: mouseContext.x,
           y: mouseContext.y,
@@ -233,3 +231,13 @@ describe("inputs", () => {
     expect(called).toEqual(true);
   });
 });
+
+function toHexString(dataView: DataView, length?: number): string {
+  length ??= dataView.byteLength;
+  let hexString = "";
+  for (let i = 0; i < length; i++) {
+    const byte = dataView.getUint8(i);
+    hexString += `${byte.toString(16).padStart(2, "0")} `;
+  }
+  return hexString.trim();
+}

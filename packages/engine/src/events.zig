@@ -63,7 +63,8 @@ pub const EventType = enum(u8) {
 };
 
 pub const MouseButton = enum(u8) {
-    Left = 0,
+    None = 0,
+    Left,
     Middle,
     Right,
     X1,

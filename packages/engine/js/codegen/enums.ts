@@ -11,14 +11,15 @@ export enum EventType {
 }
 
 export enum MouseButton {
-  Left = 0,
-  Middle = 1,
-  Right = 2,
-  X1 = 3,
-  X2 = 4,
-  X3 = 5,
-  X4 = 6,
-  X5 = 7,
+  None = 0,
+  Left = 1,
+  Middle = 2,
+  Right = 3,
+  X1 = 4,
+  X2 = 5,
+  X3 = 6,
+  X4 = 7,
+  X5 = 8,
 }
 
 export enum Key {
@@ -218,3 +219,4 @@ export enum Key {
   F34 = 193,
   F35 = 194,
 }
+

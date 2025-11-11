@@ -101,9 +101,11 @@ export class MouseContext {
     // xxxx xxx1 = held
     // xxxx xx01 = down
     // xxxx xx10 = up
-    state.held = !!(this.#dataView.getUint8(code) & 1);
-    state.down = state.held && !(this.#dataView.getUint8(code) & 2);
-    state.up = !state.held && !!(this.#dataView.getUint8(code) & 2);
+    // todo - move magic number to codegen
+    const offset = 16;
+    state.held = !!(this.#dataView.getUint8(offset + code) & 1);
+    state.down = state.held && !(this.#dataView.getUint8(offset + code) & 2);
+    state.up = !state.held && !!(this.#dataView.getUint8(offset + code) & 2);
 
     return state;
   }
