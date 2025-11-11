@@ -2,6 +2,7 @@ import { it, expect, describe } from "bun:test";
 import {
   KeyboardContext,
   mount,
+  MOUSE_OFFSET,
   MouseContext,
   type KeyState,
 } from "../js/engine";
@@ -140,12 +141,9 @@ describe("inputs", () => {
         const inputCtxPtr = dataView.getUint32(4, true);
         const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
 
-        // TODO - codegen this offset
-        const mouseOffset = 256;
-
         const dv = new DataView(
           inputDataView.buffer,
-          inputDataView.byteOffset + mouseOffset,
+          inputDataView.byteOffset + MOUSE_OFFSET,
         );
         const mouseContext = new MouseContext(dv);
 

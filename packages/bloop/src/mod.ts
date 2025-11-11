@@ -55,6 +55,7 @@ export class Bloop<GS extends BloopSchema> {
       bag: opts.bag ?? {},
 			time: new TimeContext(),
 			inputs: new InputContext(),
+			rawPointer: -1,
     };
 	}
 
@@ -120,6 +121,7 @@ export class Bloop<GS extends BloopSchema> {
 		const inputCtxPtr = dv.getUint32(4, true);
 		const eventsPtr = dv.getUint32(8, true);
 
+		this.#context.rawPointer = ptr;
 		this.#context.inputs.dataView = new DataView(this.#engineBuffer, inputCtxPtr);
 		this.#context.time.dataView = new DataView(this.#engineBuffer, timeCtxPtr);
 

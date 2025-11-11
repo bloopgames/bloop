@@ -1,6 +1,6 @@
 import { assert } from "../assert";
 import type { PlatformEvent } from "../events";
-import { type KeyState } from "../inputs";
+import { KEYBOARD_OFFSET, MOUSE_OFFSET, type KeyState } from "../inputs";
 import * as Enums from "../codegen/enums";
 
 const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
@@ -30,7 +30,12 @@ export class InputContext {
   get keys() {
     if (!this.#keys) {
       assert(this.#dataView, "DataView is not initialized on InputContext");
-      this.#keys = new KeyboardContext(this.dataView);
+      this.#keys = new KeyboardContext(
+        new DataView(
+          this.dataView.buffer,
+          this.#dataView.byteOffset + KEYBOARD_OFFSET,
+        ),
+      );
     }
     return this.#keys;
   }
@@ -38,11 +43,10 @@ export class InputContext {
   get mouse() {
     if (!this.#mouse) {
       assert(this.#dataView, "DataView is not initialized on InputContext");
-      const paddingBytes = (4 - (keysLength % 4)) % 4;
       this.#mouse = new MouseContext(
         new DataView(
           this.#dataView.buffer,
-          this.#dataView.byteOffset + keysLength + paddingBytes,
+          this.#dataView.byteOffset + MOUSE_OFFSET,
         ),
       );
     }
