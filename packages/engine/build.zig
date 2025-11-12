@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
-    const optimize = std.builtin.OptimizeMode.ReleaseSmall;
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
     const exe = b.addExecutable(.{
         .name = "bloop",
@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/codegen.zig"),
             .target = b.graph.host,
-            .optimize = .ReleaseSmall,
+            .optimize = .Debug,
         }),
     });
     const codegen_step = b.addRunArtifact(codegen);

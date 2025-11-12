@@ -115,6 +115,45 @@ pub const Tape = struct {
         self.frame_number += 1;
         try self.append_event(Event.frameAdvance(self.frame_number));
     }
+
+    pub fn get_events(self: *const Tape, frame: u32) []const Event {
+        const header_size = @sizeOf(TapeHeader);
+        const snapshot_size = @sizeOf(Snapshot);
+        const snapshot: *const Snapshot = @ptrCast(@alignCast(self.buf[header_size .. header_size + snapshot_size]));
+        const user_data_len = snapshot.user_data_len;
+        const events_start = header_size + snapshot_size + user_data_len;
+
+        var current_frame: u32 = 0;
+        var frame_start_idx: usize = 0;
+        var i: usize = 0;
+
+        while (i < self.event_count) : (i += 1) {
+            const event_offset = events_start + (i * @sizeOf(Event));
+            const event: *const Event = @ptrCast(@alignCast(self.buf[event_offset .. event_offset + @sizeOf(Event)]));
+
+            if (event.kind == .FrameAdvance) {
+                if (current_frame == frame) {
+                    // Found the end of the requested frame
+                    const count = i - frame_start_idx;
+                    const start_offset = events_start + (frame_start_idx * @sizeOf(Event));
+                    const events_slice: []const Event = @as([*]const Event, @ptrCast(@alignCast(&self.buf[start_offset])))[0..count];
+                    return events_slice;
+                }
+                current_frame += 1;
+                frame_start_idx = i + 1;
+            }
+        }
+
+        // If we're looking for the current frame and haven't found a FrameAdvance yet
+        if (current_frame == frame) {
+            const count = i - frame_start_idx;
+            const start_offset = events_start + (frame_start_idx * @sizeOf(Event));
+            const events_slice: []const Event = @as([*]const Event, @ptrCast(@alignCast(&self.buf[start_offset])))[0..count];
+            return events_slice;
+        }
+
+        return &[_]Event{};
+    }
 };
 
 pub fn start_snapshot(
@@ -199,17 +238,17 @@ test "tape can replay events" {
 
     try std.testing.expectEqual(4, tape.event_count);
 
-    // const events = tape.get_events(0);
+    const events = tape.get_events(0);
 
-    // try std.testing.expectEqual(2, events.len);
-    // try std.testing.expectEqual(.KeyDown, events[0].kind);
-    // try std.testing.expectEqual(.KeyA, events[0].payload.key);
-    // try std.testing.expectEqual(.MouseMove, events[1].kind);
-    // try std.testing.expectEqual(150.0, events[1].payload.mouse_move.x);
-    // try std.testing.expectEqual(250.0, events[1].payload.mouse_move.y);
+    try std.testing.expectEqual(2, events.len);
+    try std.testing.expectEqual(.KeyDown, events[0].kind);
+    try std.testing.expectEqual(.KeyA, events[0].payload.key);
+    try std.testing.expectEqual(.MouseMove, events[1].kind);
+    try std.testing.expectEqual(150.0, events[1].payload.mouse_move.x);
+    try std.testing.expectEqual(250.0, events[1].payload.mouse_move.y);
 
-    // const events_frame_1 = tape.get_events(1);
-    // try std.testing.expectEqual(1, events_frame_1.len);
-    // try std.testing.expectEqual(.KeyUp, events_frame_1[0].kind);
-    // try std.testing.expectEqual(.KeyA, events_frame_1[0].payload.key);
+    const events_frame_1 = tape.get_events(1);
+    try std.testing.expectEqual(1, events_frame_1.len);
+    try std.testing.expectEqual(.KeyUp, events_frame_1[0].kind);
+    try std.testing.expectEqual(.KeyA, events_frame_1[0].payload.key);
 }
