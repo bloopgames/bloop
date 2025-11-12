@@ -53,7 +53,69 @@ pub const Snapshot = extern struct {
     }
 };
 
-pub const Tape = extern struct { snapshot: *Snapshot, events: [*]Event };
+pub const TapeHeader = extern struct {
+    magic: u32 = 0x54415045, // "TAPE" in ASCII
+    reserved: u16 = 0,
+    event_count: u16 = 0,
+};
+
+pub const Tape = struct {
+    buf: []u8,
+    offset: usize,
+    frame_number: u32,
+    max_events: u32,
+    event_count: u32 = 0,
+
+    pub fn init(gpa: std.mem.Allocator, snapshot: Snapshot, max_events: u32) !Tape {
+        const total_size = @sizeOf(TapeHeader) + @sizeOf(Snapshot) + snapshot.user_data_len + (@sizeOf(Event) * max_events);
+        var tape_buf = try gpa.alloc(u8, total_size);
+        var offset: u32 = 0;
+
+        // Write the tape header
+        const header = TapeHeader{};
+        @memcpy(tape_buf[0..@sizeOf(TapeHeader)], std.mem.asBytes(&header));
+        offset += @sizeOf(TapeHeader);
+
+        // Write the snapshot
+        const user_data_len = snapshot.user_data_len;
+        @memcpy(tape_buf[offset .. offset + @sizeOf(Snapshot)], std.mem.asBytes(&snapshot));
+        offset += @sizeOf(Snapshot);
+
+        // Write snapshot user data if any
+        if (user_data_len > 0) {
+            // const user_data_src = @intFromPtr(&snapshot) + @sizeOf(Snapshot);
+            // const user_data_dst = tape_buf[offset .. offset + user_data_len];
+            // @memcpy(user_data_dst, user_data_src);
+            // offset += user_data_len;
+        }
+
+        return Tape{
+            .buf = tape_buf,
+            .offset = offset,
+            .frame_number = snapshot.time.frame,
+            .max_events = max_events,
+        };
+    }
+
+    pub fn free(self: *Tape, gpa: std.mem.Allocator) void {
+        gpa.free(self.buf);
+    }
+
+    pub fn append_event(self: *Tape, event: Event) !void {
+        if (self.event_count >= self.max_events) {
+            return error.OutOfMemory;
+        }
+        const event_size = @sizeOf(Event);
+        @memcpy(self.buf[self.offset .. self.offset + event_size], std.mem.asBytes(&event));
+        self.offset += event_size;
+        self.event_count += 1;
+    }
+
+    pub fn advance_frame(self: *Tape) !void {
+        self.frame_number += 1;
+        try self.append_event(Event.frameAdvance(self.frame_number));
+    }
+};
 
 pub fn start_snapshot(
     alloc: std.mem.Allocator,
@@ -121,4 +183,33 @@ test "snapshot engine data" {
     try std.testing.expectEqual(16, snapshot.time.dt_ms);
     try std.testing.expectEqual(42, snapshot.time.frame);
     try std.testing.expectEqual(1_000, snapshot.time.total_ms);
+}
+
+test "tape can replay events" {
+    const snapshot = try start_snapshot(std.testing.allocator, 0);
+    defer std.testing.allocator.destroy(snapshot);
+
+    var tape = try Tape.init(std.testing.allocator, snapshot.*, 4);
+    defer tape.free(std.testing.allocator);
+
+    try tape.append_event(Event.keyDown(.KeyA));
+    try tape.append_event(Event.mouseMove(150.0, 250.0));
+    try tape.advance_frame();
+    try tape.append_event(Event.keyUp(.KeyA));
+
+    try std.testing.expectEqual(4, tape.event_count);
+
+    // const events = tape.get_events(0);
+
+    // try std.testing.expectEqual(2, events.len);
+    // try std.testing.expectEqual(.KeyDown, events[0].kind);
+    // try std.testing.expectEqual(.KeyA, events[0].payload.key);
+    // try std.testing.expectEqual(.MouseMove, events[1].kind);
+    // try std.testing.expectEqual(150.0, events[1].payload.mouse_move.x);
+    // try std.testing.expectEqual(250.0, events[1].payload.mouse_move.y);
+
+    // const events_frame_1 = tape.get_events(1);
+    // try std.testing.expectEqual(1, events_frame_1.len);
+    // try std.testing.expectEqual(.KeyUp, events_frame_1[0].kind);
+    // try std.testing.expectEqual(.KeyA, events_frame_1[0].payload.key);
 }

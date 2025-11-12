@@ -48,6 +48,13 @@ pub const Event = extern struct {
             .payload = .{ .delta = .{ .delta_x = delta_x, .delta_y = delta_y } },
         };
     }
+
+    pub inline fn frameAdvance(frame_number: u64) Event {
+        return Event{
+            .kind = .FrameAdvance,
+            .payload = .{ .frame_number = frame_number },
+        };
+    }
 };
 
 pub const EventPayload = extern union {
@@ -55,6 +62,7 @@ pub const EventPayload = extern union {
     mouse_button: MouseButton,
     mouse_move: extern struct { x: f32, y: f32 },
     delta: extern struct { delta_x: f32, delta_y: f32 },
+    frame_number: u64,
 };
 
 pub const EventType = enum(u8) {
@@ -65,6 +73,7 @@ pub const EventType = enum(u8) {
     MouseDown,
     MouseUp,
     MouseWheel,
+    FrameAdvance,
 };
 
 pub const MouseButton = enum(u8) {
