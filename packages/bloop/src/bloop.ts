@@ -1,18 +1,22 @@
 import {
-  type DeserializeFn,
-  EngineEvents,
   type EnginePointer,
   Enums,
   InputContext,
   keyCodeToKey,
   mouseButtonCodeToMouseButton,
-  type SerializeFn,
   TimeContext,
-  toHexString,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
 import type { Bag } from "./data/bag";
 import type { BloopSchema } from "./data/schema";
+import type {
+  InputEvent,
+  KeyEvent,
+  MouseButtonEvent,
+  MouseMoveEvent,
+  MouseWheelEvent,
+} from "./events";
+import type { DeserializeFn, SerializeFn } from "./runtime";
 import type { System } from "./system";
 
 export type BloopOpts<B extends Bag> = {
@@ -155,53 +159,50 @@ export class Bloop<GS extends BloopSchema> {
         };
 
         switch (eventType) {
-          case Enums.EventType.KeyDown:
-            system.keydown?.({
-              ...this.#context,
-              event: {
+          case Enums.EventType.KeyDown: {
+            system.keydown?.(
+              attachEvent<KeyEvent, GS>(this.#context, {
                 key: keyCodeToKey(payloadByte),
-                pressure: 1,
-              },
-            });
+              }),
+            );
             break;
+          }
           case Enums.EventType.KeyUp:
-            system.keyup?.({
-              ...this.#context,
-              event: {
+            system.keyup?.(
+              attachEvent<KeyEvent, GS>(this.#context, {
                 key: keyCodeToKey(payloadByte),
-                pressure: 0,
-              },
-            });
+              }),
+            );
             break;
           case Enums.EventType.MouseDown:
-            system.mousedown?.({
-              ...this.#context,
-              event: {
+            system.mousedown?.(
+              attachEvent<MouseButtonEvent, GS>(this.#context, {
                 button: mouseButtonCodeToMouseButton(payloadByte),
-                pressure: 1,
-              },
-            });
+              }),
+            );
             break;
           case Enums.EventType.MouseUp:
-            system.mouseup?.({
-              ...this.#context,
-              event: {
+            system.mouseup?.(
+              attachEvent<MouseButtonEvent, GS>(this.#context, {
                 button: mouseButtonCodeToMouseButton(payloadByte),
-                pressure: 0,
-              },
-            });
+              }),
+            );
             break;
           case Enums.EventType.MouseMove:
-            system.mousemove?.({
-              ...this.#context,
-              event: payloadVec2,
-            });
+            system.mousemove?.(
+              attachEvent<MouseMoveEvent, GS>(this.#context, {
+                x: payloadVec2.x,
+                y: payloadVec2.y,
+              }),
+            );
             break;
           case Enums.EventType.MouseWheel:
-            system.mousewheel?.({
-              ...this.#context,
-              event: payloadVec2,
-            });
+            system.mousewheel?.(
+              attachEvent<MouseWheelEvent, GS>(this.#context, {
+                x: payloadVec2.x,
+                y: payloadVec2.y,
+              }),
+            );
             break;
           default:
             throw new Error(`Unknown event type: ${eventType}`);
@@ -214,6 +215,14 @@ export class Bloop<GS extends BloopSchema> {
   setBuffer(buffer: ArrayBuffer) {
     this.#engineBuffer = buffer;
   }
+}
+
+function attachEvent<IE extends InputEvent, GS extends BloopSchema>(
+  context: Context<GS>,
+  event: IE,
+): Context<GS> & { event: IE } {
+  (context as any).event = event;
+  return context as Context<GS> & { event: IE };
 }
 
 type MakeGS<B extends Bag> = BloopSchema<B>;

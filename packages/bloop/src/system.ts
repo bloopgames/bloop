@@ -1,11 +1,11 @@
+import type { Context } from "./context";
+import type { BloopSchema } from "./data/schema";
 import type {
   KeyEvent,
   MouseButtonEvent,
-  MousePositionEvent,
+  MouseMoveEvent,
   MouseWheelEvent,
-} from "@bloopjs/engine";
-import type { Context } from "./context";
-import type { BloopSchema } from "./data/schema";
+} from "./events";
 
 export type System<GS extends BloopSchema = BloopSchema> = {
   label?: string;
@@ -38,7 +38,7 @@ export type System<GS extends BloopSchema = BloopSchema> = {
 
   mousemove?: (
     context: Context<GS> & {
-      event: MousePositionEvent;
+      event: MouseMoveEvent;
     },
   ) => void;
 
