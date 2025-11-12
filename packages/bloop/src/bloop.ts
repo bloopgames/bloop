@@ -209,6 +209,7 @@ export class Bloop<GS extends BloopSchema> {
         }
         offset += 4 + payloadSize;
       }
+      (this.#context as any).event = undefined;
     }
   }
 
