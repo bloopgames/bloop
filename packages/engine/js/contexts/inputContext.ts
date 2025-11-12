@@ -1,10 +1,12 @@
-import { assert } from "../assert";
-import type { PlatformEvent } from "../events";
-import { KEYBOARD_OFFSET, MOUSE_OFFSET, type KeyState } from "../inputs";
 import * as Enums from "../codegen/enums";
+import {
+  KEYBOARD_OFFSET,
+  type KeyState,
+  MOUSE_BUTTONS_OFFSET,
+  MOUSE_OFFSET,
+} from "../inputs";
 
-const keysLength = Object.keys(Enums.Key).length / 2; // js enum has both key and value entries
-
+// todo - generate these offsets and sizes from codegen
 export class InputContext {
   #dataView?: DataView;
   #keys?: KeyboardContext;
@@ -17,7 +19,9 @@ export class InputContext {
   }
 
   get dataView(): NonNullable<DataView> {
-    assert(this.#dataView, "DataView is not initialized on InputContext");
+    if (!this.#dataView) {
+      throw new Error("DataView is not initialized on InputContext");
+    }
     return this.#dataView!;
   }
 
@@ -29,11 +33,10 @@ export class InputContext {
 
   get keys() {
     if (!this.#keys) {
-      assert(this.#dataView, "DataView is not initialized on InputContext");
       this.#keys = new KeyboardContext(
         new DataView(
           this.dataView.buffer,
-          this.#dataView.byteOffset + KEYBOARD_OFFSET,
+          this.dataView.byteOffset + KEYBOARD_OFFSET,
         ),
       );
     }
@@ -42,11 +45,10 @@ export class InputContext {
 
   get mouse() {
     if (!this.#mouse) {
-      assert(this.#dataView, "DataView is not initialized on InputContext");
       this.#mouse = new MouseContext(
         new DataView(
-          this.#dataView.buffer,
-          this.#dataView.byteOffset + MOUSE_OFFSET,
+          this.dataView.buffer,
+          this.dataView.byteOffset + MOUSE_OFFSET,
         ),
       );
     }
@@ -105,8 +107,7 @@ export class MouseContext {
     // xxxx xxx1 = held
     // xxxx xx01 = down
     // xxxx xx10 = up
-    // todo - move magic number to codegen
-    const offset = 16;
+    const offset = MOUSE_BUTTONS_OFFSET;
     state.held = !!(this.#dataView.getUint8(offset + code) & 1);
     state.down = state.held && !(this.#dataView.getUint8(offset + code) & 2);
     state.up = !state.held && !!(this.#dataView.getUint8(offset + code) & 2);
@@ -140,7 +141,6 @@ export class KeyboardContext {
 
   // this line on is generated from the engine keysEnum manually
   // (unlikely to change often)
-  // with the exception of KeyA etc being converted to just a, b, c etc
   get backquote() {
     return this.#keystate(Enums.Key.Backquote);
   }

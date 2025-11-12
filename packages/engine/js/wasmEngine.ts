@@ -1,9 +1,10 @@
-import type { EngineBuffer, EngineLen, EnginePointer } from "./engine";
+import type { EnginePointer } from "./engine";
 import type * as Enums from "./codegen/enums";
 
 export type WasmEngine = {
   initialize: () => void;
   alloc: (size: number) => EnginePointer;
+  free: (ptr: EnginePointer, size: number) => void;
   register_systems: (cb_handle: number) => void;
 
   get_time_ctx: () => EnginePointer;
@@ -19,7 +20,8 @@ export type WasmEngine = {
   emit_mousewheel: (x: number, y: number) => void;
 
   /** Returns a pointer to the snapshot data. */
-  snapshot: () => EngineBuffer;
+  snapshot: (size: number) => EnginePointer;
   /** Restores the engine state from a snapshot */
-  restore: (ptr: EnginePointer, len: EngineLen) => void;
+  restore: (ptr: EnginePointer) => void;
+  snapshot_user_data_offset: () => number;
 };

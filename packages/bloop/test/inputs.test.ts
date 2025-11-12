@@ -1,6 +1,7 @@
-import { it, expect, describe } from "bun:test";
-import { mount, type Key, type MouseButton } from "@bloopjs/engine";
-import { Bloop } from "../src/mod";
+import { describe, expect, it } from "bun:test";
+import type { Key, MouseButton } from "@bloopjs/engine";
+import { Bloop } from "../src/bloop";
+import { mount } from "../src/runtime";
 
 describe("inputs", () => {
   it("runs a single system", async () => {

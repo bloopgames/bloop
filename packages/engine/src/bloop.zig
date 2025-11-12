@@ -71,8 +71,13 @@ pub export fn alloc(size: usize) wasmPointer {
     return @intFromPtr(slice.ptr);
 }
 
-pub export fn snapshot() wasmPointer {
-    const snap = Tapes.start_snapshot(wasm_alloc, 0) catch |e| {
+pub export fn free(ptr: wasmPointer, size: usize) void {
+    const slice: [*]u8 = @ptrFromInt(ptr);
+    wasm_alloc.free(slice[0..size]);
+}
+
+pub export fn snapshot(user_data_len: u32) wasmPointer {
+    const snap = Tapes.start_snapshot(wasm_alloc, user_data_len) catch |e| {
         switch (e) {
             error.OutOfMemory => log("Snapshot allocation failed: Out of memory"),
         }
@@ -83,6 +88,10 @@ pub export fn snapshot() wasmPointer {
     snap.write_inputs(input_ctx_ptr);
     snap.write_events(events_ptr);
     return @intFromPtr(snap);
+}
+
+pub export fn snapshot_user_data_offset() u32 {
+    return @sizeOf(Tapes.Snapshot);
 }
 
 pub export fn restore(snapshot_ptr: wasmPointer) void {
@@ -99,10 +108,6 @@ pub export fn restore(snapshot_ptr: wasmPointer) void {
 }
 
 pub export fn register_systems(handle: cb_handle) void {
-    global_cb_handle = handle;
-}
-
-pub export fn register_snapshot(handle: cb_handle) void {
     global_cb_handle = handle;
 }
 

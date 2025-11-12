@@ -51,18 +51,6 @@ pub const Snapshot = extern struct {
         std.mem.writeInt(u32, out[events_len .. events_len + 4], size, .little);
         @memcpy(out[events_offset .. events_offset + size], std.mem.asBytes(events_buffer));
     }
-
-    pub fn reserve_user_data(self: *Snapshot, size: u32) EnginePointer {
-        const out: [*]u8 = @ptrFromInt(self);
-        const user_data_len = @offsetOf(Snapshot, "user_data_len");
-        // const user_data_offset = @offsetOf(Snapshot, "user_data");
-        @memcpy(
-            out[user_data_len .. user_data_len + 4],
-            std.mem.asBytes(&size),
-        );
-        return 0;
-        // return @intFromPtr(out[user_data_offset]);
-    }
 };
 
 pub const Tape = extern struct { snapshot: *Snapshot, events: [*]Event };
@@ -71,8 +59,9 @@ pub fn start_snapshot(
     alloc: std.mem.Allocator,
     user_data_len: u32,
 ) !*Snapshot {
-    // todo - alloc and return contiguous memory for snapshot + user data
-    const snapshot = try alloc.create(Snapshot);
+    const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
+    const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
+    const snapshot: *Snapshot = std.mem.bytesAsValue(Snapshot, bytes[0..@sizeOf(Snapshot)]);
     snapshot.*.version = 1;
     snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
     snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
@@ -133,15 +122,3 @@ test "snapshot engine data" {
     try std.testing.expectEqual(42, snapshot.time.frame);
     try std.testing.expectEqual(1_000, snapshot.time.total_ms);
 }
-
-// test "snapshot headers with user data" {
-//     const snapshot = try start_snapshot(std.testing.allocator, 16);
-//     defer std.testing.allocator.destroy(snapshot);
-//     @panic("fail");
-//     // const user_data_ptr = snapshot.reserve_user_data(16);
-//     // try std.testing.expectEqual(16, snapshot.user_data_len);
-//     // try std.testing.expectEqual(snapshot, @sizeOf(Snapshot) + 16);
-//     // const user_data: [*]u8 = @ptrFromInt(user_data_ptr);
-//     // try std.testing.expectEqual(16, @memFromPtr(user_data).len);
-//     // try std.testing.expectEqual(16, @memFromPtr(user_data_ptr).len);
-// }

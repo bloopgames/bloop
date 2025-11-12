@@ -1,11 +1,11 @@
 import * as Enums from "./codegen/enums";
 
-// todo - move magic number to codegen
+// todo - move magic numbers to codegen
 export const MOUSE_OFFSET = 256;
+export const MOUSE_BUTTONS_OFFSET = 16;
 export const KEYBOARD_OFFSET = 0;
 
 export type MouseButton = keyof typeof Enums.MouseButton;
-
 export type Key = keyof typeof Enums.Key;
 
 export function keyToKeyCode(key: Key): Enums.Key {
