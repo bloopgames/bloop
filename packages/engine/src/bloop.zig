@@ -2,6 +2,7 @@ const std = @import("std");
 const util = @import("util.zig");
 const Ctx = @import("context.zig");
 const Events = @import("events.zig");
+const Tapes = @import("tapes.zig");
 
 // Imported from JS. Calls console.log
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
@@ -71,40 +72,30 @@ pub export fn alloc(size: usize) wasmPointer {
 }
 
 pub export fn snapshot() wasmPointer {
-    // Get a slice of bytes for the TimeCtx pointer
-    const time_size = @sizeOf(TimeCtx);
-    const time_bytes = std.mem.asBytes(@as(*const TimeCtx, @ptrFromInt(time_ctx_ptr)));
+    const snap = Tapes.start_snapshot(wasm_alloc, 0) catch |e| {
+        switch (e) {
+            error.OutOfMemory => log("Snapshot allocation failed: Out of memory"),
+        }
+        return 0;
+    };
 
-    // Allocate memory for the snapshot
-    const size: u32 = @sizeOf(u32) + time_bytes.len;
-    const ptr = alloc(size);
-    const out: [*]u8 = @ptrFromInt(ptr);
-
-    // Copy data into the snapshot buffer
-    var offset: u32 = 0;
-    @memcpy(out[offset .. offset + 4], std.mem.asBytes(&size));
-    offset += 4;
-    @memcpy(out[offset .. offset + time_size], time_bytes);
-    offset += time_size;
-    return ptr;
+    snap.write_time(time_ctx_ptr);
+    snap.write_inputs(input_ctx_ptr);
+    snap.write_events(events_ptr);
+    return @intFromPtr(snap);
 }
 
-pub export fn restore(ptr: u32, len: u32) void {
-    const src: [*]const u8 = @ptrFromInt(ptr);
-    const time_size = @sizeOf(TimeCtx);
+pub export fn restore(snapshot_ptr: wasmPointer) void {
+    const snap: *Tapes.Snapshot = @ptrFromInt(snapshot_ptr);
 
-    // Expect TimeCtx + 4 extra bytes
-    if (len < time_size + 4) @panic("nope");
+    const time_ctx: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+    @memcpy(std.mem.asBytes(time_ctx), std.mem.asBytes(&snap.time));
 
-    // Copy TimeCtx back into live context
-    const ctx: *TimeCtx = @ptrFromInt(time_ctx_ptr);
-    const dst = std.mem.asBytes(ctx);
-    @memcpy(dst[0..time_size], src[0..time_size]);
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+    @memcpy(std.mem.asBytes(input_ctx), std.mem.asBytes(&snap.inputs));
 
-    // Validate the trailing marker
-    const extra = src[time_size .. time_size + 4];
-    if (extra[0] != 0xDE or extra[1] != 0xAD or extra[2] != 0xBE or extra[3] != 0xEF)
-        @panic("Invalid snapshot data");
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    @memcpy(std.mem.asBytes(events), std.mem.asBytes(&snap.events));
 }
 
 pub export fn register_systems(handle: cb_handle) void {
@@ -193,7 +184,7 @@ pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
     append_event(Event.mouseWheel(delta_x, delta_y));
 }
 
-pub export fn time_ctx() wasmPointer {
+pub export fn get_time_ctx() wasmPointer {
     return time_ctx_ptr;
 }
 

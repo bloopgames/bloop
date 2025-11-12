@@ -40,7 +40,7 @@ export class Runtime {
     this.wasm = wasm;
     this.#memory = memory;
     this.#time = new TimeContext(
-      new DataView(this.#memory.buffer, this.wasm.time_ctx()),
+      new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
     this.#serialize = opts?.serialize;
     this.#deserialize = opts?.deserialize;
@@ -80,7 +80,7 @@ export class Runtime {
       // update the data view to the latest memory buffer
       this.#time.dataView = new DataView(
         this.#memory.buffer,
-        this.wasm.time_ctx(),
+        this.wasm.get_time_ctx(),
       );
     }
     return this.#time;

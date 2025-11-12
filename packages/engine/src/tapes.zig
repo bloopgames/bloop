@@ -18,9 +18,8 @@ pub const Snapshot = extern struct {
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
     events: EventBuffer,
-    // user_data: [*]u8,
 
-    fn write_time(self: *Snapshot, time_ptr: EnginePointer) void {
+    pub fn write_time(self: *Snapshot, time_ptr: EnginePointer) void {
         const out: [*]u8 = @ptrCast(self);
         const time_ctx: *const Ctx.TimeCtx = @ptrFromInt(time_ptr);
         const time_len_offset = @offsetOf(Snapshot, "time_len");
@@ -31,7 +30,7 @@ pub const Snapshot = extern struct {
         @memcpy(out[time_offset .. time_offset + size], std.mem.asBytes(time_ctx));
     }
 
-    fn write_inputs(self: *Snapshot, input_ptr: EnginePointer) void {
+    pub fn write_inputs(self: *Snapshot, input_ptr: EnginePointer) void {
         const out: [*]u8 = @ptrCast(self);
         const input_ctx: *const Ctx.InputCtx = @ptrFromInt(input_ptr);
         const input_len_offset = @offsetOf(Snapshot, "input_len");
@@ -42,7 +41,7 @@ pub const Snapshot = extern struct {
         @memcpy(out[input_offset .. input_offset + size], std.mem.asBytes(input_ctx));
     }
 
-    fn write_events(self: *Snapshot, events_ptr: EnginePointer) void {
+    pub fn write_events(self: *Snapshot, events_ptr: EnginePointer) void {
         const out: [*]u8 = @ptrCast(self);
         const events_buffer: *const EventBuffer = @ptrFromInt(events_ptr);
         const events_len = @offsetOf(Snapshot, "events_len");
@@ -53,7 +52,7 @@ pub const Snapshot = extern struct {
         @memcpy(out[events_offset .. events_offset + size], std.mem.asBytes(events_buffer));
     }
 
-    fn reserve_user_data(self: *Snapshot, size: u32) EnginePointer {
+    pub fn reserve_user_data(self: *Snapshot, size: u32) EnginePointer {
         const out: [*]u8 = @ptrFromInt(self);
         const user_data_len = @offsetOf(Snapshot, "user_data_len");
         // const user_data_offset = @offsetOf(Snapshot, "user_data");
@@ -72,6 +71,7 @@ pub fn start_snapshot(
     alloc: std.mem.Allocator,
     user_data_len: u32,
 ) !*Snapshot {
+    // todo - alloc and return contiguous memory for snapshot + user data
     const snapshot = try alloc.create(Snapshot);
     snapshot.*.version = 1;
     snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
@@ -129,9 +129,9 @@ test "snapshot engine data" {
     const events_ptr = @intFromPtr(&events_buffer);
     snapshot.write_events(events_ptr);
 
-    // try std.testing.expectEqual(16, snapshot.time.dt_ms);
-    // try std.testing.expectEqual(42, snapshot.time.frame);
-    // try std.testing.expectEqual(1_000, snapshot.time.total_ms);
+    try std.testing.expectEqual(16, snapshot.time.dt_ms);
+    try std.testing.expectEqual(42, snapshot.time.frame);
+    try std.testing.expectEqual(1_000, snapshot.time.total_ms);
 }
 
 // test "snapshot headers with user data" {

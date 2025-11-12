@@ -6,7 +6,7 @@ export type WasmEngine = {
   alloc: (size: number) => EnginePointer;
   register_systems: (cb_handle: number) => void;
 
-  time_ctx: () => EnginePointer;
+  get_time_ctx: () => EnginePointer;
 
   step: (ms: number) => void;
 
