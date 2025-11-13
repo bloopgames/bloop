@@ -1,9 +1,14 @@
 import {
   type EnginePointer,
   Enums,
+  EVENT_PAYLOAD_ALIGN,
+  EVENT_PAYLOAD_SIZE,
+  EVENTS_OFFSET,
+  INPUT_CTX_OFFSET,
   InputContext,
   keyCodeToKey,
   mouseButtonCodeToMouseButton,
+  TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
@@ -128,9 +133,9 @@ export class Bloop<GS extends BloopSchema> {
   systemsCallback(system_handle: number, ptr: EnginePointer) {
     // todo - move this to engine
     const dv = new DataView(this.#engineBuffer, ptr);
-    const timeCtxPtr = dv.getUint32(0, true);
-    const inputCtxPtr = dv.getUint32(4, true);
-    const eventsPtr = dv.getUint32(8, true);
+    const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
+    const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
+    const eventsPtr = dv.getUint32(EVENTS_OFFSET, true);
 
     this.#context.rawPointer = ptr;
     this.#context.inputs.dataView = new DataView(
@@ -146,16 +151,20 @@ export class Bloop<GS extends BloopSchema> {
 
       const eventCount = eventsDataView.getUint32(0, true);
 
-      let offset = 4;
+      let offset = Uint32Array.BYTES_PER_ELEMENT;
 
       for (let i = 0; i < eventCount; i++) {
         const eventType = eventsDataView.getUint8(offset);
-        // const payloadSize = eventType === Enums.EventType.MouseMove || eventType === Enums.EventType.MouseWheel ? 8 : 4;
-        const payloadSize = 8;
-        const payloadByte = eventsDataView.getUint8(offset + 4);
+        const payloadSize = EVENT_PAYLOAD_SIZE;
+        const payloadByte = eventsDataView.getUint8(
+          offset + EVENT_PAYLOAD_ALIGN,
+        );
         const payloadVec2 = {
-          x: eventsDataView.getFloat32(offset + 4, true),
-          y: eventsDataView.getFloat32(offset + 8, true),
+          x: eventsDataView.getFloat32(offset + EVENT_PAYLOAD_ALIGN, true),
+          y: eventsDataView.getFloat32(
+            offset + EVENT_PAYLOAD_ALIGN + Float32Array.BYTES_PER_ELEMENT,
+            true,
+          ),
         };
 
         switch (eventType) {
@@ -207,7 +216,8 @@ export class Bloop<GS extends BloopSchema> {
           default:
             throw new Error(`Unknown event type: ${eventType}`);
         }
-        offset += 4 + payloadSize;
+        // the event type u8 + padding + payload
+        offset += EVENT_PAYLOAD_ALIGN + EVENT_PAYLOAD_SIZE;
       }
       (this.#context as any).event = undefined;
     }

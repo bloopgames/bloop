@@ -70,6 +70,7 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
 
 pub export fn initialize() void {
     // Validate Event struct layout for js-side assumptions
+    // See EVENT_PAYLOAD_SIZE and EVENT_PAYLOAD_ALIGN in inputs.ts
     std.debug.assert(@sizeOf(Events.EventPayload) == 8);
     std.debug.assert(@alignOf(Events.EventPayload) == 4);
 
