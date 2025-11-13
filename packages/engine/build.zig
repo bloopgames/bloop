@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "bloop",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/bloop.zig"),
+            .root_source_file = b.path("src/engine.zig"),
             .target = target,
             .optimize = optimize,
         }),

@@ -62,7 +62,7 @@ pub const EventPayload = extern union {
     mouse_button: MouseButton,
     mouse_move: extern struct { x: f32, y: f32 },
     delta: extern struct { delta_x: f32, delta_y: f32 },
-    frame_number: u64,
+    frame_number: u32,
 };
 
 pub const EventType = enum(u8) {

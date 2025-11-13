@@ -33,6 +33,41 @@ var global_cb_handle: cb_handle = 0;
 var global_snapshot_handle: cb_handle = 0;
 var global_restore_handle: cb_handle = 0;
 
+pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    _ = ret_addr;
+
+    const bytes = std.fmt.allocPrint(arena(), "{s}", .{msg}) catch {
+        @trap();
+    };
+    log_fmt("Panictastic: {s}\n", .{bytes}) catch {
+        @trap();
+    };
+
+    _ = stack_trace;
+    // if (stack_trace) |trace| {
+    //     const buf = arena().alloc(u8, 1024) catch {
+    //         log("Panic: failed to allocate stack trace buffer");
+    //         @trap();
+    //     };
+
+    //     const src = @src();
+    //     log(" at {s}:{d}\n", .{ src.file, src.line }) catch {
+    //         @trap();
+    //     };
+    //     var writer: std.Io.Writer = .fixed(buf);
+    //     const tty_config = std.Io.tty.Config.no_color;
+    //     // this line causes the errors
+    //     std.debug.writeStackTrace(trace, &writer, tty_config);
+    //     writer.flush() catch {
+    //         log("Panic: failed to flush stack trace buffer");
+    //         @trap();
+    //     };
+    //     log(buf[0..writer.end]);
+    // }
+
+    @trap();
+}
+
 pub export fn initialize() void {
     // Validate Event struct layout for js-side assumptions
     std.debug.assert(@sizeOf(Events.EventPayload) == 8);
@@ -207,6 +242,14 @@ fn append_event(event: Event) void {
 fn flush_events() void {
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     events.*.count = 0;
+}
+
+/// Logs a message to the console
+/// @param msg The message to log
+/// to log an allocated message, use the arena allocator, e.g.
+fn log_fmt(comptime fmt: []const u8, args: anytype) !void {
+    const msg = try std.fmt.allocPrint(arena(), fmt, args);
+    log(msg);
 }
 
 fn log(msg: []const u8) void {
