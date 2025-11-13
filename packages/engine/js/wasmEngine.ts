@@ -1,5 +1,5 @@
-import type { EnginePointer } from "./engine";
 import type * as Enums from "./codegen/enums";
+import type { EngineOk, EnginePointer } from "./engine";
 
 export type WasmEngine = {
   initialize: () => void;
@@ -19,8 +19,14 @@ export type WasmEngine = {
   emit_mousemove: (x: number, y: number) => void;
   emit_mousewheel: (x: number, y: number) => void;
 
-  /** Returns a pointer to the snapshot data. */
-  snapshot: (size: number) => EnginePointer;
+  /**
+   * Start recording inputs to tape
+   */
+  start_recording: (data_len: number, max_events: number) => EngineOk;
+  /**
+   * Returns a pointer to the snapshot data.
+   */
+  take_snapshot: (size: number) => EnginePointer;
   /** Restores the engine state from a snapshot */
   restore: (ptr: EnginePointer) => void;
   snapshot_user_data_offset: () => number;

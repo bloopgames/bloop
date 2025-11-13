@@ -254,12 +254,9 @@ describe("tapes", () => {
   describe("caller payload", () => {
     it("can capture and restore arbitrary payloads", async () => {
       let called = false;
-      let buffer: ArrayBuffer;
       const { runtime } = await mount({
         systemsCallback() {},
-        setBuffer(engineBuffer) {
-          buffer = engineBuffer;
-        },
+        setBuffer() {},
         serialize() {
           return {
             write(buffer, ptr) {

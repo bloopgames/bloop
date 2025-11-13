@@ -4,8 +4,21 @@ export * from "./contexts/timeContext";
 export * from "./inputs";
 export type * from "./wasmEngine";
 
+/**
+ * A pointer to shared wasm memory space. Use it like
+ *
+ * const dataView = new DataView(wasmMemory.buffer, ptr);
+ */
 export type EnginePointer = number;
 export type EngineLen = number;
+/**
+ * A return value indicating success.
+ *
+ * 0 = success
+ * 1 = failure
+ * other values are function specific error codes
+ */
+export type EngineOk = number;
 
 export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 

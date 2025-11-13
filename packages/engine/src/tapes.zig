@@ -66,7 +66,7 @@ pub const Tape = struct {
     max_events: u32,
     event_count: u32 = 0,
 
-    pub fn init(gpa: std.mem.Allocator, snapshot: Snapshot, max_events: u32) !Tape {
+    pub fn init(gpa: std.mem.Allocator, snapshot: *Snapshot, max_events: u32) !Tape {
         const total_size = @sizeOf(TapeHeader) + @sizeOf(Snapshot) + snapshot.user_data_len + (@sizeOf(Event) * max_events);
         var tape_buf = try gpa.alloc(u8, total_size);
         var offset: u32 = 0;

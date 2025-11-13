@@ -82,19 +82,40 @@ export class Runtime {
   }
 
   stepBack() {
-    throw new Error("stepBack not implemented");
+    if (this.time.frame === 0) {
+      return;
+    }
+    this.seek(this.time.frame - 1);
+  }
+
+  seek(frame: number) {
+    assert(
+      this.hasHistory,
+      "Not recording or playing back, can't seek to frame",
+    );
+
+    throw new Error(`Need to do seek in the engine`);
+    const closestSnapshot = this.#vcr.snapshot;
+    this.restore(closestSnapshot);
+
+    while (this.time.frame < frame) {
+      this.step(16);
+    }
   }
 
   record() {
+    const serializer = this.#serialize ? this.#serialize() : null;
+    const size = serializer ? serializer.size : 0;
     this.#vcr.isRecording = true;
     this.#vcr.snapshot = this.snapshot();
+    this.wasm.start_recording(size, 1024);
   }
 
   snapshot(): Uint8Array<ArrayBuffer> {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
 
-    const ptr = this.wasm.snapshot(size);
+    const ptr = this.wasm.take_snapshot(size);
 
     const header = new Uint32Array(this.#memory.buffer, ptr, 4);
     assert(header[1], `header user length missing`);
@@ -113,6 +134,7 @@ export class Runtime {
 
   restore(snapshot: Uint8Array) {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
+    assert(dataPtr > 0, "failed to allocate memory for snapshot restore");
     const memoryView = new Uint8Array(
       this.#memory.buffer,
       dataPtr,
@@ -160,6 +182,10 @@ export class Runtime {
 
   get isPlayingBack(): boolean {
     return this.#vcr.isPlayingBack;
+  }
+
+  get hasHistory(): boolean {
+    return this.isRecording || this.isPlayingBack;
   }
 
   emit = {
@@ -221,11 +247,15 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
 
   wasm.initialize();
 
+  const runtime = new Runtime(wasm, memory, {
+    serialize: opts.serialize,
+    deserialize: opts.deserialize,
+  });
+
+  runtime.record();
+
   return {
-    runtime: new Runtime(wasm, memory, {
-      serialize: opts.serialize,
-      deserialize: opts.deserialize,
-    }),
+    runtime,
     wasm,
   };
 }

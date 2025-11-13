@@ -49,7 +49,7 @@ pub const Event = extern struct {
         };
     }
 
-    pub inline fn frameAdvance(frame_number: u64) Event {
+    pub inline fn frameAdvance(frame_number: u32) Event {
         return Event{
             .kind = .FrameAdvance,
             .payload = .{ .frame_number = frame_number },

@@ -33,15 +33,23 @@ var global_cb_handle: cb_handle = 0;
 var global_snapshot_handle: cb_handle = 0;
 var global_restore_handle: cb_handle = 0;
 
+var tape: ?Tapes.Tape = null;
+
+const Vcr = struct {
+    is_recording: bool,
+    is_replaying: bool,
+};
+var vcr: Vcr = .{
+    .is_recording = false,
+    .is_replaying = false,
+};
+
 pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
 
-    const bytes = std.fmt.allocPrint(arena(), "{s}", .{msg}) catch {
+    log(std.fmt.allocPrint(arena(), "{s}", .{msg}) catch {
         @trap();
-    };
-    log_fmt("Panictastic: {s}\n", .{bytes}) catch {
-        @trap();
-    };
+    });
 
     _ = stack_trace;
     // if (stack_trace) |trace| {
@@ -104,6 +112,7 @@ pub export fn initialize() void {
 
 pub export fn alloc(size: usize) wasmPointer {
     const slice = wasm_alloc.alloc(u8, size) catch return 0;
+    log_fmt("Allocated {d} bytes at {}", .{ size, @intFromPtr(slice.ptr) });
     return @intFromPtr(slice.ptr);
 }
 
@@ -112,7 +121,17 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn snapshot(user_data_len: u32) wasmPointer {
+pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
+    const snapshot: *Tapes.Snapshot = @ptrFromInt(take_snapshot(user_data_len));
+    tape = Tapes.Tape.init(wasm_alloc, snapshot, max_events) catch {
+        log("Failed to start recording: Out of memory");
+        return 1;
+    };
+    vcr.is_recording = true;
+    return 0;
+}
+
+pub export fn take_snapshot(user_data_len: u32) wasmPointer {
     const snap = Tapes.start_snapshot(wasm_alloc, user_data_len) catch |e| {
         switch (e) {
             error.OutOfMemory => log("Snapshot allocation failed: Out of memory"),
@@ -160,9 +179,16 @@ pub export fn step(ms: u32) void {
     while (accumulator >= hz) {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
+
+        log_fmt("step {d} - recording={} replaying={}", .{ time.*.frame, vcr.is_recording, vcr.is_replaying });
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
+        if (tape) |*t| {
+            t.advance_frame() catch {
+                @panic("Failed to advance tape frame");
+            };
+        }
         flush_events();
     }
 
@@ -182,31 +208,37 @@ pub export fn step(ms: u32) void {
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {
+    // fixme - inputctx should be responsible for this logic
+    // and should have methods to process events
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
     input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] |= 1;
 
-    append_event(Event.keyDown(key_code));
+    const event = Event.keyDown(key_code);
+    append_event(event);
 }
 
 pub export fn emit_keyup(key_code: Events.Key) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
     input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] &= 0b11111110;
 
-    append_event(Event.keyUp(key_code));
+    const event = Event.keyUp(key_code);
+    append_event(event);
 }
 
 pub export fn emit_mousedown(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
     input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] |= 1;
 
-    append_event(Event.mouseDown(button));
+    const event = Event.mouseDown(button);
+    append_event(event);
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
     input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] &= 0b11111110;
 
-    append_event(Event.mouseUp(button));
+    const event = Event.mouseUp(button);
+    append_event(event);
 }
 
 pub export fn emit_mousemove(x: f32, y: f32) void {
@@ -214,7 +246,8 @@ pub export fn emit_mousemove(x: f32, y: f32) void {
     input_ctx.*.mouse_ctx.x = x;
     input_ctx.*.mouse_ctx.y = y;
 
-    append_event(Event.mouseMove(x, y));
+    const event = Event.mouseMove(x, y);
+    append_event(event);
 }
 
 pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
@@ -222,7 +255,8 @@ pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
     input_ctx.*.mouse_ctx.wheel_x += delta_x;
     input_ctx.*.mouse_ctx.wheel_y += delta_y;
 
-    append_event(Event.mouseWheel(delta_x, delta_y));
+    const event = Event.mouseWheel(delta_x, delta_y);
+    append_event(event);
 }
 
 pub export fn get_time_ctx() wasmPointer {
@@ -230,13 +264,18 @@ pub export fn get_time_ctx() wasmPointer {
 }
 
 fn append_event(event: Event) void {
-    const events: *EventBuffer = @ptrFromInt(events_ptr);
-    const idx = events.*.count;
-    if (idx < 256) {
-        events.*.count += 1;
-        events.*.events[idx] = event;
-    } else {
-        @panic("Event buffer full");
+    if (vcr.is_recording) {
+        tape.?.append_event(event) catch @panic("Failed to record event");
+    }
+    if (!vcr.is_replaying) {
+        const events: *EventBuffer = @ptrFromInt(events_ptr);
+        const idx = events.*.count;
+        if (idx < 256) {
+            events.*.count += 1;
+            events.*.events[idx] = event;
+        } else {
+            @panic("Event buffer full");
+        }
     }
 }
 
@@ -248,8 +287,11 @@ fn flush_events() void {
 /// Logs a message to the console
 /// @param msg The message to log
 /// to log an allocated message, use the arena allocator, e.g.
-fn log_fmt(comptime fmt: []const u8, args: anytype) !void {
-    const msg = try std.fmt.allocPrint(arena(), fmt, args);
+fn log_fmt(comptime fmt: []const u8, args: anytype) void {
+    const msg = std.fmt.allocPrint(arena(), fmt, args) catch {
+        log(fmt);
+        @panic("Failed to allocate log message");
+    };
     log(msg);
 }
 

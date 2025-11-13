@@ -89,7 +89,7 @@ describe("tapes", () => {
   });
 
   describe("playback", () => {
-    it("can play back inputs", async () => {
+    it("can step back", async () => {
       const bloop = Bloop.create({
         bag: {
           clicks: 0,
