@@ -9,7 +9,14 @@ export type WasmEngine = {
 
   get_time_ctx: () => EnginePointer;
 
+  /**
+   * Step forward one simulation frame
+   */
   step: (ms: number) => void;
+  /**
+   * Seek to a specific frame number
+   */
+  seek: (frame: number) => void;
 
   // Input platform events
   emit_keydown: (key: Enums.Key) => void;
@@ -29,5 +36,6 @@ export type WasmEngine = {
   take_snapshot: (size: number) => EnginePointer;
   /** Restores the engine state from a snapshot */
   restore: (ptr: EnginePointer) => void;
+
   snapshot_user_data_offset: () => number;
 };

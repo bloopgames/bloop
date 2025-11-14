@@ -61,7 +61,6 @@ describe("snapshots", () => {
       setBuffer() {},
     });
 
-    runtime.record();
     runtime.step(16);
     runtime.step(16);
     expect(runtime.time.frame).toEqual(2);

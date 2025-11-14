@@ -106,7 +106,6 @@ describe("tapes", () => {
 
       const { runtime } = await mount(bloop);
 
-      runtime.record();
       runtime.emit.mousedown("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(1);

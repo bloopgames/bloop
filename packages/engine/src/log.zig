@@ -13,13 +13,12 @@ pub fn init(arena_param: std.mem.Allocator, log_fn_param: fn ([]const u8) void) 
 
 pub fn log(comptime fmt: []const u8, args: anytype) void {
     if (!initialized) {
-        @panic("Logging not initalized");
+        return;
     }
 
     const msg = std.fmt.allocPrint(arena, fmt, args) catch {
         log_fn(fmt);
         return;
     };
-
     log_fn(msg);
 }

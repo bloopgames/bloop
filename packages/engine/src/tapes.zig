@@ -72,7 +72,6 @@ pub const Tape = struct {
         var tape_buf = try gpa.alloc(u8, total_size);
         var offset: u32 = 0;
 
-        log("Creating tape with total size: {d} bytes", .{total_size});
         // Write the tape header
         const header = TapeHeader{};
         @memcpy(tape_buf[0..@sizeOf(TapeHeader)], std.mem.asBytes(&header));
@@ -85,6 +84,8 @@ pub const Tape = struct {
 
         // Write snapshot user data if any
         if (user_data_len > 0) {
+            log("Not recording user data", .{});
+
             // const user_data_src = @intFromPtr(&snapshot) + @sizeOf(Snapshot);
             // const user_data_dst = tape_buf[offset .. offset + user_data_len];
             // @memcpy(user_data_dst, user_data_src);
@@ -92,6 +93,14 @@ pub const Tape = struct {
         }
 
         return Tape{ .buf = tape_buf, .offset = offset, .frame_number = snapshot.time.frame, .max_events = max_events };
+    }
+
+    pub fn closest_snapshot(self: *Tape, frame: u32) *Snapshot {
+        _ = frame;
+        const snapshot_offset = @sizeOf(TapeHeader);
+        const snapshot_slice = self.buf[snapshot_offset .. snapshot_offset + @sizeOf(Snapshot)];
+        const snapshot: *Snapshot = @ptrCast(@alignCast(snapshot_slice.ptr));
+        return snapshot;
     }
 
     pub fn free(self: *Tape, gpa: std.mem.Allocator) void {
@@ -225,7 +234,7 @@ test "tape can replay events" {
     const snapshot = try start_snapshot(std.testing.allocator, 0);
     defer std.testing.allocator.destroy(snapshot);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot.*, 4);
+    var tape = try Tape.init(std.testing.allocator, snapshot, 4);
     defer tape.free(std.testing.allocator);
 
     try tape.append_event(Event.keyDown(.KeyA));

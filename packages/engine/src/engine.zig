@@ -54,6 +54,8 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
     });
 
     _ = stack_trace;
+    // https://github.com/ziglang/zig/issues/24285
+    // https://github.com/ziglang/zig/issues/25856
     // if (stack_trace) |trace| {
     //     const buf = arena().alloc(u8, 1024) catch {
     //         log("Panic: failed to allocate stack trace buffer");
@@ -125,6 +127,11 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
 }
 
 pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
+    wasm_log("Starting recording");
+    if (vcr.is_recording) {
+        wasm_log("Already recording");
+        return 2;
+    }
     const snapshot: *Tapes.Snapshot = @ptrFromInt(take_snapshot(user_data_len));
     tape = Tapes.Tape.init(wasm_alloc, snapshot, max_events) catch {
         wasm_log("Failed to start recording: Out of memory");
@@ -165,6 +172,30 @@ pub export fn restore(snapshot_ptr: wasmPointer) void {
     @memcpy(std.mem.asBytes(events), std.mem.asBytes(&snap.events));
 }
 
+pub export fn seek(frame: u32) void {
+    if (tape == null) {
+        log_fmt("seek(frame: {})", .{frame});
+        @panic("Tried to seek to frame without an active tape");
+    }
+
+    const snapshot = tape.?.closest_snapshot(frame);
+    restore(@intFromPtr(snapshot));
+
+    // Advance to the desired frame
+    const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+    vcr.is_replaying = true;
+    defer {
+        vcr.is_replaying = false;
+    }
+    while (time.*.frame < frame) {
+        const events = tape.?.get_events(time.*.frame);
+        wasm_log("Need to do something with the events each frame");
+
+        _ = events;
+        step(hz);
+    }
+}
+
 pub export fn register_systems(handle: cb_handle) void {
     global_cb_handle = handle;
 }
@@ -187,10 +218,12 @@ pub export fn step(ms: u32) void {
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
-        if (tape) |*t| {
-            t.advance_frame() catch {
-                @panic("Failed to advance tape frame");
-            };
+        if (vcr.is_recording and !vcr.is_replaying) {
+            if (tape) |*t| {
+                t.advance_frame() catch {
+                    @panic("Failed to advance tape frame");
+                };
+            }
         }
         flush_events();
     }
@@ -211,54 +244,49 @@ pub export fn step(ms: u32) void {
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {
-    // fixme - inputctx should be responsible for this logic
-    // and should have methods to process events
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] |= 1;
-
     const event = Event.keyDown(key_code);
+
+    input_ctx.*.process_event(event);
     append_event(event);
 }
 
 pub export fn emit_keyup(key_code: Events.Key) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.key_ctx.key_states[@intFromEnum(key_code)] &= 0b11111110;
-
     const event = Event.keyUp(key_code);
+
+    input_ctx.*.process_event(event);
     append_event(event);
 }
 
 pub export fn emit_mousedown(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] |= 1;
-
     const event = Event.mouseDown(button);
+
+    input_ctx.process_event(event);
     append_event(event);
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.mouse_ctx.button_states[@intFromEnum(button)] &= 0b11111110;
-
     const event = Event.mouseUp(button);
+    input_ctx.*.process_event(event);
     append_event(event);
 }
 
 pub export fn emit_mousemove(x: f32, y: f32) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.mouse_ctx.x = x;
-    input_ctx.*.mouse_ctx.y = y;
-
     const event = Event.mouseMove(x, y);
+
+    input_ctx.*.process_event(event);
     append_event(event);
 }
 
 pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    input_ctx.*.mouse_ctx.wheel_x += delta_x;
-    input_ctx.*.mouse_ctx.wheel_y += delta_y;
-
     const event = Event.mouseWheel(delta_x, delta_y);
+
+    input_ctx.*.process_event(event);
     append_event(event);
 }
 

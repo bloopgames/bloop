@@ -94,13 +94,7 @@ export class Runtime {
       "Not recording or playing back, can't seek to frame",
     );
 
-    throw new Error(`Need to do seek in the engine`);
-    const closestSnapshot = this.#vcr.snapshot;
-    this.restore(closestSnapshot);
-
-    while (this.time.frame < frame) {
-      this.step(16);
-    }
+    this.wasm.seek(frame);
   }
 
   record() {
