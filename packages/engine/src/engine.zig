@@ -3,6 +3,8 @@ const util = @import("util.zig");
 const Ctx = @import("context.zig");
 const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
+const Log = @import("log.zig");
+const log = Log.log;
 
 // Imported from JS. Calls console.log
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
@@ -47,7 +49,7 @@ var vcr: Vcr = .{
 pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
 
-    log(std.fmt.allocPrint(arena(), "{s}", .{msg}) catch {
+    wasm_log(std.fmt.allocPrint(arena(), "{s}", .{msg}) catch {
         @trap();
     });
 
@@ -77,6 +79,8 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
 }
 
 pub export fn initialize() void {
+    Log.init(arena(), wasm_log);
+
     // Validate Event struct layout for js-side assumptions
     // See EVENT_PAYLOAD_SIZE and EVENT_PAYLOAD_ALIGN in inputs.ts
     std.debug.assert(@sizeOf(Events.EventPayload) == 8);
@@ -112,7 +116,6 @@ pub export fn initialize() void {
 
 pub export fn alloc(size: usize) wasmPointer {
     const slice = wasm_alloc.alloc(u8, size) catch return 0;
-    log_fmt("Allocated {d} bytes at {}", .{ size, @intFromPtr(slice.ptr) });
     return @intFromPtr(slice.ptr);
 }
 
@@ -124,7 +127,7 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
 pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
     const snapshot: *Tapes.Snapshot = @ptrFromInt(take_snapshot(user_data_len));
     tape = Tapes.Tape.init(wasm_alloc, snapshot, max_events) catch {
-        log("Failed to start recording: Out of memory");
+        wasm_log("Failed to start recording: Out of memory");
         return 1;
     };
     vcr.is_recording = true;
@@ -134,7 +137,7 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
     const snap = Tapes.start_snapshot(wasm_alloc, user_data_len) catch |e| {
         switch (e) {
-            error.OutOfMemory => log("Snapshot allocation failed: Out of memory"),
+            error.OutOfMemory => wasm_log("Snapshot allocation failed: Out of memory"),
         }
         return 0;
     };
@@ -289,13 +292,13 @@ fn flush_events() void {
 /// to log an allocated message, use the arena allocator, e.g.
 fn log_fmt(comptime fmt: []const u8, args: anytype) void {
     const msg = std.fmt.allocPrint(arena(), fmt, args) catch {
-        log(fmt);
+        wasm_log(fmt);
         @panic("Failed to allocate log message");
     };
-    log(msg);
+    wasm_log(msg);
 }
 
-fn log(msg: []const u8) void {
+fn wasm_log(msg: []const u8) void {
     console_log(msg.ptr, msg.len);
 }
 

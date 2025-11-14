@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const Ctx = @import("context.zig");
 const Event = @import("events.zig").Event;
 const EventBuffer = @import("events.zig").EventBuffer;
+const log = @import("log.zig").log;
 
 const EnginePointer = if (builtin.target.cpu.arch.isWasm()) u32 else usize;
 
@@ -71,6 +72,7 @@ pub const Tape = struct {
         var tape_buf = try gpa.alloc(u8, total_size);
         var offset: u32 = 0;
 
+        log("Creating tape with total size: {d} bytes", .{total_size});
         // Write the tape header
         const header = TapeHeader{};
         @memcpy(tape_buf[0..@sizeOf(TapeHeader)], std.mem.asBytes(&header));
@@ -78,7 +80,7 @@ pub const Tape = struct {
 
         // Write the snapshot
         const user_data_len = snapshot.user_data_len;
-        @memcpy(tape_buf[offset .. offset + @sizeOf(Snapshot)], std.mem.asBytes(&snapshot));
+        @memcpy(tape_buf[offset .. offset + @sizeOf(Snapshot)], std.mem.asBytes(snapshot));
         offset += @sizeOf(Snapshot);
 
         // Write snapshot user data if any
@@ -89,12 +91,7 @@ pub const Tape = struct {
             // offset += user_data_len;
         }
 
-        return Tape{
-            .buf = tape_buf,
-            .offset = offset,
-            .frame_number = snapshot.time.frame,
-            .max_events = max_events,
-        };
+        return Tape{ .buf = tape_buf, .offset = offset, .frame_number = snapshot.time.frame, .max_events = max_events };
     }
 
     pub fn free(self: *Tape, gpa: std.mem.Allocator) void {
