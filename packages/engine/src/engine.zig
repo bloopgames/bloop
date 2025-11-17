@@ -228,10 +228,16 @@ pub export fn seek(frame: u32) void {
         vcr.is_replaying = false;
     }
     while (time.*.frame < frame) {
-        const events = tape.?.get_events(time.*.frame);
-        wasm_log("Need to do something with the events each frame");
+        const tape_events = tape.?.get_events(time.*.frame);
+        const events: *EventBuffer = @ptrFromInt(events_ptr);
 
-        _ = events;
+        events.*.count = std.math.cast(u8, tape_events.len) orelse {
+            log_fmt("Too many events in tape for event buffer: {}", .{tape_events.len});
+            @panic("Too many events in tape for event buffer - must be 255 or fewer");
+        };
+        for (tape_events, 0..) |event, idx| {
+            events.*.events[idx] = event;
+        }
         step(hz);
     }
 }
@@ -254,7 +260,7 @@ pub export fn step(ms: u32) void {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
 
-        // log_fmt("step {d} - recording={} replaying={}", .{ time.*.frame, vcr.is_recording, vcr.is_replaying });
+        process_events();
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
@@ -284,50 +290,27 @@ pub export fn step(ms: u32) void {
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.keyDown(key_code);
-
-    input_ctx.*.process_event(event);
-    append_event(event);
+    append_event(Event.keyDown(key_code));
 }
 
 pub export fn emit_keyup(key_code: Events.Key) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.keyUp(key_code);
-
-    input_ctx.*.process_event(event);
-    append_event(event);
+    append_event(Event.keyUp(key_code));
 }
 
 pub export fn emit_mousedown(button: Events.MouseButton) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.mouseDown(button);
-
-    input_ctx.process_event(event);
-    append_event(event);
+    append_event(Event.mouseDown(button));
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.mouseUp(button);
-    input_ctx.*.process_event(event);
-    append_event(event);
+    append_event(Event.mouseUp(button));
 }
 
 pub export fn emit_mousemove(x: f32, y: f32) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.mouseMove(x, y);
-
-    input_ctx.*.process_event(event);
-    append_event(event);
+    append_event(Event.mouseMove(x, y));
 }
 
 pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    const event = Event.mouseWheel(delta_x, delta_y);
-
-    input_ctx.*.process_event(event);
-    append_event(event);
+    append_event(Event.mouseWheel(delta_x, delta_y));
 }
 
 pub export fn get_time_ctx() wasmPointer {
@@ -347,6 +330,14 @@ fn append_event(event: Event) void {
         } else {
             @panic("Event buffer full");
         }
+    }
+}
+
+fn process_events() void {
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    for (events.*.events[0..events.*.count]) |event| {
+        const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+        input_ctx.*.process_event(event);
     }
 }
 
