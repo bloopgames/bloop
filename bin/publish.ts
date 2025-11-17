@@ -24,10 +24,12 @@ const packageCwds = packages.map((packageName) =>
 );
 
 try {
-  await Bun.write(
-    path.join(__dirname, "..", ".npmrc"),
-    `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
-  );
+  if (process.env.NPM_TOKEN) {
+    await Bun.write(
+      path.join(__dirname, "..", ".npmrc"),
+      `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
+    );
+  }
 
   let maxVersion: [number, number, number] = [0, 0, 0];
   // find the highest version across all packages
@@ -55,7 +57,9 @@ try {
     await revertPackageJson(packageCwd);
   }
 
-  await unlink(path.join(__dirname, "..", ".npmrc"));
+  if (process.env.NPM_TOKEN) {
+    await unlink(path.join(__dirname, "..", ".npmrc"));
+  }
 }
 
 async function revertPackageJson(cwd: string) {
@@ -90,7 +94,7 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
   console.log(packageJson.name, packageJson.version);
 
   await $`bun run build`.cwd(cwd);
-  await $`bun publish --dry-run`.cwd(cwd);
+  await $`npm publish --dry-run`.cwd(cwd);
 }
 
 // bun won't pick up the new package.json versions, it'll use what's in bun.lock instead, see
