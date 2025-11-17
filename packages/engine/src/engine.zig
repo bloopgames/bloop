@@ -135,8 +135,13 @@ pub export fn alloc(size: usize) wasmPointer {
         wasm_log("Failed to allocate memory from engine");
         return 0;
     };
-    log_fmt("Success {d}", .{@intFromPtr(slice.ptr)});
-    return @intFromPtr(slice.ptr);
+
+    const ptr = @intFromPtr(slice.ptr);
+    if (size == 0) {
+        @panic("Tried to allocate 0 bytes");
+    }
+    // log_fmt("Success {d}", .{ptr});
+    return ptr;
 }
 
 pub export fn free(ptr: wasmPointer, size: usize) void {
@@ -145,7 +150,6 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
 }
 
 pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
-    wasm_log("Starting recording");
     if (vcr.is_recording) {
         wasm_log("Already recording");
         return 2;
@@ -157,6 +161,14 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
     };
     vcr.is_recording = true;
     return 0;
+}
+
+pub export fn is_recording() bool {
+    return vcr.is_recording;
+}
+
+pub export fn is_replaying() bool {
+    return vcr.is_replaying;
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
@@ -178,10 +190,6 @@ pub export fn take_snapshot(user_data_len: u32) wasmPointer {
         );
     }
     return @intFromPtr(snap);
-}
-
-pub export fn snapshot_user_data_offset() u32 {
-    return @sizeOf(Tapes.Snapshot);
 }
 
 pub export fn restore(snapshot_ptr: wasmPointer) void {
@@ -246,7 +254,7 @@ pub export fn step(ms: u32) void {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
 
-        log_fmt("step {d} - recording={} replaying={}", .{ time.*.frame, vcr.is_recording, vcr.is_replaying });
+        // log_fmt("step {d} - recording={} replaying={}", .{ time.*.frame, vcr.is_recording, vcr.is_replaying });
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;

@@ -11,7 +11,7 @@ pub const Snapshot = extern struct {
     version: u32,
     user_data_len: u32,
     engine_data_len: u32,
-    reserved_1: u32,
+    snapshot_len: u32,
     time_len: u32,
     input_len: u32,
     events_len: u32,
@@ -19,6 +19,31 @@ pub const Snapshot = extern struct {
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
     events: EventBuffer,
+
+    pub fn init(
+        alloc: std.mem.Allocator,
+        user_data_len: u32,
+    ) !*Snapshot {
+        const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
+        const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
+
+        const snapshot: *Snapshot = @ptrCast(bytes.ptr);
+        snapshot.*.version = 1;
+        snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
+        snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
+        snapshot.*.events_len = @sizeOf(EventBuffer);
+        snapshot.*.user_data_len = user_data_len;
+        snapshot.*.engine_data_len = @sizeOf(Snapshot);
+
+        return snapshot;
+    }
+
+    pub fn deinit(self: *Snapshot, alloc: std.mem.Allocator) void {
+        const total_size = @sizeOf(Snapshot) + @as(usize, self.user_data_len);
+        const base_ptr: [*]align(@alignOf(Snapshot)) u8 = @ptrCast(self);
+        const bytes = @as([*]align(@alignOf(Snapshot)) u8, base_ptr)[0..total_size];
+        alloc.free(bytes);
+    }
 
     pub fn write_time(self: *Snapshot, time_ptr: EnginePointer) void {
         const out: [*]u8 = @ptrCast(self);
@@ -57,32 +82,6 @@ pub const Snapshot = extern struct {
         const base = @as([*]u8, @ptrCast(self));
         const user_data_offset = @sizeOf(Snapshot);
         return base[user_data_offset .. user_data_offset + self.user_data_len];
-    }
-
-    pub fn init(
-        alloc: std.mem.Allocator,
-        user_data_len: u32,
-    ) !*Snapshot {
-        const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
-        const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
-        // const snapshot: *Snapshot = std.mem.bytesAsValue(Snapshot, bytes[0..@sizeOf(Snapshot)]);
-        const snapshot: *Snapshot = @ptrCast(bytes.ptr);
-        snapshot.*.version = 1;
-        snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
-        snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
-        snapshot.*.events_len = @sizeOf(EventBuffer);
-        snapshot.*.user_data_len = user_data_len;
-        snapshot.*.engine_data_len = snapshot.*.time_len +
-            snapshot.*.input_len +
-            snapshot.*.events_len;
-        return snapshot;
-    }
-
-    pub fn deinit(self: *Snapshot, alloc: std.mem.Allocator) void {
-        const total_size = @sizeOf(Snapshot) + @as(usize, self.user_data_len);
-        const base_ptr: [*]align(@alignOf(Snapshot)) u8 = @ptrCast(self);
-        const bytes = @as([*]align(@alignOf(Snapshot)) u8, base_ptr)[0..total_size];
-        alloc.free(bytes);
     }
 };
 
@@ -200,7 +199,7 @@ test "snapshot headers with no user data" {
     try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx), snapshot.time_len);
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);
-    try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx) + @sizeOf(Ctx.InputCtx) + @sizeOf(EventBuffer), snapshot.engine_data_len);
+    try std.testing.expectEqual(@sizeOf(Snapshot), snapshot.engine_data_len);
     // engine payload should be less than 4kb (we can optimize later)
     try std.testing.expect(snapshot.engine_data_len < 4_096);
     try std.testing.expectEqual(0, snapshot.user_data_len);

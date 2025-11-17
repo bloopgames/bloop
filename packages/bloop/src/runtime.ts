@@ -5,6 +5,9 @@ import {
   keyToKeyCode,
   type MouseButton,
   mouseButtonToMouseButtonCode,
+  SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
+  SNAPSHOT_HEADER_LEN,
+  SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
   type WasmEngine,
 } from "@bloopjs/engine";
@@ -23,6 +26,12 @@ export type MountOpts = {
    * Note that if the engine wasm memory grows, all dataviews into the memory must be updated
    */
   setBuffer: (buffer: ArrayBuffer) => void;
+
+  /**
+   * Whether to start recording immediately upon mount
+   * Defaults to true
+   */
+  startRecording?: boolean;
 
   /**
    * Optional hook to serialize some data when snapshotting
@@ -56,17 +65,11 @@ export class Runtime {
   wasm: WasmEngine;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
-  #vcr = {
-    isRecording: false,
-    isPlayingBack: false,
-    snapshot: new Uint8Array(),
-  };
   #serialize?: SerializeFn;
-  #deserialize?: DeserializeFn;
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
-    opts?: { serialize?: SerializeFn; deserialize?: DeserializeFn },
+    opts?: { serialize?: SerializeFn },
   ) {
     this.wasm = wasm;
     this.#memory = memory;
@@ -74,7 +77,6 @@ export class Runtime {
       new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
     this.#serialize = opts?.serialize;
-    this.#deserialize = opts?.deserialize;
   }
 
   step(ms?: number) {
@@ -99,8 +101,6 @@ export class Runtime {
   record() {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    this.#vcr.isRecording = true;
-    this.#vcr.snapshot = this.snapshot();
     this.wasm.start_recording(size, 1024);
   }
 
@@ -109,51 +109,41 @@ export class Runtime {
     const size = serializer ? serializer.size : 0;
 
     const ptr = this.wasm.take_snapshot(size);
-
     const header = new Uint32Array(this.#memory.buffer, ptr, 4);
-    assert(header[1], `header user length missing`);
-    assert(header[2], `header engine length missing`);
-    const length = header[1] + header[2];
+    const userLenIndex =
+      SNAPSHOT_HEADER_USER_LEN_OFFSET / Uint32Array.BYTES_PER_ELEMENT;
+    const engineLenIndex =
+      SNAPSHOT_HEADER_ENGINE_LEN_OFFSET / Uint32Array.BYTES_PER_ELEMENT;
+    assert(header[userLenIndex], `header user length missing`);
+    assert(header[engineLenIndex], `header engine length missing`);
+    const length = header[userLenIndex] + header[engineLenIndex];
     const memoryView = new Uint8Array(this.#memory.buffer, ptr, length);
 
-    if (serializer) {
-      serializer.write(
-        this.#memory.buffer,
-        ptr + this.wasm.snapshot_user_data_offset(),
-      );
-    }
-    return memoryView;
+    const copy = new Uint8Array(length);
+    copy.set(memoryView);
+
+    return copy;
   }
 
   restore(snapshot: Uint8Array) {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
     assert(
       dataPtr > 0,
-      `failed to allocate memory for snapshot restore, pointer=${dataPtr}`,
+      `failed to allocate ${snapshot.byteLength} bytes for snapshot restore, pointer=${dataPtr}`,
     );
+
+    // copy snapshot into wasm memory
     const memoryView = new Uint8Array(
       this.#memory.buffer,
       dataPtr,
       snapshot.byteLength,
     );
-
-    const header = new Uint32Array(snapshot.buffer, snapshot.byteOffset, 4);
-    assert(header[1], `header user length missing`);
-    const userDataLen = header[1];
-
-    console.log({ userDataLen });
-
-    if (this.#deserialize) {
-      console.log("Deserializing...");
-      this.#deserialize(
-        snapshot.buffer,
-        snapshot.byteOffset + this.wasm.snapshot_user_data_offset(),
-        userDataLen,
-      );
-    }
-
     memoryView.set(snapshot);
+
+    // restore the snapshot
     this.wasm.restore(dataPtr);
+
+    // free the allocated memory
     this.wasm.free(dataPtr, snapshot.byteLength);
   }
 
@@ -176,15 +166,15 @@ export class Runtime {
   }
 
   get isRecording(): boolean {
-    return this.#vcr.isRecording;
+    return this.wasm.is_recording();
   }
 
-  get isPlayingBack(): boolean {
-    return this.#vcr.isPlayingBack;
+  get isReplaying(): boolean {
+    return this.wasm.is_replaying();
   }
 
   get hasHistory(): boolean {
-    return this.isRecording || this.isPlayingBack;
+    return this.isRecording || this.isReplaying;
   }
 
   emit = {
@@ -270,10 +260,11 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
 
   const runtime = new Runtime(wasm, memory, {
     serialize: opts.serialize,
-    deserialize: opts.deserialize,
   });
 
-  runtime.record();
+  if (opts.startRecording ?? true) {
+    runtime.record();
+  }
 
   return {
     runtime,

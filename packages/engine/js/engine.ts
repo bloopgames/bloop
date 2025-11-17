@@ -25,3 +25,10 @@ export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
 export const TIME_CTX_OFFSET = 0;
 export const INPUT_CTX_OFFSET = TIME_CTX_OFFSET + 4;
 export const EVENTS_OFFSET = INPUT_CTX_OFFSET + 4;
+
+/**
+ * Size of snapshot header in bytes
+ */
+export const SNAPSHOT_HEADER_LEN = 16;
+export const SNAPSHOT_HEADER_USER_LEN_OFFSET = 4;
+export const SNAPSHOT_HEADER_ENGINE_LEN_OFFSET = 8;

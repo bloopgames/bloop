@@ -17,6 +17,18 @@ export type WasmEngine = {
    * Seek to a specific frame number
    */
   seek: (frame: number) => void;
+  /**
+   * Start recording inputs to tape
+   */
+  start_recording: (data_len: number, max_events: number) => EngineOk;
+  /**
+   * Whether the engine is currently recording to tape
+   */
+  is_recording: () => boolean;
+  /**
+   * Whether the engine is currently replaying from tape
+   */
+  is_replaying: () => boolean;
 
   // Input platform events
   emit_keydown: (key: Enums.Key) => void;
@@ -27,15 +39,9 @@ export type WasmEngine = {
   emit_mousewheel: (x: number, y: number) => void;
 
   /**
-   * Start recording inputs to tape
-   */
-  start_recording: (data_len: number, max_events: number) => EngineOk;
-  /**
    * Returns a pointer to the snapshot data.
    */
-  take_snapshot: (size: number) => EnginePointer;
+  take_snapshot: (data_len: number) => EnginePointer;
   /** Restores the engine state from a snapshot */
   restore: (ptr: EnginePointer) => void;
-
-  snapshot_user_data_offset: () => number;
 };

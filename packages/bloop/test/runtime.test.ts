@@ -254,6 +254,7 @@ describe("tapes", () => {
     it("can capture and restore arbitrary payloads", async () => {
       let called = false;
       const { runtime } = await mount({
+        startRecording: false,
         systemsCallback() {},
         setBuffer() {},
         serialize() {
@@ -261,7 +262,6 @@ describe("tapes", () => {
             write(buffer, ptr) {
               const data = new Uint8Array(buffer, ptr, 1);
               data[0] = 66;
-              console.log(toHexString(data));
             },
             size: 1,
           };

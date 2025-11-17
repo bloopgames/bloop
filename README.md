@@ -6,12 +6,11 @@ Make faster mistakes.
 
 Bloop is a rewindable 2d game simulation library that can be embedded in any game engine.
 
-* Write game state and logic in TypeScript
-* Rewind any live or recorded gameplay session
-* Hot reload code changes during a rewinded play session
+- Write game state and logic in TypeScript
+- Rewind any live or recorded gameplay session
+- Hot reload code changes during a rewinded play session
 
 [Technical Details](./details.md) | [Why Bloop?](./why.md)
-
 
 ## 1.0
 
@@ -19,13 +18,12 @@ Bloop is in early development. The goals for 1.0 are:
 
 ### Features
 
-- [ ] Unit testable
-- [ ] Record gameplay "tapes"
-- [ ] Rewind any live or recorded gameplay sesison
-- [ ] Hot reload code changes during a rewinded play session
-- [ ] Input Handling
-- [ ] Single frame object pools
-- [ ] Bag for singleton game state
+- [x] Unit testable
+- [x] Record gameplay "tapes"
+- [x] Rewind any live or recorded gameplay sesison
+- [x] Hot reload code changes during a rewinded play session
+- [x] Keyboard and Mouse Input Handling
+- [x] Bag for singleton game state
 - [ ] ECS
 - [ ] Transforms
 - [ ] Collision detection
@@ -34,8 +32,10 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Scene Loading
 - [ ] Feature flags
 - [ ] Config values
-- [ ] Multithreading
+- [ ] Gamepad (aka controller) input handling
+- [ ] Single frame object pools
 - [ ] Rollback netcode out of the box
+- [ ] Multithreading
 - [ ] Run anywhere you can allocate a byte buffer
 
 ### Editing Integrations
@@ -51,7 +51,7 @@ Bloop is in early development. The goals for 1.0 are:
 
 ### Platform Targets
 
-- [ ] Browser
+- [x] Browser
 - [ ] Desktop Mac
 - [ ] iOS
 - [ ] Steam Deck
