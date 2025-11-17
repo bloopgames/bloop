@@ -6,11 +6,25 @@ const Tapes = @import("tapes.zig");
 const Log = @import("log.zig");
 const log = Log.log;
 
-// Imported from JS. Calls console.log
+/// Log a message to the js console
+/// @param ptr Pointer to the message string
+/// @param len Length of the message string
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 
-// Imported from JS. Calls the JS function by handle
+/// Callback into JS to run registered systems
+/// @param fn_handle The function handle to call
+/// @param ptr Pointer to engine context and events data
 extern "env" fn __cb(fn_handle: u32, ptr: u32, dt: u32) void;
+
+/// Writes user data from js to the given snapshot pointer
+/// @param ptr Pointer to the user data
+/// @param len Expected length of the user data
+extern "env" fn user_data_serialize(ptr: wasmPointer, len: u32) void;
+
+/// Reads user data into js from the given snapshot pointer
+/// @param ptr Pointer to the user data
+/// @param len Length of the user data
+extern "env" fn user_data_deserialize(ptr: wasmPointer, len: u32) void;
 
 const wasmPointer = u32;
 const cb_handle = u32;
@@ -156,6 +170,13 @@ pub export fn take_snapshot(user_data_len: u32) wasmPointer {
     snap.write_time(time_ctx_ptr);
     snap.write_inputs(input_ctx_ptr);
     snap.write_events(events_ptr);
+
+    if (snap.user_data_len > 0) {
+        user_data_serialize(
+            @intFromPtr(snap.user_data().ptr),
+            snap.user_data_len,
+        );
+    }
     return @intFromPtr(snap);
 }
 
@@ -174,6 +195,13 @@ pub export fn restore(snapshot_ptr: wasmPointer) void {
 
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     @memcpy(std.mem.asBytes(events), std.mem.asBytes(&snap.events));
+
+    if (snap.user_data_len > 0) {
+        user_data_deserialize(
+            @intFromPtr(snap.user_data().ptr),
+            snap.user_data_len,
+        );
+    }
 }
 
 pub export fn seek(frame: u32) void {

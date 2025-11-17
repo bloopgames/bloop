@@ -93,7 +93,6 @@ export class Runtime {
       this.hasHistory,
       "Not recording or playing back, can't seek to frame",
     );
-
     this.wasm.seek(frame);
   }
 
@@ -142,7 +141,10 @@ export class Runtime {
     assert(header[1], `header user length missing`);
     const userDataLen = header[1];
 
+    console.log({ userDataLen });
+
     if (this.#deserialize) {
+      console.log("Deserializing...");
       this.#deserialize(
         snapshot.buffer,
         snapshot.byteOffset + this.wasm.snapshot_user_data_offset(),
@@ -228,16 +230,38 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   const memory = new WebAssembly.Memory({ initial: 17, maximum: 1000 });
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
+      memory,
       __cb: function (system_handle: number, ptr: number) {
         opts.setBuffer(memory.buffer);
         opts.systemsCallback(system_handle, ptr);
       },
-      console_log: function (ptr: number, len: number) {
+      console_log: function (ptr: EnginePointer, len: number) {
         const bytes = new Uint8Array(memory.buffer, ptr, len);
         const string = new TextDecoder("utf-8").decode(bytes);
         console.log(string);
       },
-      memory,
+      user_data_len: function () {
+        const serializer = opts.serialize ? opts.serialize() : null;
+        return serializer ? serializer.size : 0;
+      },
+      user_data_serialize: function (ptr: EnginePointer, len: number) {
+        if (!opts.serialize) {
+          return;
+        }
+        const serializer = opts.serialize();
+        if (len !== serializer.size) {
+          throw new Error(
+            `user_data_write length mismatch, expected=${serializer.size} got=${len}`,
+          );
+        }
+        serializer.write(memory.buffer, ptr);
+      },
+      user_data_deserialize: function (ptr: EnginePointer, len: number) {
+        if (!opts.deserialize) {
+          return;
+        }
+        opts.deserialize(memory.buffer, ptr, len);
+      },
     },
   });
   const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;

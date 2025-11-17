@@ -110,6 +110,7 @@ describe("tapes", () => {
       runtime.step();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
+
       runtime.emit.mouseup("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(2);

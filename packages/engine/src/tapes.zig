@@ -116,12 +116,11 @@ pub const Tape = struct {
 
         // Write snapshot user data if any
         if (user_data_len > 0) {
-            log("Not recording user data", .{});
-
-            // const user_data_src = @intFromPtr(&snapshot) + @sizeOf(Snapshot);
-            // const user_data_dst = tape_buf[offset .. offset + user_data_len];
-            // @memcpy(user_data_dst, user_data_src);
-            // offset += user_data_len;
+            const base = @as([*]u8, @ptrCast(snapshot));
+            const user_data_src = base[@sizeOf(Snapshot) .. @sizeOf(Snapshot) + user_data_len];
+            const user_data_dst = tape_buf[offset .. offset + user_data_len];
+            @memcpy(user_data_dst, user_data_src);
+            offset += user_data_len;
         }
 
         return Tape{ .buf = tape_buf, .offset = offset, .frame_number = snapshot.time.frame, .max_events = max_events };
@@ -264,10 +263,24 @@ test "snapshot user data" {
     try std.testing.expectEqual(snapshot.user_data()[3], 0xEF);
 }
 
-// test "tape can store user data" {
-//     const snapshot = try start_snapshot(std.testing.allocator, 16);
-//     defer std.testing.allocator.destroy(snapshot);
-// }
+test "tape can store user data" {
+    const user_data = [4]u8{ 0xDE, 0xAD, 0xBE, 0xEF };
+    const user_data_len = user_data.len;
+    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len);
+
+    @memcpy(snapshot.user_data(), user_data[0..]);
+    defer snapshot.deinit(std.testing.allocator);
+
+    var tape = try Tape.init(std.testing.allocator, snapshot, 4);
+    defer tape.free(std.testing.allocator);
+
+    const snap = tape.closest_snapshot(0);
+    const tape_user_data = snap.user_data();
+    try std.testing.expectEqual(tape_user_data[0], 0xDE);
+    try std.testing.expectEqual(tape_user_data[1], 0xAD);
+    try std.testing.expectEqual(tape_user_data[2], 0xBE);
+    try std.testing.expectEqual(tape_user_data[3], 0xEF);
+}
 
 test "tape can index events by frame" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0);
