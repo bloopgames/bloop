@@ -161,7 +161,7 @@ export class Runtime {
     return this.#time;
   }
 
-  get buffer() {
+  get buffer(): ArrayBuffer {
     return this.#memory.buffer;
   }
 
@@ -178,22 +178,22 @@ export class Runtime {
   }
 
   emit = {
-    keydown: (key: Key) => {
+    keydown: (key: Key): void => {
       this.wasm.emit_keydown(keyToKeyCode(key));
     },
-    keyup: (key: Key) => {
+    keyup: (key: Key): void => {
       this.wasm.emit_keyup(keyToKeyCode(key));
     },
-    mousemove: (x: number, y: number) => {
+    mousemove: (x: number, y: number): void => {
       this.wasm.emit_mousemove(x, y);
     },
-    mousedown: (button: MouseButton) => {
+    mousedown: (button: MouseButton): void => {
       this.wasm.emit_mousedown(mouseButtonToMouseButtonCode(button));
     },
-    mouseup: (button: MouseButton) => {
+    mouseup: (button: MouseButton): void => {
       this.wasm.emit_mouseup(mouseButtonToMouseButtonCode(button));
     },
-    mousewheel: (x: number, y: number) => {
+    mousewheel: (x: number, y: number): void => {
       this.wasm.emit_mousewheel(x, y);
     },
   };
