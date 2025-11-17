@@ -1,7 +1,6 @@
-// biome-ignore assist/source/organizeImports: gets it wrong
-import { $ } from "bun";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
+import { $ } from "bun";
 
 const status = await $`git status -s`.text();
 if (status.length !== 0 && !process.env.FORCE) {
@@ -12,8 +11,8 @@ if (status.length !== 0 && !process.env.FORCE) {
 }
 
 if (!process.env.NPM_TOKEN) {
-  throw new Error(
-    "NPM_TOKEN is not set in the environment, publish will fail.",
+  console.warn(
+    `NPM_TOKEN is not set. Publish will fail unless run on a github action authenticated with oidc.`,
   );
 }
 
@@ -159,7 +158,7 @@ function isVersionGreater(
 }
 
 async function publishPackage(cwd: string) {
-  await $`bun publish`.cwd(cwd);
+  await $`npm publish --access public`.cwd(cwd);
   await $`bunx jsr publish --allow-dirty`.cwd(cwd);
 }
 

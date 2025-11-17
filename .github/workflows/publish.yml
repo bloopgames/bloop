@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-
-env:
-  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - nu11/publish
 
 jobs:
   publish:
