@@ -1,6 +1,6 @@
-import { it, expect, describe } from "bun:test";
-import { mount } from "@bloopjs/engine";
-import { Bloop } from "../src/mod";
+import { describe, expect, it } from "bun:test";
+import { Bloop } from "../src/bloop";
+import { mount } from "../src/runtime";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -21,12 +21,12 @@ describe("tapes", () => {
       runtime.step();
 
       expect(bloop.bag.cool).toEqual(43);
-      const snapshot = bloop.snapshot();
+      const snapshot = runtime.snapshot();
 
       runtime.step();
       expect(bloop.bag.cool).toEqual(44);
 
-      bloop.restore(snapshot);
+      runtime.restore(snapshot);
       expect(bloop.bag.cool).toEqual(43);
     });
 
@@ -37,9 +37,9 @@ describe("tapes", () => {
         },
       });
 
-      await mount(bloop);
-      const snapshot = bloop.snapshot();
-      bloop.restore(snapshot);
+      const { runtime } = await mount(bloop);
+      const snapshot = runtime.snapshot();
+      runtime.restore(snapshot);
       expect(bloop.bag.score).toEqual(10);
     });
 
@@ -69,7 +69,8 @@ describe("tapes", () => {
       expect(timeCheck.frame).toEqual(0);
       expect(bloop.context.time.frame).toEqual(1);
 
-      const snapshot = bloop.snapshot();
+      // const snapshot = bloop.snapshot();
+      const snapshot = runtime.snapshot();
 
       runtime.step();
       expect(timeCheck.dt).toBeCloseTo(0.016);
@@ -77,7 +78,7 @@ describe("tapes", () => {
       expect(timeCheck.frame).toEqual(1);
       expect(bloop.context.time.frame).toEqual(2);
 
-      bloop.restore(snapshot);
+      runtime.restore(snapshot);
       expect(bloop.context.time.frame).toEqual(1);
       runtime.step();
 
@@ -88,7 +89,7 @@ describe("tapes", () => {
   });
 
   describe("playback", () => {
-    it("can play back inputs", async () => {
+    it("can step back", async () => {
       const bloop = Bloop.create({
         bag: {
           clicks: 0,
@@ -103,14 +104,14 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime, emitter } = await mount(bloop);
+      const { runtime } = await mount(bloop);
 
-      runtime.record();
-      emitter.mousedown("Left");
+      runtime.emit.mousedown("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
-      emitter.mouseup("Left");
+
+      runtime.emit.mouseup("Left");
       runtime.step();
       expect(bloop.context.time.frame).toEqual(2);
       expect(bloop.bag.clicks).toEqual(1);

@@ -12,12 +12,12 @@
   ],
   "exports": {
     ".": {
-      "import": "./js/mod.ts",
-      "types": "./js/mod.ts"
+      "import": "./js/engine.ts",
+      "types": "./js/engine.ts"
     }
   },
   "scripts": {
-    "build": "bun run build:wasm && bun build js/mod.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
+    "build": "bun run build:wasm && bun build js/engine.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
     "build:tsc": "tsc -p publish/tsconfig.publish.json",
     "build:wasm": "zig build -p .",
     "ci:tsc": "tsc --noEmit",

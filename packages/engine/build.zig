@@ -2,12 +2,12 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
-    const optimize = std.builtin.OptimizeMode.ReleaseSmall;
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
     const exe = b.addExecutable(.{
         .name = "bloop",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/bloop.zig"),
+            .root_source_file = b.path("src/engine.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -18,6 +18,21 @@ pub fn build(b: *std.Build) void {
     // this is needed to export functions properly
     exe.rdynamic = true;
 
+    // read memory from JS side
+    exe.import_memory = true;
+    exe.export_memory = false;
+
+    const codegen = b.addExecutable(.{
+        .name = "codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/codegen.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const codegen_step = b.addRunArtifact(codegen);
+    exe.step.dependOn(&codegen_step.step);
+
     const install = b.addInstallArtifact(exe, .{
         .dest_sub_path = "bloop.wasm",
     });
@@ -25,12 +40,14 @@ pub fn build(b: *std.Build) void {
 
     b.getInstallStep().dependOn(&install.step);
 
-    const exe_tests = b.addTest(.{
-        .root_module = exe.root_module,
+    const snapshot_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tapes.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
     });
-
-    const run_exe_tests = b.addRunArtifact(exe_tests);
-
+    const run_snapshot_tests = b.addRunArtifact(snapshot_tests);
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_exe_tests.step);
+    test_step.dependOn(&run_snapshot_tests.step);
 }
