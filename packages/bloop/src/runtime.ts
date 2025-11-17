@@ -128,7 +128,10 @@ export class Runtime {
 
   restore(snapshot: Uint8Array) {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
-    assert(dataPtr > 0, "failed to allocate memory for snapshot restore");
+    assert(
+      dataPtr > 0,
+      `failed to allocate memory for snapshot restore, pointer=${dataPtr}`,
+    );
     const memoryView = new Uint8Array(
       this.#memory.buffer,
       dataPtr,

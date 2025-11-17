@@ -117,7 +117,11 @@ pub export fn initialize() void {
 }
 
 pub export fn alloc(size: usize) wasmPointer {
-    const slice = wasm_alloc.alloc(u8, size) catch return 0;
+    const slice = wasm_alloc.alloc(u8, size) catch {
+        wasm_log("Failed to allocate memory from engine");
+        return 0;
+    };
+    log_fmt("Success {d}", .{@intFromPtr(slice.ptr)});
     return @intFromPtr(slice.ptr);
 }
 
@@ -142,7 +146,7 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
-    const snap = Tapes.start_snapshot(wasm_alloc, user_data_len) catch |e| {
+    const snap = Tapes.Snapshot.init(wasm_alloc, user_data_len) catch |e| {
         switch (e) {
             error.OutOfMemory => wasm_log("Snapshot allocation failed: Out of memory"),
         }

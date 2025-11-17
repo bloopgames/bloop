@@ -52,6 +52,38 @@ pub const Snapshot = extern struct {
         std.mem.writeInt(u32, out[events_len .. events_len + 4], size, .little);
         @memcpy(out[events_offset .. events_offset + size], std.mem.asBytes(events_buffer));
     }
+
+    pub fn user_data(self: *Snapshot) []u8 {
+        const base = @as([*]u8, @ptrCast(self));
+        const user_data_offset = @sizeOf(Snapshot);
+        return base[user_data_offset .. user_data_offset + self.user_data_len];
+    }
+
+    pub fn init(
+        alloc: std.mem.Allocator,
+        user_data_len: u32,
+    ) !*Snapshot {
+        const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
+        const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
+        // const snapshot: *Snapshot = std.mem.bytesAsValue(Snapshot, bytes[0..@sizeOf(Snapshot)]);
+        const snapshot: *Snapshot = @ptrCast(bytes.ptr);
+        snapshot.*.version = 1;
+        snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
+        snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
+        snapshot.*.events_len = @sizeOf(EventBuffer);
+        snapshot.*.user_data_len = user_data_len;
+        snapshot.*.engine_data_len = snapshot.*.time_len +
+            snapshot.*.input_len +
+            snapshot.*.events_len;
+        return snapshot;
+    }
+
+    pub fn deinit(self: *Snapshot, alloc: std.mem.Allocator) void {
+        const total_size = @sizeOf(Snapshot) + @as(usize, self.user_data_len);
+        const base_ptr: [*]align(@alignOf(Snapshot)) u8 = @ptrCast(self);
+        const bytes = @as([*]align(@alignOf(Snapshot)) u8, base_ptr)[0..total_size];
+        alloc.free(bytes);
+    }
 };
 
 pub const TapeHeader = extern struct {
@@ -162,26 +194,8 @@ pub const Tape = struct {
     }
 };
 
-pub fn start_snapshot(
-    alloc: std.mem.Allocator,
-    user_data_len: u32,
-) !*Snapshot {
-    const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
-    const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
-    const snapshot: *Snapshot = std.mem.bytesAsValue(Snapshot, bytes[0..@sizeOf(Snapshot)]);
-    snapshot.*.version = 1;
-    snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
-    snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
-    snapshot.*.events_len = @sizeOf(EventBuffer);
-    snapshot.*.user_data_len = user_data_len;
-    snapshot.*.engine_data_len = snapshot.*.time_len +
-        snapshot.*.input_len +
-        snapshot.*.events_len;
-    return snapshot;
-}
-
 test "snapshot headers with no user data" {
-    const snapshot = try start_snapshot(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0);
     defer std.testing.allocator.destroy(snapshot);
     try std.testing.expectEqual(1, snapshot.version);
     try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx), snapshot.time_len);
@@ -194,8 +208,8 @@ test "snapshot headers with no user data" {
 }
 
 test "snapshot engine data" {
-    const snapshot = try start_snapshot(std.testing.allocator, 0);
-    defer std.testing.allocator.destroy(snapshot);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    defer snapshot.deinit(std.testing.allocator);
 
     const time_ctx = Ctx.TimeCtx{
         .dt_ms = 16,
@@ -230,9 +244,34 @@ test "snapshot engine data" {
     try std.testing.expectEqual(1_000, snapshot.time.total_ms);
 }
 
-test "tape can replay events" {
-    const snapshot = try start_snapshot(std.testing.allocator, 0);
-    defer std.testing.allocator.destroy(snapshot);
+test "snapshot user data" {
+    const user_data = [4]u8{ 0xDE, 0xAD, 0xBE, 0xEF };
+    const user_data_len = user_data.len;
+    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len);
+    defer snapshot.deinit(std.testing.allocator);
+
+    const user_data_offset = @sizeOf(Snapshot);
+    const base = @as([*]u8, @ptrCast(snapshot));
+    const user_data_slice = base[user_data_offset .. user_data_offset + user_data_len];
+    user_data_slice[0] = 0xDE;
+    user_data_slice[1] = 0xAD;
+    user_data_slice[2] = 0xBE;
+    user_data_slice[3] = 0xEF;
+
+    try std.testing.expectEqual(snapshot.user_data()[0], 0xDE);
+    try std.testing.expectEqual(snapshot.user_data()[1], 0xAD);
+    try std.testing.expectEqual(snapshot.user_data()[2], 0xBE);
+    try std.testing.expectEqual(snapshot.user_data()[3], 0xEF);
+}
+
+// test "tape can store user data" {
+//     const snapshot = try start_snapshot(std.testing.allocator, 16);
+//     defer std.testing.allocator.destroy(snapshot);
+// }
+
+test "tape can index events by frame" {
+    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    defer snapshot.deinit(std.testing.allocator);
 
     var tape = try Tape.init(std.testing.allocator, snapshot, 4);
     defer tape.free(std.testing.allocator);
