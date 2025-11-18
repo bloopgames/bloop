@@ -15,6 +15,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "details.md",
+    "why.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "bun build src/mod.ts --outdir=dist --sourcemap=linked && bun run build:tsc",
     "build:tsc": "tsc -p publish/tsconfig.publish.json",
