@@ -213,7 +213,15 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   }
 
   // https://github.com/oven-sh/bun/issues/12434
-  const bytes = await Bun.file(opts.wasmUrl ?? DEFAULT_WASM_URL).arrayBuffer();
+  const bytes = await fetch(opts.wasmUrl ?? DEFAULT_WASM_URL)
+    .then((res) => res.arrayBuffer())
+    .catch((e) => {
+      console.error(
+        `Failed to fetch wasm at ${opts.wasmUrl ?? DEFAULT_WASM_URL}`,
+        e,
+      );
+      throw e;
+    });
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size

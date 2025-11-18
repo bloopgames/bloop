@@ -63,6 +63,9 @@ export class Bloop<GS extends BloopSchema> {
     return new Bloop<MakeGS<B>>(opts, "dontCallMeDirectly");
   }
 
+  /**
+   * DO NOT USE `new Bloop` - use `Bloop.create()` instead for proper type hints.
+   */
   constructor(opts: BloopOpts<GS["B"]> = {}, dontCallMeDirectly: string) {
     if (dontCallMeDirectly !== "dontCallMeDirectly") {
       throw new Error(
