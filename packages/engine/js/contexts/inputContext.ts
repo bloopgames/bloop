@@ -31,7 +31,7 @@ export class InputContext {
     this.#mouse = undefined;
   }
 
-  get keys(): KeyState {
+  get keys(): KeyboardContext {
     if (!this.#keys) {
       this.#keys = new KeyboardContext(
         new DataView(
@@ -43,7 +43,7 @@ export class InputContext {
     return this.#keys;
   }
 
-  get mouse(): KeyState {
+  get mouse(): MouseContext {
     if (!this.#mouse) {
       this.#mouse = new MouseContext(
         new DataView(
