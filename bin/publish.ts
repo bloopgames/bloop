@@ -17,7 +17,7 @@ if (!process.env.NPM_TOKEN) {
 }
 
 // order matters, these have to be in increasing order of dependencies
-const packages = ["bloop"];
+const packages = ["engine", "bloop"];
 
 const packageCwds = packages.map((packageName) =>
   path.join(__dirname, "..", "packages", packageName),
