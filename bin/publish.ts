@@ -51,6 +51,8 @@ try {
 
   await $`git tag "v${maxVersion.join(".")}"`;
   await $`git push --tags`;
+} catch (e) {
+  console.error(e);
 } finally {
   for (const packageCwd of packageCwds) {
     console.log("reverting", packageCwd);
