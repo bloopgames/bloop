@@ -123,5 +123,30 @@ describe("tapes", () => {
       expect(bloop.context.time.frame).toEqual(0);
       expect(bloop.bag.clicks).toEqual(0);
     });
+
+    it("regression - steps back in sample game", async () => {
+      const game = Bloop.create({
+        bag: {
+          x: 0,
+          y: 0,
+        },
+      });
+
+      game.system("move", {
+        update({ bag }) {
+          bag.x += 1;
+          bag.y += 1;
+        },
+      });
+
+      const { runtime } = await mount(game);
+
+      runtime.step();
+      runtime.step();
+      runtime.stepBack();
+
+      expect(game.bag.x).toEqual(1);
+      expect(game.bag.y).toEqual(1);
+    });
   });
 });

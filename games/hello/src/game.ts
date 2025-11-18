@@ -11,5 +11,6 @@ game.system("move", {
   update({ bag }) {
     bag.x += 1;
     bag.y += 1;
+    console.table(bag);
   },
 });

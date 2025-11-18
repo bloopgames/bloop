@@ -76,6 +76,8 @@ pub const EventType = enum(u8) {
     FrameAdvance,
 };
 
+// https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button#value
+// shifted by 1 for None value
 pub const MouseButton = enum(u8) {
     None = 0,
     Left,
