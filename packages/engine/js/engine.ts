@@ -20,7 +20,10 @@ export type EngineLen = number;
  */
 export type EngineOk = number;
 
-export const DEFAULT_WASM_URL = new URL("../wasm/bloop.wasm", import.meta.url);
+export const DEFAULT_WASM_URL: URL = new URL(
+  "../wasm/bloop.wasm",
+  import.meta.url,
+);
 
 export const TIME_CTX_OFFSET = 0;
 export const INPUT_CTX_OFFSET = TIME_CTX_OFFSET + 4;

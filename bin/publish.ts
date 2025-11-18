@@ -64,7 +64,7 @@ try {
 
 async function revertPackageJson(cwd: string) {
   await $`git checkout package.json`.cwd(cwd);
-  await $`git checkout jsr.json`.cwd(cwd);
+  await $`git checkout jsr.json`.cwd(cwd).nothrow();
 }
 
 async function prepPackage(cwd: string, version: [number, number, number]) {
