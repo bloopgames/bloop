@@ -94,7 +94,7 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
   console.log(packageJson.name, packageJson.version);
 
   await $`bun run build`.cwd(cwd);
-  await $`npm publish --dry-run`.cwd(cwd);
+  await $`bun publish --dry-run`.cwd(cwd);
 }
 
 // bun won't pick up the new package.json versions, it'll use what's in bun.lock instead, see
