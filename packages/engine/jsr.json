@@ -1,0 +1,6 @@
+{
+  "name": "@bloop/engine",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": "./js/engine.ts"
+}
