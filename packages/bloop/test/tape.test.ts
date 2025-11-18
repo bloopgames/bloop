@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Bloop } from "../src/bloop";
-import { mount } from "../src/runtime";
+import { Bloop, mount } from "../src/mod";
 
 describe("tapes", () => {
   describe("snapshots", () => {

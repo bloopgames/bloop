@@ -21,7 +21,7 @@ import type {
   MouseMoveEvent,
   MouseWheelEvent,
 } from "./events";
-import type { DeserializeFn, SerializeFn } from "./runtime";
+import type { DeserializeFn, EngineHooks, SerializeFn } from "./runtime";
 import type { System } from "./system";
 
 export type BloopOpts<B extends Bag> = {
@@ -81,51 +81,22 @@ export class Bloop<GS extends BloopSchema> {
     };
   }
 
+  /**
+   * Read the game singleton bag
+   */
   get bag(): GS["B"] {
     return this.#context.bag;
   }
 
+  /**
+   * Read the game context object
+   */
   get context(): Readonly<Context<GS>> {
     return this.#context;
   }
 
   /**
-   * Take a snapshot of the game state outside the engine
-   * @returns linear memory representation of the game state that the engine is unaware of
-   */
-  serialize = (): ReturnType<SerializeFn> => {
-    const str = JSON.stringify(this.#context.bag);
-    const encoder = new TextEncoder();
-    const textBytes = encoder.encode(str);
-
-    return {
-      size: textBytes.byteLength,
-      write: (buffer: ArrayBufferLike, ptr: EnginePointer) => {
-        const memoryView = new Uint8Array(buffer, ptr, textBytes.byteLength);
-        memoryView.set(textBytes);
-      },
-    };
-  };
-
-  /**
-   * Restore a snapshot of the game state outside the engine
-   * @returns linear memory representation of the game state that the engine is unaware of
-   */
-  deserialize: DeserializeFn = (buffer, ptr, len) => {
-    const bagBytes = new Uint8Array(buffer, ptr, len);
-    const decoder = new TextDecoder();
-    const str = decoder.decode(bagBytes);
-
-    try {
-      this.#context.bag = JSON.parse(str);
-    } catch (e) {
-      console.error("failed to deserialize bag", { json: str, error: e });
-    }
-  };
-
-  /**
    * Register a system with the game loop.
-   *
    */
   system(label: string, system: System<GS>): number {
     system.label ??= label;
@@ -133,102 +104,144 @@ export class Bloop<GS extends BloopSchema> {
     return this.#systems.length;
   }
 
-  systemsCallback(system_handle: number, ptr: EnginePointer) {
-    // todo - move this to engine
-    const dv = new DataView(this.#engineBuffer, ptr);
-    const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
-    const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
-    const eventsPtr = dv.getUint32(EVENTS_OFFSET, true);
+  /**
+   * Low level hooks to engine functionality. Editing these is for advanced use cases, defaults should usually work.
+   */
+  hooks: EngineHooks = {
+    /**
+     * Take a snapshot of the game state outside the engine
+     * @returns linear memory representation of the game state that the engine is unaware of
+     */
+    serialize: () => {
+      const str = JSON.stringify(this.#context.bag);
+      const encoder = new TextEncoder();
+      const textBytes = encoder.encode(str);
 
-    this.#context.rawPointer = ptr;
-    this.#context.inputs.dataView = new DataView(
-      this.#engineBuffer,
-      inputCtxPtr,
-    );
-    this.#context.time.dataView = new DataView(this.#engineBuffer, timeCtxPtr);
+      return {
+        size: textBytes.byteLength,
+        write: (buffer: ArrayBufferLike, ptr: EnginePointer) => {
+          const memoryView = new Uint8Array(buffer, ptr, textBytes.byteLength);
+          memoryView.set(textBytes);
+        },
+      };
+    },
 
-    const eventsDataView = new DataView(this.#engineBuffer, eventsPtr);
+    /**
+     * Restore a snapshot of the game state outside the engine
+     * @returns linear memory representation of the game state that the engine is unaware of
+     */
+    deserialize: (buffer, ptr, len) => {
+      const bagBytes = new Uint8Array(buffer, ptr, len);
+      const decoder = new TextDecoder();
+      const str = decoder.decode(bagBytes);
 
-    for (const system of this.#systems) {
-      system.update?.(this.#context);
-
-      const eventCount = eventsDataView.getUint32(0, true);
-
-      let offset = Uint32Array.BYTES_PER_ELEMENT;
-
-      for (let i = 0; i < eventCount; i++) {
-        const eventType = eventsDataView.getUint8(offset);
-        const payloadSize = EVENT_PAYLOAD_SIZE;
-        const payloadByte = eventsDataView.getUint8(
-          offset + EVENT_PAYLOAD_ALIGN,
-        );
-        const payloadVec2 = {
-          x: eventsDataView.getFloat32(offset + EVENT_PAYLOAD_ALIGN, true),
-          y: eventsDataView.getFloat32(
-            offset + EVENT_PAYLOAD_ALIGN + Float32Array.BYTES_PER_ELEMENT,
-            true,
-          ),
-        };
-
-        switch (eventType) {
-          case Enums.EventType.KeyDown: {
-            system.keydown?.(
-              attachEvent<KeyEvent, GS>(this.#context, {
-                key: keyCodeToKey(payloadByte),
-              }),
-            );
-            break;
-          }
-          case Enums.EventType.KeyUp:
-            system.keyup?.(
-              attachEvent<KeyEvent, GS>(this.#context, {
-                key: keyCodeToKey(payloadByte),
-              }),
-            );
-            break;
-          case Enums.EventType.MouseDown:
-            system.mousedown?.(
-              attachEvent<MouseButtonEvent, GS>(this.#context, {
-                button: mouseButtonCodeToMouseButton(payloadByte),
-              }),
-            );
-            break;
-          case Enums.EventType.MouseUp:
-            system.mouseup?.(
-              attachEvent<MouseButtonEvent, GS>(this.#context, {
-                button: mouseButtonCodeToMouseButton(payloadByte),
-              }),
-            );
-            break;
-          case Enums.EventType.MouseMove:
-            system.mousemove?.(
-              attachEvent<MouseMoveEvent, GS>(this.#context, {
-                x: payloadVec2.x,
-                y: payloadVec2.y,
-              }),
-            );
-            break;
-          case Enums.EventType.MouseWheel:
-            system.mousewheel?.(
-              attachEvent<MouseWheelEvent, GS>(this.#context, {
-                x: payloadVec2.x,
-                y: payloadVec2.y,
-              }),
-            );
-            break;
-          default:
-            throw new Error(`Unknown event type: ${eventType}`);
-        }
-        // the event type u8 + padding + payload
-        offset += EVENT_PAYLOAD_ALIGN + EVENT_PAYLOAD_SIZE;
+      try {
+        this.#context.bag = JSON.parse(str);
+      } catch (e) {
+        console.error("failed to deserialize bag", { json: str, error: e });
       }
-      (this.#context as any).event = undefined;
-    }
-  }
+    },
 
-  setBuffer(buffer: ArrayBuffer) {
-    this.#engineBuffer = buffer;
-  }
+    setBuffer: (buffer: ArrayBuffer) => {
+      this.#engineBuffer = buffer;
+    },
+
+    systemsCallback: (system_handle: number, ptr: EnginePointer) => {
+      // todo - move this to engine
+      const dv = new DataView(this.#engineBuffer, ptr);
+      const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
+      const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
+      const eventsPtr = dv.getUint32(EVENTS_OFFSET, true);
+
+      this.#context.rawPointer = ptr;
+      this.#context.inputs.dataView = new DataView(
+        this.#engineBuffer,
+        inputCtxPtr,
+      );
+      this.#context.time.dataView = new DataView(
+        this.#engineBuffer,
+        timeCtxPtr,
+      );
+
+      const eventsDataView = new DataView(this.#engineBuffer, eventsPtr);
+
+      for (const system of this.#systems) {
+        system.update?.(this.#context);
+
+        const eventCount = eventsDataView.getUint32(0, true);
+
+        let offset = Uint32Array.BYTES_PER_ELEMENT;
+
+        for (let i = 0; i < eventCount; i++) {
+          const eventType = eventsDataView.getUint8(offset);
+          const payloadSize = EVENT_PAYLOAD_SIZE;
+          const payloadByte = eventsDataView.getUint8(
+            offset + EVENT_PAYLOAD_ALIGN,
+          );
+          const payloadVec2 = {
+            x: eventsDataView.getFloat32(offset + EVENT_PAYLOAD_ALIGN, true),
+            y: eventsDataView.getFloat32(
+              offset + EVENT_PAYLOAD_ALIGN + Float32Array.BYTES_PER_ELEMENT,
+              true,
+            ),
+          };
+
+          switch (eventType) {
+            case Enums.EventType.KeyDown: {
+              system.keydown?.(
+                attachEvent<KeyEvent, GS>(this.#context, {
+                  key: keyCodeToKey(payloadByte),
+                }),
+              );
+              break;
+            }
+            case Enums.EventType.KeyUp:
+              system.keyup?.(
+                attachEvent<KeyEvent, GS>(this.#context, {
+                  key: keyCodeToKey(payloadByte),
+                }),
+              );
+              break;
+            case Enums.EventType.MouseDown:
+              system.mousedown?.(
+                attachEvent<MouseButtonEvent, GS>(this.#context, {
+                  button: mouseButtonCodeToMouseButton(payloadByte),
+                }),
+              );
+              break;
+            case Enums.EventType.MouseUp:
+              system.mouseup?.(
+                attachEvent<MouseButtonEvent, GS>(this.#context, {
+                  button: mouseButtonCodeToMouseButton(payloadByte),
+                }),
+              );
+              break;
+            case Enums.EventType.MouseMove:
+              system.mousemove?.(
+                attachEvent<MouseMoveEvent, GS>(this.#context, {
+                  x: payloadVec2.x,
+                  y: payloadVec2.y,
+                }),
+              );
+              break;
+            case Enums.EventType.MouseWheel:
+              system.mousewheel?.(
+                attachEvent<MouseWheelEvent, GS>(this.#context, {
+                  x: payloadVec2.x,
+                  y: payloadVec2.y,
+                }),
+              );
+              break;
+            default:
+              throw new Error(`Unknown event type: ${eventType}`);
+          }
+          // the event type u8 + padding + payload
+          offset += EVENT_PAYLOAD_ALIGN + EVENT_PAYLOAD_SIZE;
+        }
+        (this.#context as any).event = undefined;
+      }
+    },
+  };
 }
 
 function attachEvent<IE extends InputEvent, GS extends BloopSchema>(

@@ -5,16 +5,29 @@ import {
   MOUSE_OFFSET,
   MouseContext,
 } from "@bloopjs/engine";
-import { mount } from "../src/runtime";
+import { mount } from "../src/mount";
+import { type EngineHooks } from "../src/runtime";
 import { assert } from "../src/util";
+
+const defaultHooks: EngineHooks = {
+  serialize: () => ({
+    size: 0,
+    write() {},
+  }),
+  deserialize() {},
+  systemsCallback() {},
+  setBuffer() {},
+};
 
 it("hello wasm", async () => {
   let count = 0;
   const { wasm } = await mount({
-    systemsCallback() {
-      count++;
+    hooks: {
+      ...defaultHooks,
+      systemsCallback() {
+        count++;
+      },
     },
-    setBuffer() {},
   });
 
   wasm.step(16);
@@ -24,8 +37,7 @@ it("hello wasm", async () => {
 describe("time", () => {
   it("injects frame and dt", async () => {
     const { runtime } = await mount({
-      systemsCallback() {},
-      setBuffer() {},
+      hooks: defaultHooks,
     });
 
     runtime.step(16);
@@ -36,17 +48,19 @@ describe("time", () => {
   it("exposes time context pointer in system callback", async () => {
     let called = false;
     const { runtime } = await mount({
-      systemsCallback(_handle, ptr) {
-        called = true;
-        const dataView = new DataView(runtime.buffer, ptr);
-        const timeCtxPtr = dataView.getUint32(0, true);
-        const timeDataView = new DataView(runtime.buffer, timeCtxPtr);
-        const frame = timeDataView.getUint32(0, true);
-        const dt = timeDataView.getUint32(4, true);
-        expect(frame).toEqual(0);
-        expect(dt).toEqual(16);
+      hooks: {
+        ...defaultHooks,
+        systemsCallback(_handle, ptr) {
+          called = true;
+          const dataView = new DataView(runtime.buffer, ptr);
+          const timeCtxPtr = dataView.getUint32(0, true);
+          const timeDataView = new DataView(runtime.buffer, timeCtxPtr);
+          const frame = timeDataView.getUint32(0, true);
+          const dt = timeDataView.getUint32(4, true);
+          expect(frame).toEqual(0);
+          expect(dt).toEqual(16);
+        },
       },
-      setBuffer() {},
     });
     runtime.step(16);
 
@@ -57,8 +71,7 @@ describe("time", () => {
 describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
     const { runtime } = await mount({
-      systemsCallback() {},
-      setBuffer() {},
+      hooks: defaultHooks,
     });
 
     runtime.step(16);
@@ -85,17 +98,19 @@ describe("inputs", () => {
     const states: KeyState[] = [];
 
     const { runtime } = await mount({
-      systemsCallback(_handle, ptr) {
-        const dataView = new DataView(runtime.buffer, ptr);
-        const inputCtxPtr = dataView.getUint32(4, true);
-        const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+      hooks: {
+        ...defaultHooks,
+        systemsCallback(_handle, ptr) {
+          const dataView = new DataView(runtime.buffer, ptr);
+          const inputCtxPtr = dataView.getUint32(4, true);
+          const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
 
-        const keyboardContext = new KeyboardContext(inputDataView);
-        states.push(keyboardContext.digit8);
+          const keyboardContext = new KeyboardContext(inputDataView);
+          states.push(keyboardContext.digit8);
 
-        called = true;
+          called = true;
+        },
       },
-      setBuffer() {},
     });
 
     runtime.emit.keydown("Digit8");
@@ -136,28 +151,31 @@ describe("inputs", () => {
     const states: MouseState[] = [];
 
     const { runtime } = await mount({
-      systemsCallback(_handle, ptr) {
-        const dataView = new DataView(runtime.buffer, ptr);
-        const inputCtxPtr = dataView.getUint32(4, true);
-        const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+      hooks: {
+        ...defaultHooks,
 
-        const dv = new DataView(
-          inputDataView.buffer,
-          inputDataView.byteOffset + MOUSE_OFFSET,
-        );
-        const mouseContext = new MouseContext(dv);
+        systemsCallback(_handle, ptr) {
+          const dataView = new DataView(runtime.buffer, ptr);
+          const inputCtxPtr = dataView.getUint32(4, true);
+          const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
 
-        states.push({
-          x: mouseContext.x,
-          y: mouseContext.y,
-          left: mouseContext.left,
-          wheelX: mouseContext.wheelX,
-          wheelY: mouseContext.wheelY,
-        });
+          const dv = new DataView(
+            inputDataView.buffer,
+            inputDataView.byteOffset + MOUSE_OFFSET,
+          );
+          const mouseContext = new MouseContext(dv);
 
-        called = true;
+          states.push({
+            x: mouseContext.x,
+            y: mouseContext.y,
+            left: mouseContext.left,
+            wheelX: mouseContext.wheelX,
+            wheelY: mouseContext.wheelY,
+          });
+
+          called = true;
+        },
       },
-      setBuffer() {},
     });
 
     runtime.emit.mousedown("Left");
@@ -204,24 +222,26 @@ describe("inputs", () => {
   it("updates platform events with input events", async () => {
     let called = false;
     const { runtime } = await mount({
-      systemsCallback(_handle, ptr) {
-        const dataView = new DataView(runtime.buffer, ptr);
-        const eventsPtr = dataView.getUint32(8, true);
-        const eventsDataView = new DataView(runtime.buffer, eventsPtr);
-        const eventCount = eventsDataView.getUint32(0, true);
-        expect(eventCount).toEqual(1);
-        // kind = 1 byte + 3 bytes padding
-        // payload = 8 bytes
-        const typeOffset = 4;
-        const payloadOffset = 7;
-        const eventType = eventsDataView.getUint8(typeOffset + 0);
-        const eventPayload = eventsDataView.getUint8(payloadOffset + 1);
-        expect(eventCount).toEqual(1);
-        expect(eventType).toEqual(1);
-        expect(eventPayload).toEqual(3); // KeyCode for BracketLeft
-        called = true;
+      hooks: {
+        ...defaultHooks,
+        systemsCallback(_handle, ptr) {
+          const dataView = new DataView(runtime.buffer, ptr);
+          const eventsPtr = dataView.getUint32(8, true);
+          const eventsDataView = new DataView(runtime.buffer, eventsPtr);
+          const eventCount = eventsDataView.getUint32(0, true);
+          expect(eventCount).toEqual(1);
+          // kind = 1 byte + 3 bytes padding
+          // payload = 8 bytes
+          const typeOffset = 4;
+          const payloadOffset = 7;
+          const eventType = eventsDataView.getUint8(typeOffset + 0);
+          const eventPayload = eventsDataView.getUint8(payloadOffset + 1);
+          expect(eventCount).toEqual(1);
+          expect(eventType).toEqual(1);
+          expect(eventPayload).toEqual(3); // KeyCode for BracketLeft
+          called = true;
+        },
       },
-      setBuffer() {},
     });
 
     runtime.emit.keydown("BracketLeft");
@@ -234,8 +254,7 @@ describe("tapes", () => {
   describe("engine snapshot", () => {
     it("saves and restores time context", async () => {
       const { runtime } = await mount({
-        systemsCallback() {},
-        setBuffer() {},
+        hooks: defaultHooks,
       });
 
       const snapshot = runtime.snapshot();
@@ -255,23 +274,24 @@ describe("tapes", () => {
       let called = false;
       const { runtime } = await mount({
         startRecording: false,
-        systemsCallback() {},
-        setBuffer() {},
-        serialize() {
-          return {
-            write(buffer, ptr) {
-              const data = new Uint8Array(buffer, ptr, 1);
-              data[0] = 66;
-            },
-            size: 1,
-          };
-        },
-        deserialize(buffer, ptr, length) {
-          called = true;
-          const data = new Uint8Array(buffer, ptr, length);
-          expect(data.byteLength).toBe(1);
-          expect(length).toEqual(1);
-          expect(data[0]).toBe(66);
+        hooks: {
+          ...defaultHooks,
+          serialize() {
+            return {
+              write(buffer, ptr) {
+                const data = new Uint8Array(buffer, ptr, 1);
+                data[0] = 66;
+              },
+              size: 1,
+            };
+          },
+          deserialize(buffer, ptr, length) {
+            called = true;
+            const data = new Uint8Array(buffer, ptr, length);
+            expect(data.byteLength).toBe(1);
+            expect(length).toEqual(1);
+            expect(data[0]).toBe(66);
+          },
         },
       });
 

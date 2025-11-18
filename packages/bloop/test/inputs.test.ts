@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Key, MouseButton } from "@bloopjs/engine";
-import { Bloop } from "../src/bloop";
-import { mount } from "../src/runtime";
+import { Bloop, mount } from "../src/mod";
 
 describe("inputs", () => {
   it("runs a single system", async () => {

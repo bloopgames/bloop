@@ -6,43 +6,37 @@ import {
   type MouseButton,
   mouseButtonToMouseButtonCode,
   SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
-  SNAPSHOT_HEADER_LEN,
   SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
   type WasmEngine,
 } from "@bloopjs/engine";
 import { assert } from "./util";
 
-export type MountOpts = {
-  wasmUrl?: URL;
+export type EngineHooks = {
+  /**
+   * Hook to serialize some data when snapshotting
+   */
+  serialize: SerializeFn;
+  /**
+   * Hook to deserialize some data when restoring
+   */
+  deserialize: DeserializeFn;
   /**
    * A callback function to run logic for a given frame
    */
-  systemsCallback: (system_handle: number, ptr: EnginePointer) => void;
-
+  systemsCallback: SystemsCallback;
   /**
    * Sets buffer to the latest engine memory buffer
    *
    * Note that if the engine wasm memory grows, all dataviews into the memory must be updated
    */
   setBuffer: (buffer: ArrayBuffer) => void;
-
-  /**
-   * Whether to start recording immediately upon mount
-   * Defaults to true
-   */
-  startRecording?: boolean;
-
-  /**
-   * Optional hook to serialize some data when snapshotting
-   */
-  serialize?: SerializeFn;
-
-  /**
-   * Optional hook to deserialize some data when restoring
-   */
-  deserialize?: DeserializeFn;
 };
+
+export type SystemsCallback = (
+  system_handle: number,
+  ptr: EnginePointer,
+) => void;
 
 export type SerializeFn = () => {
   size: number;
@@ -196,86 +190,5 @@ export class Runtime {
     mousewheel: (x: number, y: number): void => {
       this.wasm.emit_mousewheel(x, y);
     },
-  };
-}
-
-export type MountResult = {
-  runtime: Runtime;
-  wasm: WasmEngine;
-};
-
-export async function mount(opts: MountOpts): Promise<MountResult> {
-  if (
-    (opts.serialize && !opts.deserialize) ||
-    (!opts.serialize && opts.deserialize)
-  ) {
-    throw new Error("Snapshot and restore hooks must be provided together");
-  }
-
-  // https://github.com/oven-sh/bun/issues/12434
-  const bytes = await fetch(opts.wasmUrl ?? DEFAULT_WASM_URL)
-    .then((res) => res.arrayBuffer())
-    .catch((e) => {
-      console.error(
-        `Failed to fetch wasm at ${opts.wasmUrl ?? DEFAULT_WASM_URL}`,
-        e,
-      );
-      throw e;
-    });
-
-  // 1mb to 64mb
-  // use bun check:wasm to find initial memory page size
-  const memory = new WebAssembly.Memory({ initial: 17, maximum: 1000 });
-  const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
-    env: {
-      memory,
-      __cb: function (system_handle: number, ptr: number) {
-        opts.setBuffer(memory.buffer);
-        opts.systemsCallback(system_handle, ptr);
-      },
-      console_log: function (ptr: EnginePointer, len: number) {
-        const bytes = new Uint8Array(memory.buffer, ptr, len);
-        const string = new TextDecoder("utf-8").decode(bytes);
-        console.log(string);
-      },
-      user_data_len: function () {
-        const serializer = opts.serialize ? opts.serialize() : null;
-        return serializer ? serializer.size : 0;
-      },
-      user_data_serialize: function (ptr: EnginePointer, len: number) {
-        if (!opts.serialize) {
-          return;
-        }
-        const serializer = opts.serialize();
-        if (len !== serializer.size) {
-          throw new Error(
-            `user_data_write length mismatch, expected=${serializer.size} got=${len}`,
-          );
-        }
-        serializer.write(memory.buffer, ptr);
-      },
-      user_data_deserialize: function (ptr: EnginePointer, len: number) {
-        if (!opts.deserialize) {
-          return;
-        }
-        opts.deserialize(memory.buffer, ptr, len);
-      },
-    },
-  });
-  const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;
-
-  wasm.initialize();
-
-  const runtime = new Runtime(wasm, memory, {
-    serialize: opts.serialize,
-  });
-
-  if (opts.startRecording ?? true) {
-    runtime.record();
-  }
-
-  return {
-    runtime,
-    wasm,
   };
 }
