@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-
-env:
-  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - nu11/publish
 
 jobs:
   publish:
@@ -19,6 +17,8 @@ jobs:
       - uses: actions/checkout@v5
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
+      - name: Ensure latest npm
+        run: bun install -g npm@latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Publish package

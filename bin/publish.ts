@@ -1,7 +1,6 @@
-// biome-ignore assist/source/organizeImports: gets it wrong
-import { $ } from "bun";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
+import { $ } from "bun";
 
 const status = await $`git status -s`.text();
 if (status.length !== 0 && !process.env.FORCE) {
@@ -12,8 +11,8 @@ if (status.length !== 0 && !process.env.FORCE) {
 }
 
 if (!process.env.NPM_TOKEN) {
-  throw new Error(
-    "NPM_TOKEN is not set in the environment, publish will fail.",
+  console.warn(
+    `NPM_TOKEN is not set. Publish will fail unless run on a github action authenticated with oidc.`,
   );
 }
 
@@ -25,10 +24,12 @@ const packageCwds = packages.map((packageName) =>
 );
 
 try {
-  await Bun.write(
-    path.join(__dirname, "..", ".npmrc"),
-    `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
-  );
+  if (process.env.NPM_TOKEN) {
+    await Bun.write(
+      path.join(__dirname, "..", ".npmrc"),
+      `//registry.npmjs.org/:_authToken=${process.env.NPM_TOKEN}`,
+    );
+  }
 
   let maxVersion: [number, number, number] = [0, 0, 0];
   // find the highest version across all packages
@@ -56,7 +57,9 @@ try {
     await revertPackageJson(packageCwd);
   }
 
-  await unlink(path.join(__dirname, "..", ".npmrc"));
+  if (process.env.NPM_TOKEN) {
+    await unlink(path.join(__dirname, "..", ".npmrc"));
+  }
 }
 
 async function revertPackageJson(cwd: string) {
@@ -91,7 +94,7 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
   console.log(packageJson.name, packageJson.version);
 
   await $`bun run build`.cwd(cwd);
-  await $`bun publish --dry-run`.cwd(cwd);
+  await $`npm publish --dry-run`.cwd(cwd);
 }
 
 // bun won't pick up the new package.json versions, it'll use what's in bun.lock instead, see
@@ -159,7 +162,7 @@ function isVersionGreater(
 }
 
 async function publishPackage(cwd: string) {
-  await $`bun publish`.cwd(cwd);
+  await $`npm publish --access public`.cwd(cwd);
   await $`bunx jsr publish --allow-dirty`.cwd(cwd);
 }
 
