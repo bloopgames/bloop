@@ -123,5 +123,16 @@ describe("tapes", () => {
       expect(bloop.context.time.frame).toEqual(0);
       expect(bloop.bag.clicks).toEqual(0);
     });
+
+    it("regression - steps back after one frame", async () => {
+      const game = Bloop.create({});
+      const { runtime } = await mount(game);
+
+      runtime.step();
+      runtime.step();
+      runtime.stepBack();
+
+      expect(game.context.time.frame).toEqual(1);
+    });
   });
 });

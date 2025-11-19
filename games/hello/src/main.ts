@@ -1,13 +1,58 @@
 import "./style.css";
 import { mount } from "@bloopjs/bloop";
+import { type Key, mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 import { game } from "./game";
 
 const { runtime } = await mount(game);
 
 let now = performance.now();
+let isPaused = true;
+
+window.addEventListener("keydown", (event) => {
+  runtime.emit.keydown(event.key as Key);
+});
+
+window.addEventListener("keyup", (event) => {
+  runtime.emit.keyup(event.key as Key);
+});
+
+window.addEventListener("mousemove", (event) => {
+  runtime.emit.mousemove(event.clientX, event.clientY);
+});
+
+window.addEventListener("mousedown", (event) => {
+  runtime.emit.mousedown(mouseButtonCodeToMouseButton(event.button + 1));
+});
+
+window.addEventListener("wheel", (event) => {
+  runtime.emit.mousewheel(event.deltaX, event.deltaY);
+});
+
+window.addEventListener("keydown", (event) => {
+  const isPauseHotkey =
+    event.key === "Enter" && (event.ctrlKey || event.metaKey);
+  if (isPauseHotkey || event.key === "6") {
+    isPaused = !isPaused;
+  }
+
+  if (isPaused) {
+    switch (event.key) {
+      case ",":
+      case "5":
+        runtime.stepBack();
+        break;
+      case ".":
+      case "7":
+        runtime.step();
+        break;
+    }
+  }
+});
 
 requestAnimationFrame(function loop() {
-  runtime.step(performance.now() - now);
+  if (!isPaused) {
+    runtime.step(performance.now() - now);
+  }
   now = performance.now();
   requestAnimationFrame(loop);
 });
