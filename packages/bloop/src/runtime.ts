@@ -12,6 +12,23 @@ import {
 } from "@bloopjs/engine";
 import { assert } from "./util";
 
+const originalConsole = (globalThis as any).console;
+
+const noop = () => {};
+
+const stubConsole = Object.fromEntries(
+  Object.keys(originalConsole).map((key) => [key, noop]),
+) as unknown as Console;
+
+function muteConsole() {
+  (globalThis.console as unknown as Console) = stubConsole;
+}
+
+function unmuteConsole() {
+  (globalThis.console as unknown as Console) = originalConsole;
+}
+
+
 export type EngineHooks = {
   /**
    * Hook to serialize some data when snapshotting
@@ -90,7 +107,15 @@ export class Runtime {
       this.hasHistory,
       "Not recording or playing back, can't seek to frame",
     );
+
+    const shouldMute = frame < this.time.frame;
+    if (shouldMute) {
+      muteConsole();
+    }
     this.wasm.seek(frame);
+    if (shouldMute) {
+      unmuteConsole();
+    }
   }
 
   record() {

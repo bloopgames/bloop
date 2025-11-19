@@ -8,22 +8,6 @@ const { runtime } = await mount(game);
 let now = performance.now();
 let isPaused = true;
 
-const originalConsole = window.console;
-
-const noop = () => {};
-
-const stubConsole = Object.fromEntries(
-  Object.keys(originalConsole).map((key) => [key, noop]),
-) as unknown as Console;
-
-function muteConsole() {
-  (window.console as unknown as Console) = stubConsole;
-}
-
-function unmuteConsole() {
-  (window.console as unknown as Console) = originalConsole;
-}
-
 window.addEventListener("keydown", (event) => {
   runtime.emit.keydown(event.key as Key);
 });
@@ -55,9 +39,7 @@ window.addEventListener("keydown", (event) => {
     switch (event.key) {
       case ",":
       case "5":
-        muteConsole();
         runtime.stepBack();
-        unmuteConsole();
         break;
       case ".":
       case "7":
