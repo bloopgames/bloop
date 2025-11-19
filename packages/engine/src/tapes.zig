@@ -181,42 +181,44 @@ pub const Tape = struct {
         return event;
     }
 
-    pub fn get_events(self: *const Tape, frame: u32) []const Event {
+    pub fn get_events(self: *const Tape, requested_frame: u32) []const Event {
+        const total_events = self.event_count();
+
         var current_frame: u32 = 0;
-        var i: usize = 0;
         var frame_index: usize = 0;
         var frame_event_count: usize = 0;
 
-        while (i < self.event_count()) : (i += 1) {
+        var i: usize = 0;
+        while (i < total_events) : (i += 1) {
             const event = get_event(self, i);
-            if (event.kind == .FrameAdvance) {
-                if (frame == current_frame) {
-                    // Found the end of the requested frame, return the events slice
-                    const start_offset = self.events_offset + (@sizeOf(Event) * frame_index);
-                    const events_ptr: [*]const Event = @ptrCast(@alignCast(&self.buf[start_offset]));
-                    return events_ptr[0..frame_event_count];
-                }
 
-                // Set frame_index to the index of the event after FrameAdvance
-                frame_index = i + 1;
-                // Update current frame
-                current_frame += 1;
-                // Reset event count for the new frame
-                frame_event_count = 0;
-            } else {
-                frame_event_count += 1;
+            switch (event.kind) {
+                .FrameAdvance => {
+                    // If this is the frameAdvance for the frame after the requested frame,
+                    // break the loop
+                    if (current_frame == requested_frame) {
+                        break;
+                    }
+
+                    current_frame += 1;
+                    // frame events start after this event
+                    frame_index = i + 1;
+                    // reset event count for the frame
+                    frame_event_count = 0;
+                },
+                else => {
+                    frame_event_count += 1;
+                },
             }
         }
 
-        // If the last frame in the tape is the requested frame, return a slice of the frame index to the total event count
-        if (current_frame == frame) {
+        // We'll end on the requested frame
+        // if the while loop breaks or if we've reached the end of the tape
+        // in either case, return events for the frame if there are any
+        if (current_frame == requested_frame and frame_event_count > 0) {
             const start_offset = self.events_offset + (@sizeOf(Event) * frame_index);
-            const events_count = self.event_count() - frame_index;
-            if (events_count == 0) {
-                return &[_]Event{};
-            }
             const events_ptr: [*]const Event = @ptrCast(@alignCast(&self.buf[start_offset]));
-            return events_ptr[0..events_count];
+            return events_ptr[0..frame_event_count];
         }
 
         return &[_]Event{};
