@@ -93,13 +93,21 @@ pub const TapeHeader = extern struct {
 
 pub const Tape = struct {
     buf: []u8,
+    /// Current offset to append new events
     offset: usize,
     frame_number: u32,
     max_events: u32,
+    /// Offset where events start - dependent on the size of the user data
+    events_offset: u32,
     event_count: u32 = 0,
 
     pub fn init(gpa: std.mem.Allocator, snapshot: *Snapshot, max_events: u32) !Tape {
-        const total_size = @sizeOf(TapeHeader) + @sizeOf(Snapshot) + snapshot.user_data_len + (@sizeOf(Event) * max_events);
+        // Calculate aligned offset for events to ensure proper Event alignment
+        const header_and_snapshot_size = @sizeOf(TapeHeader) + @sizeOf(Snapshot) + snapshot.user_data_len;
+        const event_alignment = @alignOf(Event);
+        const events_offset = std.mem.alignForward(usize, header_and_snapshot_size, event_alignment);
+        const total_size = events_offset + (@sizeOf(Event) * max_events);
+
         var tape_buf = try gpa.alloc(u8, total_size);
         var offset: u32 = 0;
 
@@ -122,7 +130,10 @@ pub const Tape = struct {
             offset += user_data_len;
         }
 
-        return Tape{ .buf = tape_buf, .offset = offset, .frame_number = snapshot.time.frame, .max_events = max_events };
+        // Add padding to align events
+        offset += @intCast(events_offset - header_and_snapshot_size);
+
+        return Tape{ .buf = tape_buf, .offset = offset, .frame_number = snapshot.time.frame, .max_events = max_events, .events_offset = @intCast(events_offset) };
     }
 
     pub fn closest_snapshot(self: *Tape, frame: u32) *Snapshot {
@@ -156,10 +167,11 @@ pub const Tape = struct {
         const header_size = @sizeOf(TapeHeader);
         const snapshot_size = @sizeOf(Snapshot);
 
-        log("Getting events for frame {d}, total events: {d}", .{ frame, self.event_count });
         const snapshot: *const Snapshot = @ptrCast(@alignCast(self.buf[header_size .. header_size + snapshot_size]));
         const user_data_len = snapshot.user_data_len;
-        const events_start = header_size + snapshot_size + user_data_len;
+        const header_and_snapshot = header_size + snapshot_size + user_data_len;
+        const event_alignment = @alignOf(Event);
+        const events_start = std.mem.alignForward(usize, header_and_snapshot, event_alignment);
 
         var current_frame: u32 = 0;
         var frame_start_idx: usize = 0;
@@ -167,11 +179,7 @@ pub const Tape = struct {
 
         while (i < self.event_count) : (i += 1) {
             const event_offset = events_start + (i * @sizeOf(Event));
-            log("Processing event {d} of {d}", .{ i, self.event_count });
-            log("user_data_len={d} Event start: {d} offset: {d} alignment: {d} size: {d}", .{ user_data_len, events_start, event_offset, @alignOf(Event), @sizeOf(Event) });
             const event: *const Event = @ptrCast(@alignCast(self.buf[event_offset .. event_offset + @sizeOf(Event)]));
-
-            log("Event kind: {}", .{event.kind});
 
             if (event.kind == .FrameAdvance) {
                 if (current_frame == frame) {
@@ -291,7 +299,7 @@ test "tape can index events by frame" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4);
+    var tape = try Tape.init(std.testing.allocator, snapshot, 5);
     defer tape.free(std.testing.allocator);
 
     try tape.append_event(Event.keyDown(.KeyA));
@@ -300,7 +308,7 @@ test "tape can index events by frame" {
     try tape.append_event(Event.keyUp(.KeyA));
     try tape.advance_frame();
 
-    try std.testing.expectEqual(4, tape.event_count);
+    try std.testing.expectEqual(5, tape.event_count);
 
     const events = tape.get_events(0);
 
