@@ -45,6 +45,12 @@ describe("hmr", () => {
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(3);
     });
+
+    it.failing("allows dumping a tape and retaining session", async () => {
+      // run forward with some inputs
+      // dump tape to new runtime
+      // step back and forward in new runtime
+    });
   });
 
   describe("rewire", () => {
