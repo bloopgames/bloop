@@ -99,7 +99,6 @@ pub const Tape = struct {
     max_events: u32,
     /// Offset where events start - dependent on the size of the user data
     events_offset: u32,
-    event_count: u32 = 0,
 
     pub fn init(gpa: std.mem.Allocator, snapshot: *Snapshot, max_events: u32) !Tape {
         // Calculate aligned offset for events to ensure proper Event alignment
@@ -148,14 +147,26 @@ pub const Tape = struct {
         gpa.free(self.buf);
     }
 
+    pub fn event_count(self: *const Tape) u32 {
+        const header = self.get_header();
+        return header.event_count;
+    }
+
+    pub fn get_header(self: *const Tape) *TapeHeader {
+        const header_slice = self.buf[0..@sizeOf(TapeHeader)];
+        const header: *TapeHeader = @ptrCast(@alignCast(header_slice.ptr));
+        return header;
+    }
+
     pub fn append_event(self: *Tape, event: Event) !void {
-        if (self.event_count >= self.max_events) {
+        const header = self.get_header();
+        if (header.event_count >= self.max_events) {
             return error.OutOfMemory;
         }
         const event_size = @sizeOf(Event);
         @memcpy(self.buf[self.offset .. self.offset + event_size], std.mem.asBytes(&event));
         self.offset += event_size;
-        self.event_count += 1;
+        header.event_count += 1;
     }
 
     pub fn advance_frame(self: *Tape) !void {
@@ -163,43 +174,49 @@ pub const Tape = struct {
         try self.append_event(Event.frameAdvance(self.frame_number));
     }
 
+    fn get_event(self: *const Tape, index: usize) *const Event {
+        const event_offset = self.events_offset + (@sizeOf(Event) * index);
+        const event_slice = self.buf[event_offset .. event_offset + @sizeOf(Event)];
+        const event: *const Event = @ptrCast(@alignCast(event_slice.ptr));
+        return event;
+    }
+
     pub fn get_events(self: *const Tape, frame: u32) []const Event {
-        const header_size = @sizeOf(TapeHeader);
-        const snapshot_size = @sizeOf(Snapshot);
-
-        const snapshot: *const Snapshot = @ptrCast(@alignCast(self.buf[header_size .. header_size + snapshot_size]));
-        const user_data_len = snapshot.user_data_len;
-        const header_and_snapshot = header_size + snapshot_size + user_data_len;
-        const event_alignment = @alignOf(Event);
-        const events_start = std.mem.alignForward(usize, header_and_snapshot, event_alignment);
-
         var current_frame: u32 = 0;
-        var frame_start_idx: usize = 0;
         var i: usize = 0;
+        var frame_index: usize = 0;
+        var frame_event_count: usize = 0;
 
-        while (i < self.event_count) : (i += 1) {
-            const event_offset = events_start + (i * @sizeOf(Event));
-            const event: *const Event = @ptrCast(@alignCast(self.buf[event_offset .. event_offset + @sizeOf(Event)]));
-
+        while (i < self.event_count()) : (i += 1) {
+            const event = get_event(self, i);
             if (event.kind == .FrameAdvance) {
-                if (current_frame == frame) {
-                    // Found the end of the requested frame
-                    const count = i - frame_start_idx;
-                    const start_offset = events_start + (frame_start_idx * @sizeOf(Event));
-                    const events_slice: []const Event = @as([*]const Event, @ptrCast(@alignCast(&self.buf[start_offset])))[0..count];
-                    return events_slice;
+                if (frame == current_frame) {
+                    // Found the end of the requested frame, return the events slice
+                    const start_offset = self.events_offset + (@sizeOf(Event) * frame_index);
+                    const events_ptr: [*]const Event = @ptrCast(@alignCast(&self.buf[start_offset]));
+                    return events_ptr[0..frame_event_count];
                 }
+
+                // Set frame_index to the index of the event after FrameAdvance
+                frame_index = i + 1;
+                // Update current frame
                 current_frame += 1;
-                frame_start_idx = i + 1;
+                // Reset event count for the new frame
+                frame_event_count = 0;
+            } else {
+                frame_event_count += 1;
             }
         }
 
-        // If we're looking for the current frame and haven't found a FrameAdvance yet
+        // If the last frame in the tape is the requested frame, return a slice of the frame index to the total event count
         if (current_frame == frame) {
-            const count = i - frame_start_idx;
-            const start_offset = events_start + (frame_start_idx * @sizeOf(Event));
-            const events_slice: []const Event = @as([*]const Event, @ptrCast(@alignCast(&self.buf[start_offset])))[0..count];
-            return events_slice;
+            const start_offset = self.events_offset + (@sizeOf(Event) * frame_index);
+            const events_count = self.event_count() - frame_index;
+            if (events_count == 0) {
+                return &[_]Event{};
+            }
+            const events_ptr: [*]const Event = @ptrCast(@alignCast(&self.buf[start_offset]));
+            return events_ptr[0..events_count];
         }
 
         return &[_]Event{};
@@ -308,7 +325,7 @@ test "tape can index events by frame" {
     try tape.append_event(Event.keyUp(.KeyA));
     try tape.advance_frame();
 
-    try std.testing.expectEqual(5, tape.event_count);
+    try std.testing.expectEqual(5, tape.event_count());
 
     const events = tape.get_events(0);
 
@@ -337,4 +354,20 @@ test "tape can index events by frame with unaligned user data" {
     const events = tape.get_events(1);
 
     try std.testing.expectEqual(0, events.len);
+}
+
+test "tape header is updated with event count" {
+    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    defer snapshot.deinit(std.testing.allocator);
+
+    var tape = try Tape.init(std.testing.allocator, snapshot, 3);
+    defer tape.free(std.testing.allocator);
+
+    try tape.append_event(Event.keyDown(.KeyA));
+    try tape.append_event(Event.keyUp(.KeyA));
+
+    const header_slice = tape.buf[0..@sizeOf(TapeHeader)];
+    const header: *const TapeHeader = @ptrCast(@alignCast(header_slice.ptr));
+
+    try std.testing.expectEqual(2, header.event_count);
 }
