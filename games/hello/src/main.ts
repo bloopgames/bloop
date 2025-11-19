@@ -1,9 +1,23 @@
 import "./style.css";
-import { mount } from "@bloopjs/bloop";
+import { mount, Util } from "@bloopjs/bloop";
 import { type Key, mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 import { game } from "./game";
 
-const { runtime } = await mount(game);
+let { runtime } = await mount(game);
+
+import.meta.hot?.accept("./game", async (newModule) => {
+  Util.assert(
+    newModule?.game,
+    `HMR: missing game export on module: ${JSON.stringify(newModule)}`,
+  );
+
+  const runtime1 = runtime;
+  const result = await mount(newModule.game as any);
+  runtime = result.runtime;
+
+  runtime.restore(runtime1.snapshot());
+  runtime1.unmount();
+});
 
 let now = performance.now();
 let isPaused = true;
