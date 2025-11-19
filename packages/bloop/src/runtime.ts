@@ -81,6 +81,7 @@ export class Runtime {
     if (this.time.frame === 0) {
       return;
     }
+
     this.seek(this.time.frame - 1);
   }
 
