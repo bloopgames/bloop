@@ -21,7 +21,7 @@ import type {
   MouseMoveEvent,
   MouseWheelEvent,
 } from "./events";
-import type { DeserializeFn, EngineHooks, SerializeFn } from "./runtime";
+import type { EngineHooks } from "./runtime";
 import type { System } from "./system";
 
 export type BloopOpts<B extends Bag> = {
@@ -146,12 +146,14 @@ export class Bloop<GS extends BloopSchema> {
       this.#engineBuffer = buffer;
     },
 
-    systemsCallback: (system_handle: number, ptr: EnginePointer) => {
+    setContext: (ptr: EnginePointer) => {
       // todo - move this to engine
+      if (!this.#engineBuffer) {
+        throw new Error("Tried to set context before engine buffer");
+      }
       const dv = new DataView(this.#engineBuffer, ptr);
       const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
       const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
-      const eventsPtr = dv.getUint32(EVENTS_OFFSET, true);
 
       this.#context.rawPointer = ptr;
       this.#context.inputs.dataView = new DataView(
@@ -162,7 +164,12 @@ export class Bloop<GS extends BloopSchema> {
         this.#engineBuffer,
         timeCtxPtr,
       );
+    },
 
+    systemsCallback: (system_handle: number, ptr: EnginePointer) => {
+      this.hooks.setContext(ptr);
+      const dv = new DataView(this.#engineBuffer, ptr);
+      const eventsPtr = dv.getUint32(EVENTS_OFFSET, true);
       const eventsDataView = new DataView(this.#engineBuffer, eventsPtr);
 
       for (const system of this.#systems) {

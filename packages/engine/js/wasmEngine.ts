@@ -2,7 +2,8 @@ import type * as Enums from "./codegen/enums";
 import type { EngineOk, EnginePointer } from "./engine";
 
 export type WasmEngine = {
-  initialize: () => void;
+  /** Initialize the engine and return a pointer to the callback context */
+  initialize: () => EnginePointer;
   alloc: (size: number) => EnginePointer;
   free: (ptr: EnginePointer, size: number) => void;
   register_systems: (cb_handle: number) => void;

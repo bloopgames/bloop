@@ -94,7 +94,7 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
     @trap();
 }
 
-pub export fn initialize() void {
+pub export fn initialize() wasmPointer {
     Log.init(arena(), wasm_log);
 
     // Validate Event struct layout for js-side assumptions
@@ -128,6 +128,8 @@ pub export fn initialize() void {
     cb_data[0] = time_ctx_ptr;
     cb_data[1] = input_ctx_ptr;
     cb_data[2] = events_ptr;
+
+    return cb_ptr;
 }
 
 pub export fn alloc(size: usize) wasmPointer {

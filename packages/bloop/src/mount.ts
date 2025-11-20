@@ -52,8 +52,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   });
   const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;
 
-  wasm.initialize();
-
+  const enginePointer = wasm.initialize();
   const runtime = new Runtime(wasm, memory, {
     serialize: opts.hooks.serialize,
   });
@@ -61,6 +60,9 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   if (opts.startRecording ?? true) {
     runtime.record();
   }
+
+  opts.hooks.setBuffer(memory.buffer);
+  opts.hooks.setContext(enginePointer);
 
   return {
     runtime,

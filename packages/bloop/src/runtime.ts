@@ -28,7 +28,6 @@ function unmuteConsole() {
   (globalThis.console as unknown as Console) = originalConsole;
 }
 
-
 export type EngineHooks = {
   /**
    * Hook to serialize some data when snapshotting
@@ -48,6 +47,10 @@ export type EngineHooks = {
    * Note that if the engine wasm memory grows, all dataviews into the memory must be updated
    */
   setBuffer: (buffer: ArrayBuffer) => void;
+  /**
+   * Sets the context pointer
+   */
+  setContext: (ptr: EnginePointer) => void;
 };
 
 export type SystemsCallback = (
@@ -87,6 +90,7 @@ export class Runtime {
     this.#time = new TimeContext(
       new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
+
     this.#serialize = opts?.serialize;
   }
 
