@@ -94,7 +94,7 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
     @trap();
 }
 
-pub export fn initialize() void {
+pub export fn initialize() wasmPointer {
     Log.init(arena(), wasm_log);
 
     // Validate Event struct layout for js-side assumptions
@@ -128,6 +128,8 @@ pub export fn initialize() void {
     cb_data[0] = time_ctx_ptr;
     cb_data[1] = input_ctx_ptr;
     cb_data[2] = events_ptr;
+
+    return cb_ptr;
 }
 
 pub export fn alloc(size: usize) wasmPointer {
@@ -160,6 +162,24 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
         return 1;
     };
     vcr.is_recording = true;
+
+    if (snapshot.time.frame != 0) {
+        wasm_log("Untested: started recording from non-zero frame");
+    }
+
+    tape.?.start_frame() catch {
+        wasm_log("Failed to start first tape frame");
+        return 1;
+    };
+    return 0;
+}
+
+pub export fn stop_recording() u8 {
+    if (!vcr.is_recording) {
+        wasm_log("Not currently recording");
+        return 2;
+    }
+    vcr.is_recording = false;
     return 0;
 }
 
@@ -169,6 +189,60 @@ pub export fn is_recording() bool {
 
 pub export fn is_replaying() bool {
     return vcr.is_replaying;
+}
+
+pub export fn get_tape_ptr() wasmPointer {
+    if (tape == null) {
+        wasm_log("No active tape");
+        return 0;
+    }
+    const buf = tape.?.get_buffer();
+    return @intFromPtr(buf.ptr);
+}
+
+pub export fn get_tape_len() u32 {
+    if (tape == null) {
+        wasm_log("No active tape");
+        return 0;
+    }
+    const buf = tape.?.get_buffer();
+    return @intCast(buf.len);
+}
+
+pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
+    if (vcr.is_recording) {
+        wasm_log("Cannot load tape while recording");
+        return 2;
+    }
+    const tape_buf: [*]u8 = @ptrFromInt(tape_ptr);
+    const tape_slice = tape_buf[0..tape_len];
+
+    const copy: []u8 = wasm_alloc.alloc(u8, tape_len) catch {
+        wasm_log("Failed to allocate memory for tape load");
+        return 1;
+    };
+    @memcpy(copy[0..tape_len], tape_slice);
+    tape = Tapes.Tape.load(copy) catch |e| {
+        switch (e) {
+            Tapes.TapeError.BadMagic => wasm_log("Failed to load tape: Bad magic number"),
+            Tapes.TapeError.InvalidTape => wasm_log("Failed to load tape: Invalid tape format"),
+            Tapes.TapeError.UnsupportedVersion => wasm_log("Failed to load tape: Unsupported tape version"),
+        }
+        return 1;
+    };
+    vcr.is_replaying = true;
+    return 0;
+}
+
+pub export fn deinit() void {
+    if (tape != null) {
+        tape.?.free(wasm_alloc);
+        tape = null;
+    }
+    if (arena_alloc != null) {
+        arena_alloc.?.deinit();
+        arena_alloc = null;
+    }
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
@@ -230,6 +304,7 @@ pub export fn seek(frame: u32) void {
     while (time.*.frame < frame) {
         const tape_events = tape.?.get_events(time.*.frame);
         const events: *EventBuffer = @ptrFromInt(events_ptr);
+        // log_fmt("Replaying frame {} with {d} events", .{ time.*.frame, tape_events.len });
 
         events.*.count = std.math.cast(u8, tape_events.len) orelse {
             log_fmt("Too many events in tape for event buffer: {}", .{tape_events.len});
@@ -259,19 +334,20 @@ pub export fn step(ms: u32) void {
     while (accumulator >= hz) {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
-
         process_events();
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
         accumulator -= hz;
+        flush_events();
+
+        // Advance to the next frame
         if (vcr.is_recording and !vcr.is_replaying) {
             if (tape) |*t| {
-                t.advance_frame() catch {
+                t.start_frame() catch {
                     @panic("Failed to advance tape frame");
                 };
             }
         }
-        flush_events();
     }
 
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);

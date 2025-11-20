@@ -2,7 +2,8 @@ import type * as Enums from "./codegen/enums";
 import type { EngineOk, EnginePointer } from "./engine";
 
 export type WasmEngine = {
-  initialize: () => void;
+  /** Initialize the engine and return a pointer to the callback context */
+  initialize: () => EnginePointer;
   alloc: (size: number) => EnginePointer;
   free: (ptr: EnginePointer, size: number) => void;
   register_systems: (cb_handle: number) => void;
@@ -14,13 +15,18 @@ export type WasmEngine = {
    */
   step: (ms: number) => void;
   /**
-   * Seek to a specific frame number
+   * Seek to a specific frame number (inclusive).
+   * Seeking to frame 1 will run events for frame 0 and frame 1.
    */
   seek: (frame: number) => void;
   /**
    * Start recording inputs to tape
    */
   start_recording: (data_len: number, max_events: number) => EngineOk;
+  /**
+   * Stop recording inputs
+   */
+  stop_recording: () => EngineOk;
   /**
    * Whether the engine is currently recording to tape
    */
@@ -42,6 +48,27 @@ export type WasmEngine = {
    * Returns a pointer to the snapshot data.
    */
   take_snapshot: (data_len: number) => EnginePointer;
-  /** Restores the engine state from a snapshot */
+  /**
+   * Restores the engine state from a snapshot
+   */
   restore: (ptr: EnginePointer) => void;
+
+  /**
+   * Returns a pointer to the current tape data
+   */
+  get_tape_ptr: () => EnginePointer;
+  /**
+   * Returns the length of the current tape data
+   */
+  get_tape_len: () => number;
+  /**
+   * Loads a tape from the given pointer and length
+   */
+  load_tape: (ptr: EnginePointer, len: number) => EngineOk;
+
+  /**
+   * Deinitialize the engine
+   * Free all memory associated with it
+   */
+  deinit: () => void;
 };

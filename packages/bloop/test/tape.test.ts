@@ -96,7 +96,7 @@ describe("tapes", () => {
       });
 
       bloop.system("countClicks", {
-        update({ bag, inputs }) {
+        update({ bag, inputs, time }) {
           if (inputs.mouse.left.down) {
             bag.clicks++;
           }
@@ -106,6 +106,9 @@ describe("tapes", () => {
       const { runtime } = await mount(bloop);
 
       runtime.emit.mousedown("Left");
+      expect(bloop.context.time.frame).toEqual(0);
+      expect(bloop.context.bag.clicks).toEqual(0);
+
       runtime.step();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
@@ -133,6 +136,53 @@ describe("tapes", () => {
       runtime.stepBack();
 
       expect(game.context.time.frame).toEqual(1);
+    });
+  });
+
+  describe("serialization", () => {
+    it("can serialize a tape to bytes and restore from it", async () => {
+      const bloop = Bloop.create({
+        bag: {
+          score: 0,
+        },
+      });
+
+      bloop.system("scoreSystem", {
+        keydown({ event, bag }) {
+          if (event.key === "Slash") {
+            bag.score += 10;
+          }
+        },
+      });
+
+      const { runtime } = await mount(bloop);
+
+      runtime.step();
+      expect(bloop.bag.score).toEqual(0);
+      expect(bloop.context.time.frame).toEqual(1);
+
+      runtime.emit.keydown("Slash");
+      runtime.step();
+      expect(bloop.bag.score).toEqual(10);
+      expect(bloop.context.time.frame).toEqual(2);
+
+      runtime.emit.keyup("Slash");
+      runtime.step();
+      expect(bloop.bag.score).toEqual(10);
+      expect(bloop.context.time.frame).toEqual(3);
+
+      const tape = runtime.saveTape();
+
+      const { runtime: runtime1 } = await mount(bloop);
+      runtime1.loadTape(tape);
+
+      // at the start of frame 2, score should be 10
+      runtime1.seek(2);
+      expect(bloop.bag.score).toEqual(10);
+      expect(bloop.context.time.frame).toEqual(2);
+
+      runtime1.step();
+      expect(bloop.bag.score).toEqual(10);
     });
   });
 });

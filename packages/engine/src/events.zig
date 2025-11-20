@@ -49,9 +49,9 @@ pub const Event = extern struct {
         };
     }
 
-    pub inline fn frameAdvance(frame_number: u32) Event {
+    pub inline fn frameStart(frame_number: u32) Event {
         return Event{
-            .kind = .FrameAdvance,
+            .kind = .FrameStart,
             .payload = .{ .frame_number = frame_number },
         };
     }
@@ -73,7 +73,8 @@ pub const EventType = enum(u8) {
     MouseDown,
     MouseUp,
     MouseWheel,
-    FrameAdvance,
+    /// Frame is complete. Frame number payload indicates which frame has completed its events
+    FrameStart,
 };
 
 // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button#value

@@ -8,7 +8,7 @@ export enum EventType {
   MouseDown = 4,
   MouseUp = 5,
   MouseWheel = 6,
-  FrameAdvance = 7,
+  FrameStart = 7,
 }
 
 export enum MouseButton {

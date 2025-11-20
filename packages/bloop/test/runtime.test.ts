@@ -6,8 +6,7 @@ import {
   MouseContext,
 } from "@bloopjs/engine";
 import { mount } from "../src/mount";
-import { type EngineHooks } from "../src/runtime";
-import { assert } from "../src/util";
+import type { EngineHooks } from "../src/runtime";
 
 const defaultHooks: EngineHooks = {
   serialize: () => ({
@@ -17,6 +16,7 @@ const defaultHooks: EngineHooks = {
   deserialize() {},
   systemsCallback() {},
   setBuffer() {},
+  setContext() {},
 };
 
 it("hello wasm", async () => {

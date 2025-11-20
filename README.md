@@ -21,9 +21,9 @@ Bloop is in early development. The goals for 1.0 are:
 - [x] Unit testable
 - [x] Keyboard and Mouse Input Handling
 - [x] Bag for singleton game state
-- [ ] Record gameplay "tapes"
+- [x] Record gameplay "tapes"
 - [x] Rewind any live or recorded gameplay sesison
-- [ ] Hot reload code changes during a rewinded play session
+- [x] Hot reload code changes during a rewinded play session
 - [ ] ECS
 - [ ] Transforms
 - [ ] Animated Sprites

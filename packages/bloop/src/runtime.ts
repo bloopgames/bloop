@@ -28,7 +28,6 @@ function unmuteConsole() {
   (globalThis.console as unknown as Console) = originalConsole;
 }
 
-
 export type EngineHooks = {
   /**
    * Hook to serialize some data when snapshotting
@@ -48,6 +47,10 @@ export type EngineHooks = {
    * Note that if the engine wasm memory grows, all dataviews into the memory must be updated
    */
   setBuffer: (buffer: ArrayBuffer) => void;
+  /**
+   * Sets the context pointer
+   */
+  setContext: (ptr: EnginePointer) => void;
 };
 
 export type SystemsCallback = (
@@ -87,6 +90,7 @@ export class Runtime {
     this.#time = new TimeContext(
       new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
+
     this.#serialize = opts?.serialize;
   }
 
@@ -102,17 +106,23 @@ export class Runtime {
     this.seek(this.time.frame - 1);
   }
 
-  seek(frame: number) {
+  /**
+   * Seek to the start of a given frame
+   * @param frame - frame number to replay to
+   */
+  seek(frame: number, inclusive?: boolean) {
     assert(
       this.hasHistory,
       "Not recording or playing back, can't seek to frame",
     );
 
+    const targetFrame = inclusive ? frame + 1 : frame;
+
     const shouldMute = frame < this.time.frame;
     if (shouldMute) {
       muteConsole();
     }
-    this.wasm.seek(frame);
+    this.wasm.seek(targetFrame);
     if (shouldMute) {
       unmuteConsole();
     }
@@ -121,9 +131,15 @@ export class Runtime {
   record() {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    this.wasm.start_recording(size, 1024);
+    const result = this.wasm.start_recording(size, 1024);
+    if (result !== 0) {
+      throw new Error(`failed to start recording, error code=${result}`);
+    }
   }
 
+  /**
+   * Snapshot the current game state into a byte array
+   */
   snapshot(): Uint8Array<ArrayBuffer> {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
@@ -145,6 +161,50 @@ export class Runtime {
     return copy;
   }
 
+  /**
+   * Get a recording of the current tape to linear memory
+   */
+  saveTape(): Uint8Array<ArrayBuffer> {
+    const tapeLen = this.wasm.get_tape_len();
+    const tapePtr = this.wasm.get_tape_ptr();
+    const memoryView = new Uint8Array(this.#memory.buffer, tapePtr, tapeLen);
+
+    const copy = new Uint8Array(tapeLen);
+    copy.set(memoryView);
+
+    return copy;
+  }
+
+  /**
+   * Load a tape
+   */
+  loadTape(tape: Uint8Array) {
+    const tapePtr = this.wasm.alloc(tape.byteLength);
+    assert(
+      tapePtr > 0,
+      `failed to allocate ${tape.byteLength} bytes for tape load, pointer=${tapePtr}`,
+    );
+
+    // copy tape into wasm memory
+    const memoryView = new Uint8Array(
+      this.#memory.buffer,
+      tapePtr,
+      tape.byteLength,
+    );
+    memoryView.set(tape);
+
+    // load the tape
+    this.wasm.stop_recording();
+    const result = this.wasm.load_tape(tapePtr, tape.byteLength);
+    assert(result === 0, `failed to load tape, error code=${result}`);
+
+    // free the allocated memory
+    this.wasm.free(tapePtr, tape.byteLength);
+  }
+
+  /**
+   * Restore the game state from a snapshot byte array
+   */
   restore(snapshot: Uint8Array) {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
     assert(
@@ -165,6 +225,13 @@ export class Runtime {
 
     // free the allocated memory
     this.wasm.free(dataPtr, snapshot.byteLength);
+  }
+
+  /**
+   * Unmount the runtime and free all associated memory
+   */
+  unmount() {
+    this.wasm.deinit();
   }
 
   get time(): TimeContext {
