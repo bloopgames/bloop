@@ -97,7 +97,6 @@ describe("tapes", () => {
 
       bloop.system("countClicks", {
         update({ bag, inputs, time }) {
-          console.log("counting...", time.frame, inputs.mouse.left.down);
           if (inputs.mouse.left.down) {
             bag.clicks++;
           }
