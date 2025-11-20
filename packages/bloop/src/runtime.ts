@@ -227,6 +227,13 @@ export class Runtime {
     this.wasm.free(dataPtr, snapshot.byteLength);
   }
 
+  /**
+   * Unmount the runtime and free all associated memory
+   */
+  unmount() {
+    this.wasm.deinit();
+  }
+
   get time(): TimeContext {
     if (
       !this.#time.dataView ||

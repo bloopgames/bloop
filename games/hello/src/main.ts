@@ -15,7 +15,11 @@ import.meta.hot?.accept("./game", async (newModule) => {
   const result = await mount(newModule.game as any);
   runtime = result.runtime;
 
-  runtime.restore(runtime1.snapshot());
+  const tape = runtime1.saveTape();
+  const snapshot = runtime1.snapshot();
+
+  runtime.loadTape(tape);
+  runtime.restore(snapshot);
   runtime1.unmount();
 });
 

@@ -65,4 +65,10 @@ export type WasmEngine = {
    * Loads a tape from the given pointer and length
    */
   load_tape: (ptr: EnginePointer, len: number) => EngineOk;
+
+  /**
+   * Deinitialize the engine
+   * Free all memory associated with it
+   */
+  deinit: () => void;
 };
