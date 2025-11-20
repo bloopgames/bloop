@@ -30,13 +30,13 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Collision detection
 - [ ] Cameras
 - [ ] Scene Loading
+- [ ] Rollback netcode out of the box
+- [ ] Run anywhere you can allocate a byte buffer
 - [ ] Feature flags
 - [ ] Config values
 - [ ] Gamepad (aka controller) input handling
 - [ ] Single frame object pools
-- [ ] Rollback netcode out of the box
 - [ ] Multithreading
-- [ ] Run anywhere you can allocate a byte buffer
 
 ### Editing Integrations
 
