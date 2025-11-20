@@ -165,6 +165,15 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
     return 0;
 }
 
+pub export fn stop_recording() u8 {
+    if (!vcr.is_recording) {
+        wasm_log("Not currently recording");
+        return 2;
+    }
+    vcr.is_recording = false;
+    return 0;
+}
+
 pub export fn is_recording() bool {
     return vcr.is_recording;
 }
@@ -198,7 +207,13 @@ pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
     }
     const tape_buf: [*]u8 = @ptrFromInt(tape_ptr);
     const tape_slice = tape_buf[0..tape_len];
-    tape = Tapes.Tape.load(tape_slice) catch |e| {
+
+    const copy: []u8 = wasm_alloc.alloc(u8, tape_len) catch {
+        wasm_log("Failed to allocate memory for tape load");
+        return 1;
+    };
+    @memcpy(copy[0..tape_len], tape_slice);
+    tape = Tapes.Tape.load(copy) catch |e| {
         switch (e) {
             Tapes.TapeError.BadMagic => wasm_log("Failed to load tape: Bad magic number"),
             Tapes.TapeError.InvalidTape => wasm_log("Failed to load tape: Invalid tape format"),
@@ -208,6 +223,17 @@ pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
     };
     vcr.is_replaying = true;
     return 0;
+}
+
+pub export fn deinit() void {
+    if (tape != null) {
+        tape.?.free(wasm_alloc);
+        tape = null;
+    }
+    if (arena_alloc != null) {
+        arena_alloc.?.deinit();
+        arena_alloc = null;
+    }
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
@@ -267,6 +293,7 @@ pub export fn seek(frame: u32) void {
         vcr.is_replaying = false;
     }
     while (time.*.frame < frame) {
+        log_fmt("Replaying frame {}", .{time.*.frame});
         const tape_events = tape.?.get_events(time.*.frame);
         const events: *EventBuffer = @ptrFromInt(events_ptr);
 
@@ -296,20 +323,20 @@ pub export fn step(ms: u32) void {
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
 
     while (accumulator >= hz) {
-        time.*.dt_ms = hz;
-        time.*.total_ms += hz;
-
-        process_events();
-        __cb(global_cb_handle, cb_ptr, hz);
-        time.*.frame += 1;
-        accumulator -= hz;
         if (vcr.is_recording and !vcr.is_replaying) {
             if (tape) |*t| {
-                t.advance_frame() catch {
+                t.start_frame() catch {
                     @panic("Failed to advance tape frame");
                 };
             }
         }
+
+        time.*.dt_ms = hz;
+        time.*.total_ms += hz;
+        process_events();
+        __cb(global_cb_handle, cb_ptr, hz);
+        time.*.frame += 1;
+        accumulator -= hz;
         flush_events();
     }
 

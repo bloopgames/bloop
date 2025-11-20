@@ -23,6 +23,10 @@ export type WasmEngine = {
    */
   start_recording: (data_len: number, max_events: number) => EngineOk;
   /**
+   * Stop recording inputs
+   */
+  stop_recording: () => EngineOk;
+  /**
    * Whether the engine is currently recording to tape
    */
   is_recording: () => boolean;
@@ -43,6 +47,21 @@ export type WasmEngine = {
    * Returns a pointer to the snapshot data.
    */
   take_snapshot: (data_len: number) => EnginePointer;
-  /** Restores the engine state from a snapshot */
+  /**
+   * Restores the engine state from a snapshot
+   */
   restore: (ptr: EnginePointer) => void;
+
+  /**
+   * Returns a pointer to the current tape data
+   */
+  get_tape_ptr: () => EnginePointer;
+  /**
+   * Returns the length of the current tape data
+   */
+  get_tape_len: () => number;
+  /**
+   * Loads a tape from the given pointer and length
+   */
+  load_tape: (ptr: EnginePointer, len: number) => EngineOk;
 };

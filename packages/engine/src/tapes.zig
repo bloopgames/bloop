@@ -34,6 +34,7 @@ pub const Snapshot = extern struct {
         snapshot.*.events_len = @sizeOf(EventBuffer);
         snapshot.*.user_data_len = user_data_len;
         snapshot.*.engine_data_len = @sizeOf(Snapshot);
+        snapshot.*.time = Ctx.TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
 
         return snapshot;
     }
@@ -212,9 +213,9 @@ pub const Tape = struct {
         header.event_count += 1;
     }
 
-    pub fn advance_frame(self: *Tape) !void {
+    pub fn start_frame(self: *Tape) !void {
         const header = self.get_header();
-        try self.append_event(Event.frameAdvance(self.frame_number()));
+        try self.append_event(Event.frameStart(self.frame_number()));
         header.frame_count += 1;
     }
 
@@ -239,14 +240,14 @@ pub const Tape = struct {
             const event = get_event(self, i);
 
             switch (event.kind) {
-                .FrameAdvance => {
-                    // If this is the frameAdvance for the frame after the requested frame,
-                    // break the loop
-                    if (current_frame == requested_frame) {
+                .FrameStart => {
+                    // If the current frame is the requested frame and we're advancing past it, break
+                    // For frame 0, we need to guard against a false positive on the initial state of current_frame == 0
+                    if (current_frame == requested_frame and event.payload.frame_number == current_frame + 1) {
                         break;
                     }
 
-                    current_frame += 1;
+                    current_frame = event.payload.frame_number;
                     // frame events start after this event
                     frame_index = i + 1;
                     // reset event count for the frame
@@ -367,16 +368,43 @@ test "tape can index events by frame" {
     var tape = try Tape.init(std.testing.allocator, snapshot, 5);
     defer tape.free(std.testing.allocator);
 
+    try tape.start_frame();
     try tape.append_event(Event.keyDown(.KeyA));
     try tape.append_event(Event.mouseMove(150.0, 250.0));
-    try tape.advance_frame();
+
+    try tape.start_frame();
     try tape.append_event(Event.keyUp(.KeyA));
-    try tape.advance_frame();
 
     try std.testing.expectEqual(5, tape.event_count());
 
-    const events = tape.get_events(0);
+    {
+        const event = tape.get_event(0);
+        try std.testing.expectEqual(.FrameStart, event.kind);
+        try std.testing.expectEqual(0, event.payload.frame_number);
+    }
+    {
+        const event = tape.get_event(1);
+        try std.testing.expectEqual(.KeyDown, event.kind);
+        try std.testing.expectEqual(.KeyA, event.payload.key);
+    }
+    {
+        const event = tape.get_event(2);
+        try std.testing.expectEqual(.MouseMove, event.kind);
+        try std.testing.expectEqual(150.0, event.payload.mouse_move.x);
+        try std.testing.expectEqual(250.0, event.payload.mouse_move.y);
+    }
+    {
+        const event = tape.get_event(3);
+        try std.testing.expectEqual(.FrameStart, event.kind);
+        try std.testing.expectEqual(1, event.payload.frame_number);
+    }
+    {
+        const event = tape.get_event(4);
+        try std.testing.expectEqual(.KeyUp, event.kind);
+        try std.testing.expectEqual(.KeyA, event.payload.key);
+    }
 
+    const events = tape.get_events(0);
     try std.testing.expectEqual(2, events.len);
     try std.testing.expectEqual(.KeyDown, events[0].kind);
     try std.testing.expectEqual(.KeyA, events[0].payload.key);
@@ -397,8 +425,8 @@ test "tape can index events by frame with unaligned user data" {
     var tape = try Tape.init(std.testing.allocator, snapshot, 4);
     defer tape.free(std.testing.allocator);
 
-    try tape.advance_frame();
-    try tape.advance_frame();
+    try tape.start_frame();
+    try tape.start_frame();
     const events = tape.get_events(1);
 
     try std.testing.expectEqual(0, events.len);
@@ -427,11 +455,11 @@ test "tape can be serialized and deserialized" {
     var tape = try Tape.init(std.testing.allocator, snapshot, 5);
     defer tape.free(std.testing.allocator);
 
+    try tape.start_frame();
     try tape.append_event(Event.keyDown(.KeyA));
     try tape.append_event(Event.mouseMove(150.0, 250.0));
-    try tape.advance_frame();
+    try tape.start_frame();
     try tape.append_event(Event.keyUp(.KeyA));
-    try tape.advance_frame();
 
     // Simulate serialization by copying the tape buffer
     const len = tape.buf.len;

@@ -106,6 +106,10 @@ export class Runtime {
     this.seek(this.time.frame - 1);
   }
 
+  /**
+   * Seek to the start of a given frame
+   * @param frame - frame number to replay to
+   */
   seek(frame: number) {
     assert(
       this.hasHistory,
@@ -185,7 +189,9 @@ export class Runtime {
     memoryView.set(tape);
 
     // load the tape
-    this.wasm.load_tape(tapePtr, tape.byteLength);
+    this.wasm.stop_recording();
+    const result = this.wasm.load_tape(tapePtr, tape.byteLength);
+    assert(result === 0, `failed to load tape, error code=${result}`);
 
     // free the allocated memory
     this.wasm.free(tapePtr, tape.byteLength);
