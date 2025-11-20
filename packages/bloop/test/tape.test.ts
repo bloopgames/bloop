@@ -135,4 +135,46 @@ describe("tapes", () => {
       expect(game.context.time.frame).toEqual(1);
     });
   });
+
+  describe("serialization", () => {
+    it("can serialize a tape to bytes and restore from it", async () => {
+      const bloop = Bloop.create({
+        bag: {
+          score: 0,
+        },
+      });
+
+      bloop.system("scoreSystem", {
+        keydown({ event, bag }) {
+          if (event.key === "Slash") {
+            bag.score += 10;
+          }
+        },
+      });
+
+      const { runtime } = await mount(bloop);
+
+      runtime.step();
+      expect(bloop.bag.score).toEqual(0);
+
+      runtime.emit.keydown("Slash");
+      runtime.step();
+      expect(bloop.bag.score).toEqual(10);
+
+      runtime.emit.keyup("Slash");
+      runtime.step();
+      expect(bloop.bag.score).toEqual(10);
+
+      const tape = runtime.saveTape();
+
+      const { runtime: runtime1 } = await mount(bloop);
+      runtime1.loadTape(tape);
+
+      runtime1.seek(1);
+      expect(bloop.bag.score).toEqual(10);
+
+      runtime1.step();
+      expect(bloop.bag.score).toEqual(10);
+    });
+  });
 });

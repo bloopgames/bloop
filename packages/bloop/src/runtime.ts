@@ -128,6 +128,9 @@ export class Runtime {
     this.wasm.start_recording(size, 1024);
   }
 
+  /**
+   * Snapshot the current game state into a byte array
+   */
   snapshot(): Uint8Array<ArrayBuffer> {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
@@ -149,6 +152,48 @@ export class Runtime {
     return copy;
   }
 
+  /**
+   * Get a recording of the current tape to linear memory
+   */
+  saveTape(): Uint8Array<ArrayBuffer> {
+    const tapeLen = this.wasm.get_tape_len();
+    const tapePtr = this.wasm.get_tape_ptr();
+    const memoryView = new Uint8Array(this.#memory.buffer, tapePtr, tapeLen);
+
+    const copy = new Uint8Array(tapeLen);
+    copy.set(memoryView);
+
+    return copy;
+  }
+
+  /**
+   * Load a tape
+   */
+  loadTape(tape: Uint8Array) {
+    const tapePtr = this.wasm.alloc(tape.byteLength);
+    assert(
+      tapePtr > 0,
+      `failed to allocate ${tape.byteLength} bytes for tape load, pointer=${tapePtr}`,
+    );
+
+    // copy tape into wasm memory
+    const memoryView = new Uint8Array(
+      this.#memory.buffer,
+      tapePtr,
+      tape.byteLength,
+    );
+    memoryView.set(tape);
+
+    // load the tape
+    this.wasm.load_tape(tapePtr, tape.byteLength);
+
+    // free the allocated memory
+    this.wasm.free(tapePtr, tape.byteLength);
+  }
+
+  /**
+   * Restore the game state from a snapshot byte array
+   */
   restore(snapshot: Uint8Array) {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
     assert(

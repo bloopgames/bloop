@@ -173,6 +173,43 @@ pub export fn is_replaying() bool {
     return vcr.is_replaying;
 }
 
+pub export fn get_tape_ptr() wasmPointer {
+    if (tape == null) {
+        wasm_log("No active tape");
+        return 0;
+    }
+    const buf = tape.?.get_buffer();
+    return @intFromPtr(buf.ptr);
+}
+
+pub export fn get_tape_len() u32 {
+    if (tape == null) {
+        wasm_log("No active tape");
+        return 0;
+    }
+    const buf = tape.?.get_buffer();
+    return @intCast(buf.len);
+}
+
+pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
+    if (vcr.is_recording) {
+        wasm_log("Cannot load tape while recording");
+        return 2;
+    }
+    const tape_buf: [*]u8 = @ptrFromInt(tape_ptr);
+    const tape_slice = tape_buf[0..tape_len];
+    tape = Tapes.Tape.load(tape_slice) catch |e| {
+        switch (e) {
+            Tapes.TapeError.BadMagic => wasm_log("Failed to load tape: Bad magic number"),
+            Tapes.TapeError.InvalidTape => wasm_log("Failed to load tape: Invalid tape format"),
+            Tapes.TapeError.UnsupportedVersion => wasm_log("Failed to load tape: Unsupported tape version"),
+        }
+        return 1;
+    };
+    vcr.is_replaying = true;
+    return 0;
+}
+
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
     const snap = Tapes.Snapshot.init(wasm_alloc, user_data_len) catch |e| {
         switch (e) {
