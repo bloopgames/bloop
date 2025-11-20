@@ -162,6 +162,15 @@ pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
         return 1;
     };
     vcr.is_recording = true;
+
+    if (snapshot.time.frame != 0) {
+        wasm_log("Untested: started recording from non-zero frame");
+    }
+
+    tape.?.start_frame() catch {
+        wasm_log("Failed to start first tape frame");
+        return 1;
+    };
     return 0;
 }
 
@@ -293,9 +302,9 @@ pub export fn seek(frame: u32) void {
         vcr.is_replaying = false;
     }
     while (time.*.frame < frame) {
-        log_fmt("Replaying frame {}", .{time.*.frame});
         const tape_events = tape.?.get_events(time.*.frame);
         const events: *EventBuffer = @ptrFromInt(events_ptr);
+        // log_fmt("Replaying frame {} with {d} events", .{ time.*.frame, tape_events.len });
 
         events.*.count = std.math.cast(u8, tape_events.len) orelse {
             log_fmt("Too many events in tape for event buffer: {}", .{tape_events.len});
@@ -323,14 +332,6 @@ pub export fn step(ms: u32) void {
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
 
     while (accumulator >= hz) {
-        if (vcr.is_recording and !vcr.is_replaying) {
-            if (tape) |*t| {
-                t.start_frame() catch {
-                    @panic("Failed to advance tape frame");
-                };
-            }
-        }
-
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
         process_events();
@@ -338,6 +339,15 @@ pub export fn step(ms: u32) void {
         time.*.frame += 1;
         accumulator -= hz;
         flush_events();
+
+        // Advance to the next frame
+        if (vcr.is_recording and !vcr.is_replaying) {
+            if (tape) |*t| {
+                t.start_frame() catch {
+                    @panic("Failed to advance tape frame");
+                };
+            }
+        }
     }
 
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);

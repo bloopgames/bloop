@@ -5,7 +5,7 @@ export class TimeContext {
     this.dataView = dataView;
   }
 
-  /** The number of fixed timestep frames processed */
+  /** The current frame number, eg after processing frame 0, this will be 1 */
   get frame(): number {
     if (!this.dataView) {
       throw new Error("TimeContext DataView is not initialized");

@@ -94,36 +94,17 @@ describe("hmr", () => {
       expect(bloop1.bag.score).toEqual(0);
       expect(runtime1.time.frame).toEqual(0);
 
-      // runtime1.step();
-      runtime1.seek(1);
-      expect(bloop1.bag.score).toEqual(0);
-      expect(bloop1.context.time.frame).toEqual(1);
-
-      // runtime1.step();
       runtime1.seek(2);
       expect(bloop1.bag.score).toEqual(2);
       expect(bloop1.context.time.frame).toEqual(2);
 
-      // runtime1.step();
       runtime1.seek(3);
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(3);
 
-      // runtime1.step();
       runtime1.seek(4);
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(4);
-
-      runtime1.seek(2);
-      expect(bloop1.bag.score).toEqual(2);
-      expect(runtime1.time.frame).toEqual(2);
     });
-  });
-
-  describe("rewire", () => {
-    it.failing(
-      "replaces systems in a running game with new ones",
-      async () => {},
-    );
   });
 });

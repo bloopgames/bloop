@@ -15,7 +15,8 @@ export type WasmEngine = {
    */
   step: (ms: number) => void;
   /**
-   * Seek to a specific frame number
+   * Seek to a specific frame number (inclusive).
+   * Seeking to frame 1 will run events for frame 0 and frame 1.
    */
   seek: (frame: number) => void;
   /**

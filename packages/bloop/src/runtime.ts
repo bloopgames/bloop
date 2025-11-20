@@ -110,17 +110,19 @@ export class Runtime {
    * Seek to the start of a given frame
    * @param frame - frame number to replay to
    */
-  seek(frame: number) {
+  seek(frame: number, inclusive?: boolean) {
     assert(
       this.hasHistory,
       "Not recording or playing back, can't seek to frame",
     );
 
+    const targetFrame = inclusive ? frame + 1 : frame;
+
     const shouldMute = frame < this.time.frame;
     if (shouldMute) {
       muteConsole();
     }
-    this.wasm.seek(frame);
+    this.wasm.seek(targetFrame);
     if (shouldMute) {
       unmuteConsole();
     }
@@ -129,7 +131,10 @@ export class Runtime {
   record() {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    this.wasm.start_recording(size, 1024);
+    const result = this.wasm.start_recording(size, 1024);
+    if (result !== 0) {
+      throw new Error(`failed to start recording, error code=${result}`);
+    }
   }
 
   /**
