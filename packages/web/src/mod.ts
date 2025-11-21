@@ -1,7 +1,9 @@
 import { type Runtime } from "@bloopjs/bloop";
 import { type Key, mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 
-export function connect(runtime: Runtime) {
+export type UnsubscribeFn = () => void;
+
+export function connect(runtime: Runtime): UnsubscribeFn {
   let isPaused = true;
   let now = performance.now();
   let frameHandle: number = -1;
