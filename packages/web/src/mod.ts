@@ -3,18 +3,19 @@ import { type Key, mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 
 export type UnsubscribeFn = () => void;
 
-export function connect(runtime: Runtime): UnsubscribeFn {
-  let isPaused = true;
+export function connect(runtime: Runtime, draw?: () => void): UnsubscribeFn {
+  let isPaused = false;
   let now = performance.now();
   let frameHandle: number = -1;
 
   const handleKeydown = (event: KeyboardEvent) => {
-    runtime.emit.keydown(event.key as Key);
+    console.log("got a keydown", event.key);
+    runtime.emit.keydown(event.code as Key);
   };
   window.addEventListener("keydown", handleKeydown);
 
   const handleKeyup = (event: KeyboardEvent) => {
-    runtime.emit.keyup(event.key as Key);
+    runtime.emit.keyup(event.code as Key);
   };
   window.addEventListener("keyup", handleKeyup);
 
@@ -60,6 +61,7 @@ export function connect(runtime: Runtime): UnsubscribeFn {
       runtime.step(performance.now() - now);
     }
     now = performance.now();
+    draw?.();
     frameHandle = requestAnimationFrame(frame);
   }
   frame();

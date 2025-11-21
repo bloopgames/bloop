@@ -10,6 +10,8 @@ describe("game", () => {
   it("should update bag correctly after system execution", async () => {
     const { runtime } = await mount(game);
 
+    runtime.emit.keydown("KeyD");
+    runtime.emit.keydown("KeyW");
     runtime.step();
     expect(game.bag).toEqual({ x: 1, y: 1 });
   });

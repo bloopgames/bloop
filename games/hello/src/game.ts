@@ -8,10 +8,10 @@ export const game = Bloop.create({
 });
 
 game.system("move", {
-  update({ bag }) {
-    bag.x += 1;
-    bag.y += 1;
-
-    console.table(bag);
+  update({ bag, inputs }) {
+    if (inputs.keys.a.held) bag.x -= 1;
+    if (inputs.keys.d.held) bag.x += 1;
+    if (inputs.keys.w.held) bag.y += 1;
+    if (inputs.keys.s.held) bag.y -= 1;
   },
 });
