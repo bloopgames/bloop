@@ -13,6 +13,7 @@
     "vite": "^7.2.2"
   },
   "dependencies": {
-    "@bloopjs/bloop": "workspace:*"
+    "@bloopjs/bloop": "workspace:*",
+    "@bloopjs/web": "workspace:*"
   }
 }

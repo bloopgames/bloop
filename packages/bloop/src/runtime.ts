@@ -1,5 +1,4 @@
 import {
-  DEFAULT_WASM_URL,
   type EnginePointer,
   type Key,
   keyToKeyCode,

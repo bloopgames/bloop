@@ -7,3 +7,5 @@ export * as Util from "./util";
 
 export { mount } from "./mount";
 export { Bloop } from "./bloop"
+export { Runtime } from "./runtime"
+export { handleUpdate } from "./hmr"

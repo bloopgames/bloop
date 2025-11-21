@@ -16,6 +16,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/web": "workspace:*",
       },
       "devDependencies": {
         "typescript": "~5.9.3",
@@ -48,6 +49,10 @@
     "packages/web": {
       "name": "@bloopjs/web",
       "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/engine": "^0.0.25",
+      },
       "devDependencies": {
         "@types/bun": "latest",
       },
@@ -202,6 +207,8 @@
     "@bloopjs/bloop/@types/bun": ["@types/bun@1.3.2", "", { "dependencies": { "bun-types": "1.3.2" } }, "sha512-t15P7k5UIgHKkxwnMNkJbWlh/617rkDGEdSsDbu+qNHTaz9SKf7aC8fiIlUdD5RPpH6GEkP0cK7WlvmrEBRtWg=="],
 
     "@bloopjs/engine/@types/bun": ["@types/bun@1.3.2", "", { "dependencies": { "bun-types": "1.3.2" } }, "sha512-t15P7k5UIgHKkxwnMNkJbWlh/617rkDGEdSsDbu+qNHTaz9SKf7aC8fiIlUdD5RPpH6GEkP0cK7WlvmrEBRtWg=="],
+
+    "@bloopjs/web/@bloopjs/engine": ["@bloopjs/engine@0.0.25", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-atxOXjbij4e801qSwjoKL+obgEUhhQUbhEJnxlUCCR2D9YY5pX7jgwRR26Qyrq/p1Y6gXuEqDH5N0mLtzJv9cA=="],
 
     "@bloopjs/web/@types/bun": ["@types/bun@1.3.2", "", { "dependencies": { "bun-types": "1.3.2" } }, "sha512-t15P7k5UIgHKkxwnMNkJbWlh/617rkDGEdSsDbu+qNHTaz9SKf7aC8fiIlUdD5RPpH6GEkP0cK7WlvmrEBRtWg=="],
 
