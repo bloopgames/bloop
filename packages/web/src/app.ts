@@ -87,6 +87,7 @@ export class App {
         event.key === "Enter" && (event.ctrlKey || event.metaKey);
       if (isPauseHotkey || event.key === "6") {
         this.sim.isPaused ? this.sim.unpause() : this.sim.pause();
+        console.log("toggle pause", this.sim.isPaused, this.sim.id);
       }
 
       if (this.sim.isPaused) {
@@ -106,6 +107,7 @@ export class App {
 
     const frame = () => {
       this.sim.step(performance.now() - this.#now);
+      console.log("stepping", this.sim.id);
       this.#now = performance.now();
       this.#rafHandle = requestAnimationFrame(frame);
     };

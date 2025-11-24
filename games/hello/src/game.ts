@@ -6,6 +6,7 @@ export const game = Bloop.create({
     x: 0,
     y: 0,
     scale: 1,
+    simId: "",
   },
 });
 
@@ -16,6 +17,8 @@ game.system("move", {
     if (inputs.keys.w.held) bag.y += moveSpeed;
     if (inputs.keys.s.held) bag.y -= moveSpeed;
 
-    bag.scale = 4;
+    console.table(bag);
+
+    bag.scale = 1;
   },
 });
