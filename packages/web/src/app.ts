@@ -31,7 +31,7 @@ export async function start(opts: StartOptions): Promise<App> {
 }
 
 export class App {
-  sim: Sim;
+  #sim: Sim;
   game: Bloop<any>;
   /** RequestAnimationFrame handle for cancelling */
   #rafHandle: number | null = null;
@@ -39,15 +39,25 @@ export class App {
   #now: number = performance.now();
 
   constructor(sim: Sim, game: Bloop<any>) {
-    this.sim = sim;
+    this.#sim = sim;
     this.game = game;
 
     this.subscribe();
   }
 
+  get sim() {
+    return this.#sim;
+  }
+
+  set sim(sim: Sim) {
+    console.trace("set sim", sim.id);
+    this.#sim = sim;
+  }
+
   /** Subscribe to the browser events and start the render loop */
   subscribe() {
     const handleKeydown = (event: KeyboardEvent) => {
+      console.log("got keydown", this.sim.id, event.code);
       this.sim.emit.keydown(event.code as Key);
     };
     window.addEventListener("keydown", handleKeydown);

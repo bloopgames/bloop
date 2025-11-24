@@ -16,6 +16,6 @@ game.system("move", {
     if (inputs.keys.w.held) bag.y += moveSpeed;
     if (inputs.keys.s.held) bag.y -= moveSpeed;
 
-    bag.scale = 1;
+    bag.scale = 4;
   },
 });

@@ -1,5 +1,5 @@
 import "./style.css";
-import { Util } from "@bloopjs/bloop";
+import { handleUpdate, mount, Util } from "@bloopjs/bloop";
 import { Toodle } from "@bloopjs/toodle";
 import { start } from "@bloopjs/web";
 import { draw } from "./draw";
@@ -22,11 +22,29 @@ requestAnimationFrame(function frame() {
 });
 
 // 3. Set up HMR
+import.meta.hot?.accept("./game", async (newModule) => {
+  app.sim.pause();
+  Util.assert(
+    newModule?.game,
+    `HMR: missing game export on module: ${JSON.stringify(newModule)}`,
+  );
 
-// import.meta.hot?.accept("./game", async (newModule) => {
-//   sim = await handleUpdate(newModule, sim, {
-//     wasmUrl: monorepoWasmUrl,
-//   });
-//   unsubscribe();
-//   unsubscribe = connect(sim);
-// });
+  const { sim } = await mount({
+    hooks: (newModule.game as any).hooks,
+    wasmUrl: new URL("/bloop-wasm/bloop.wasm", window.location.href),
+  });
+  console.log("mounted sim", sim.id);
+
+  const tape = app.sim.saveTape();
+  const snapshot = app.sim.snapshot();
+
+  sim.loadTape(tape);
+  sim.restore(snapshot);
+  app.sim.unmount();
+  app.sim = sim;
+  app.game = newModule.game;
+
+  newModule.game.context.bag.scale = 40;
+
+  console.log(app.sim.time.frame, sim.time.frame);
+});

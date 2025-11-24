@@ -16,6 +16,7 @@ export async function handleUpdate(
     hooks: (newModule.game as any).hooks,
     ...mountOptions,
   });
+  console.log("mounted sim", sim.id);
 
   const tape = oldSim.saveTape();
   const snapshot = oldSim.snapshot();

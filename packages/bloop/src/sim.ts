@@ -77,6 +77,7 @@ export type DeserializeFn = (
  */
 export class Sim {
   wasm: WasmEngine;
+  id: string;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
   #serialize?: SerializeFn;
@@ -92,6 +93,8 @@ export class Sim {
     this.#time = new TimeContext(
       new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
+
+    this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
   }

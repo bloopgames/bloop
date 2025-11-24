@@ -3,7 +3,6 @@ import type { game } from "../src/game";
 
 export function draw(g: typeof game, toodle: Toodle) {
   const { bag } = g.context;
-  console.log("rendering", { bag });
   toodle.startFrame();
   toodle.draw(
     toodle.shapes.Circle({
