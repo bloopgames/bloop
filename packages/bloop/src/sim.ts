@@ -80,6 +80,8 @@ export class Sim {
   #memory: WebAssembly.Memory;
   #time: TimeContext;
   #serialize?: SerializeFn;
+  #isPaused: boolean = false;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
@@ -95,7 +97,22 @@ export class Sim {
   }
 
   step(ms?: number) {
+    if (this.#isPaused && !this.isReplaying) {
+      return;
+    }
     this.wasm.step(ms ?? 16);
+  }
+
+  pause() {
+    this.#isPaused = true;
+  }
+
+  unpause() {
+    this.#isPaused = false;
+  }
+
+  get isPaused(): boolean {
+    return this.#isPaused;
   }
 
   stepBack() {

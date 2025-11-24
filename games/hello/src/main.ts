@@ -1,40 +1,32 @@
 import "./style.css";
-import { handleUpdate, mount, Util } from "@bloopjs/bloop";
-import { Colors, Toodle } from "@bloopjs/toodle";
-import { connect } from "@bloopjs/web";
+import { Util } from "@bloopjs/bloop";
+import { Toodle } from "@bloopjs/toodle";
+import { start } from "@bloopjs/web";
+import { draw } from "./draw";
 import { game } from "./game";
 
+// 1. Set up simulation
+const app = await start({
+  game,
+  // temp - use a monorepo dev wasm url instead of cdn
+  engineWasmUrl: new URL("/bloop-wasm/bloop.wasm", window.location.href),
+});
+
+// 2. Set up rendering
 const canvas = document.querySelector("canvas");
 Util.assert(canvas instanceof HTMLCanvasElement, "Canvas element not found");
 const toodle = await Toodle.attach(canvas);
-
-const monorepoWasmUrl = new URL("/bloop-wasm/bloop.wasm", window.location.href);
-
-let { sim } = await mount({
-  hooks: game.hooks,
-  wasmUrl: monorepoWasmUrl,
-});
-let unsubscribe = connect(sim);
-
 requestAnimationFrame(function frame() {
-  const bag = game.context.bag;
-  toodle.startFrame();
-  toodle.draw(
-    toodle.shapes.Circle({
-      idealSize: { width: 100, height: 100 },
-      scale: bag.scale,
-      position: { x: bag.x, y: bag.y },
-      color: Colors.web.rebeccaPurple,
-    }),
-  );
-  toodle.endFrame();
+  draw(app.game, toodle);
   requestAnimationFrame(frame);
 });
 
-import.meta.hot?.accept("./game", async (newModule) => {
-  sim = await handleUpdate(newModule, sim, {
-    wasmUrl: monorepoWasmUrl,
-  });
-  unsubscribe();
-  unsubscribe = connect(sim);
-});
+// 3. Set up HMR
+
+// import.meta.hot?.accept("./game", async (newModule) => {
+//   sim = await handleUpdate(newModule, sim, {
+//     wasmUrl: monorepoWasmUrl,
+//   });
+//   unsubscribe();
+//   unsubscribe = connect(sim);
+// });

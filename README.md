@@ -22,27 +22,24 @@ Bloop is in early development. The goals for 1.0 are:
 - [x] Keyboard and Mouse Input Handling
 - [x] Bag for singleton game state
 - [x] Record gameplay "tapes"
-- [x] Rewind any live or recorded gameplay sesison
+- [x] Rewind any live or recorded gameplay session
 - [x] Hot reload code changes during a rewinded play session
+- [ ] Rollback netcode out of the box
+- [ ] Run anywhere you can allocate a byte buffer
+
+### Table Stakes
+
 - [ ] ECS
 - [ ] Transforms
 - [ ] Animated Sprites
 - [ ] Collision detection
 - [ ] Cameras
 - [ ] Scene Loading
-- [ ] Rollback netcode out of the box
-- [ ] Run anywhere you can allocate a byte buffer
 - [ ] Feature flags
 - [ ] Config values
 - [ ] Gamepad (aka controller) input handling
 - [ ] Single frame object pools
 - [ ] Multithreading
-
-### Editing Integrations
-
-- [ ] Aseprite
-- [ ] LDtk
-- [ ] VSCode / Cursor
 
 ### Rendering Engine Integrations
 
@@ -57,6 +54,12 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Steam Deck
 - [ ] PC
 - [ ] Nintendo Switch
+
+### Editing Integrations
+
+- [ ] Aseprite
+- [ ] LDtk
+- [ ] VSCode / Cursor
 
 --
 
