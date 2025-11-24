@@ -69,12 +69,13 @@ export type DeserializeFn = (
 ) => void;
 
 /**
- * The runtime is a portable runtime that is responsible for:
+ * Sim is a portable simulation that is responsible for:
  *
  * * Moving the engine forward and backward in time
  * * Maintaining a js-friendly view of engine memory
+ * * Pausing and unpausing game logic
  */
-export class Runtime {
+export class Sim {
   wasm: WasmEngine;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
@@ -227,7 +228,7 @@ export class Runtime {
   }
 
   /**
-   * Unmount the runtime and free all associated memory
+   * Unmount the simulation and free all associated memory
    */
   unmount() {
     this.wasm.deinit();

@@ -16,10 +16,10 @@ describe("hmr", () => {
         },
       });
 
-      const { runtime: runtime0 } = await mount(bloop0);
+      const { sim: sim0 } = await mount(bloop0);
 
-      runtime0.step();
-      runtime0.step();
+      sim0.step();
+      sim0.step();
       expect(bloop0.bag.score).toEqual(2);
       expect(bloop0.context.time.frame).toEqual(2);
 
@@ -35,13 +35,13 @@ describe("hmr", () => {
         },
       });
 
-      const { runtime: runtime1 } = await mount(bloop1);
-      runtime1.restore(runtime0.snapshot());
+      const { sim: sim1 } = await mount(bloop1);
+      sim1.restore(sim0.snapshot());
 
       expect(bloop1.bag.score).toEqual(2);
-      expect(runtime1.time.frame).toEqual(2);
+      expect(sim1.time.frame).toEqual(2);
 
-      runtime1.step();
+      sim1.step();
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(3);
     });
@@ -61,14 +61,14 @@ describe("hmr", () => {
         },
       });
 
-      const { runtime: runtime0 } = await mount(bloop0);
+      const { sim: sim0 } = await mount(bloop0);
 
-      runtime0.step();
-      runtime0.emit.keydown("Space");
-      runtime0.step();
-      runtime0.step();
-      runtime0.emit.keyup("Space");
-      runtime0.step();
+      sim0.step();
+      sim0.emit.keydown("Space");
+      sim0.step();
+      sim0.step();
+      sim0.emit.keyup("Space");
+      sim0.step();
 
       expect(bloop0.bag.score).toEqual(2);
       expect(bloop0.context.time.frame).toEqual(4);
@@ -87,22 +87,22 @@ describe("hmr", () => {
         },
       });
 
-      const { runtime: runtime1 } = await mount(bloop1);
-      runtime1.loadTape(runtime0.saveTape());
+      const { sim: sim1 } = await mount(bloop1);
+      sim1.loadTape(sim0.saveTape());
 
-      runtime1.seek(0);
+      sim1.seek(0);
       expect(bloop1.bag.score).toEqual(0);
-      expect(runtime1.time.frame).toEqual(0);
+      expect(sim1.time.frame).toEqual(0);
 
-      runtime1.seek(2);
+      sim1.seek(2);
       expect(bloop1.bag.score).toEqual(2);
       expect(bloop1.context.time.frame).toEqual(2);
 
-      runtime1.seek(3);
+      sim1.seek(3);
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(3);
 
-      runtime1.seek(4);
+      sim1.seek(4);
       expect(bloop1.bag.score).toEqual(4);
       expect(bloop1.context.time.frame).toEqual(4);
     });

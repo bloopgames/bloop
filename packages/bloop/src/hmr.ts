@@ -1,27 +1,27 @@
 import { type MountOpts, mount } from "./mount";
-import type { Runtime } from "./runtime";
+import type { Sim } from "./sim";
 import { assert } from "./util";
 
 export async function handleUpdate(
   newModule: any,
-  oldRuntime: Runtime,
+  oldSim: Sim,
   mountOptions?: Partial<MountOpts>,
-): Promise<Runtime> {
+): Promise<Sim> {
   assert(
     newModule?.game,
     `HMR: missing game export on module: ${JSON.stringify(newModule)}`,
   );
 
-  const { runtime } = await mount({
+  const { sim } = await mount({
     hooks: (newModule.game as any).hooks,
     ...mountOptions,
   });
 
-  const tape = oldRuntime.saveTape();
-  const snapshot = oldRuntime.snapshot();
+  const tape = oldSim.saveTape();
+  const snapshot = oldSim.snapshot();
 
-  runtime.loadTape(tape);
-  runtime.restore(snapshot);
-  oldRuntime.unmount();
-  return runtime;
+  sim.loadTape(tape);
+  sim.restore(snapshot);
+  oldSim.unmount();
+  return sim;
 }

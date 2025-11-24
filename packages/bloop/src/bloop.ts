@@ -21,7 +21,7 @@ import type {
   MouseMoveEvent,
   MouseWheelEvent,
 } from "./events";
-import type { EngineHooks } from "./runtime";
+import type { EngineHooks } from "./sim";
 import type { System } from "./system";
 
 export type BloopOpts<B extends Bag> = {

@@ -3,7 +3,7 @@ import {
   type EnginePointer,
   type WasmEngine,
 } from "@bloopjs/engine";
-import { type EngineHooks, Runtime } from "./runtime";
+import { type EngineHooks, Sim } from "./sim";
 import { assert } from "./util";
 
 export async function mount(opts: MountOpts): Promise<MountResult> {
@@ -53,20 +53,19 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;
 
   const enginePointer = wasm.initialize();
-  const runtime = new Runtime(wasm, memory, {
+  const sim = new Sim(wasm, memory, {
     serialize: opts.hooks.serialize,
   });
 
   if (opts.startRecording ?? true) {
-    runtime.record();
+    sim.record();
   }
 
   opts.hooks.setBuffer(memory.buffer);
   opts.hooks.setContext(enginePointer);
 
   return {
-    runtime,
-    wasm,
+    sim,
   };
 }
 
@@ -83,6 +82,5 @@ export type MountOpts = {
 };
 
 export type MountResult = {
-  runtime: Runtime;
-  wasm: WasmEngine;
+  sim: Sim;
 };

@@ -1,17 +1,21 @@
 import { Bloop } from "@bloopjs/bloop";
+import { moveSpeed } from "./config";
 
 export const game = Bloop.create({
   bag: {
     x: 0,
     y: 0,
+    scale: 1,
   },
 });
 
 game.system("move", {
   update({ bag, inputs }) {
-    if (inputs.keys.a.held) bag.x -= 1;
-    if (inputs.keys.d.held) bag.x += 1;
-    if (inputs.keys.w.held) bag.y += 1;
-    if (inputs.keys.s.held) bag.y -= 1;
+    if (inputs.keys.a.held) bag.x -= moveSpeed;
+    if (inputs.keys.d.held) bag.x += moveSpeed;
+    if (inputs.keys.w.held) bag.y += moveSpeed;
+    if (inputs.keys.s.held) bag.y -= moveSpeed;
+
+    bag.scale = 3;
   },
 });

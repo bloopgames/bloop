@@ -10,11 +10,11 @@ const toodle = await Toodle.attach(canvas);
 
 const monorepoWasmUrl = new URL("/bloop-wasm/bloop.wasm", window.location.href);
 
-let { runtime } = await mount({
+let { sim } = await mount({
   hooks: game.hooks,
   wasmUrl: monorepoWasmUrl,
 });
-let unsubscribe = connect(runtime);
+let unsubscribe = connect(sim);
 
 requestAnimationFrame(function frame() {
   const bag = game.context.bag;
@@ -22,6 +22,7 @@ requestAnimationFrame(function frame() {
   toodle.draw(
     toodle.shapes.Circle({
       idealSize: { width: 100, height: 100 },
+      scale: bag.scale,
       position: { x: bag.x, y: bag.y },
       color: Colors.web.rebeccaPurple,
     }),
@@ -31,9 +32,9 @@ requestAnimationFrame(function frame() {
 });
 
 import.meta.hot?.accept("./game", async (newModule) => {
-  runtime = await handleUpdate(newModule, runtime, {
+  sim = await handleUpdate(newModule, sim, {
     wasmUrl: monorepoWasmUrl,
   });
   unsubscribe();
-  unsubscribe = connect(runtime);
+  unsubscribe = connect(sim);
 });

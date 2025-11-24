@@ -1,36 +1,36 @@
-import { type Runtime } from "@bloopjs/bloop";
+import { type Sim } from "@bloopjs/bloop";
 import { type Key, mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 
 export type UnsubscribeFn = () => void;
 
-export function connect(runtime: Runtime, draw?: () => void): UnsubscribeFn {
+export function connect(sim: Sim, draw?: () => void): UnsubscribeFn {
   let isPaused = false;
   let now = performance.now();
   let frameHandle: number = -1;
 
   const handleKeydown = (event: KeyboardEvent) => {
     console.log("got a keydown", event.key);
-    runtime.emit.keydown(event.code as Key);
+    sim.emit.keydown(event.code as Key);
   };
   window.addEventListener("keydown", handleKeydown);
 
   const handleKeyup = (event: KeyboardEvent) => {
-    runtime.emit.keyup(event.code as Key);
+    sim.emit.keyup(event.code as Key);
   };
   window.addEventListener("keyup", handleKeyup);
 
   const handleMousemove = (event: MouseEvent) => {
-    runtime.emit.mousemove(event.clientX, event.clientY);
+    sim.emit.mousemove(event.clientX, event.clientY);
   };
   window.addEventListener("mousemove", handleMousemove);
 
   const handleMousedown = (event: MouseEvent) => {
-    runtime.emit.mousedown(mouseButtonCodeToMouseButton(event.button + 1));
+    sim.emit.mousedown(mouseButtonCodeToMouseButton(event.button + 1));
   };
   window.addEventListener("mousedown", handleMousedown);
 
   const handleMousewheel = (event: WheelEvent) => {
-    runtime.emit.mousewheel(event.deltaX, event.deltaY);
+    sim.emit.mousewheel(event.deltaX, event.deltaY);
   };
   window.addEventListener("wheel", handleMousewheel);
 
@@ -45,11 +45,11 @@ export function connect(runtime: Runtime, draw?: () => void): UnsubscribeFn {
       switch (event.key) {
         case ",":
         case "5":
-          runtime.stepBack();
+          sim.stepBack();
           break;
         case ".":
         case "7":
-          runtime.step();
+          sim.step();
           break;
       }
     }
@@ -58,7 +58,7 @@ export function connect(runtime: Runtime, draw?: () => void): UnsubscribeFn {
 
   function frame() {
     if (!isPaused) {
-      runtime.step(performance.now() - now);
+      sim.step(performance.now() - now);
     }
     now = performance.now();
     draw?.();
