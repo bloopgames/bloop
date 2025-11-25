@@ -191,7 +191,7 @@ pub const Tape = struct {
         return header.event_count;
     }
 
-    pub fn frame_number(self: *const Tape) u32 {
+    pub fn frame_count(self: *const Tape) u32 {
         const header = self.get_header();
         return header.start_frame + header.frame_count;
     }
@@ -215,7 +215,7 @@ pub const Tape = struct {
 
     pub fn start_frame(self: *Tape) !void {
         const header = self.get_header();
-        try self.append_event(Event.frameStart(self.frame_number()));
+        try self.append_event(Event.frameStart(self.frame_count()));
         header.frame_count += 1;
     }
 

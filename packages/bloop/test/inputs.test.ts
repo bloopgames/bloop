@@ -13,8 +13,8 @@ describe("inputs", () => {
       },
     });
 
-    const { runtime } = await mount(bloop);
-    runtime.step();
+    const { sim } = await mount(bloop);
+    sim.step();
 
     expect(count).toEqual(1);
   });
@@ -30,9 +30,9 @@ describe("inputs", () => {
       },
     });
 
-    const { runtime } = await mount(bloop);
-    runtime.emit.keydown("Space");
-    runtime.step();
+    const { sim } = await mount(bloop);
+    sim.emit.keydown("Space");
+    sim.step();
 
     expect(called).toBe(true);
     expect(receivedKey!).toEqual("Space");
@@ -72,25 +72,25 @@ describe("inputs", () => {
       },
     });
 
-    const { runtime } = await mount(bloop);
+    const { sim } = await mount(bloop);
 
-    runtime.emit.keydown("Space");
-    runtime.emit.mousedown("Left");
-    runtime.emit.mousemove(100, 150);
-    runtime.emit.mousewheel(1, 2);
+    sim.emit.keydown("Space");
+    sim.emit.mousedown("Left");
+    sim.emit.mousemove(100, 150);
+    sim.emit.mousewheel(1, 2);
 
-    runtime.step();
+    sim.step();
 
     expect(events.keydown).toEqual("Space");
     expect(events.mousemove).toEqual({ x: 100, y: 150 });
     expect(events.mousedown).toEqual("Left");
     expect(events.mousewheel).toEqual({ x: 1, y: 2 });
 
-    runtime.emit.keyup("Space");
-    runtime.emit.mouseup("Left");
-    runtime.emit.mousemove(3, 4);
+    sim.emit.keyup("Space");
+    sim.emit.mouseup("Left");
+    sim.emit.mousemove(3, 4);
 
-    runtime.step();
+    sim.step();
 
     expect(events.keyup).toEqual("Space");
     expect(events.mouseup).toEqual("Left");
@@ -114,10 +114,10 @@ describe("inputs", () => {
       },
     });
 
-    const { runtime } = await mount(bloop);
+    const { sim } = await mount(bloop);
 
     // Initial state
-    runtime.step();
+    sim.step();
     expect(bloop.bag).toEqual({
       down: false,
       held: false,
@@ -125,8 +125,8 @@ describe("inputs", () => {
     });
 
     // down and held are both true on the first frame of a key down
-    runtime.emit.keydown("Backquote");
-    runtime.step();
+    sim.emit.keydown("Backquote");
+    sim.step();
     expect(bloop.bag).toEqual({
       down: true,
       held: true,
@@ -134,7 +134,7 @@ describe("inputs", () => {
     });
 
     // held remains true, down goes false
-    runtime.step();
+    sim.step();
     expect(bloop.bag).toEqual({
       down: false,
       held: true,
@@ -142,8 +142,8 @@ describe("inputs", () => {
     });
 
     // on key up, up is true, held and down are false
-    runtime.emit.keyup("Backquote");
-    runtime.step();
+    sim.emit.keyup("Backquote");
+    sim.step();
     expect(bloop.bag).toEqual({
       down: false,
       held: false,
@@ -172,10 +172,10 @@ describe("inputs", () => {
       },
     });
 
-    const { runtime } = await mount(bloop);
+    const { sim } = await mount(bloop);
 
     // Initial state
-    runtime.step();
+    sim.step();
     expect(bloop.bag).toEqual({
       down: false,
       held: false,
@@ -185,16 +185,16 @@ describe("inputs", () => {
     });
 
     // down and held are both true on the first frame of a key down
-    runtime.emit.mousedown("Left");
-    runtime.step();
+    sim.emit.mousedown("Left");
+    sim.step();
     expect(bloop.bag).toMatchObject({
       down: true,
       held: true,
       up: false,
     });
 
-    runtime.emit.mousemove(123, 456);
-    runtime.step();
+    sim.emit.mousemove(123, 456);
+    sim.step();
     expect(bloop.bag).toMatchObject({
       down: false,
       held: true,
@@ -202,8 +202,8 @@ describe("inputs", () => {
       position: { x: 123, y: 456 },
     });
 
-    runtime.emit.mousewheel(5, -3);
-    runtime.step();
+    sim.emit.mousewheel(5, -3);
+    sim.step();
     expect(bloop.bag).toMatchObject({
       down: false,
       held: true,
@@ -212,8 +212,8 @@ describe("inputs", () => {
       wheel: { x: 5, y: -3 },
     });
 
-    runtime.emit.mouseup("Left");
-    runtime.step();
+    sim.emit.mouseup("Left");
+    sim.step();
     expect(bloop.bag).toMatchObject({
       down: false,
       held: false,

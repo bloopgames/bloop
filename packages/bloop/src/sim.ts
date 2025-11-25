@@ -69,16 +69,20 @@ export type DeserializeFn = (
 ) => void;
 
 /**
- * The runtime is a portable runtime that is responsible for:
+ * Sim is a portable simulation that is responsible for:
  *
  * * Moving the engine forward and backward in time
  * * Maintaining a js-friendly view of engine memory
+ * * Pausing and unpausing game logic
  */
-export class Runtime {
+export class Sim {
   wasm: WasmEngine;
+  id: string;
   #memory: WebAssembly.Memory;
   #time: TimeContext;
   #serialize?: SerializeFn;
+  #isPaused: boolean = false;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
@@ -90,11 +94,40 @@ export class Runtime {
       new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
 
+    this.id = `${Math.floor(Math.random() * 1_000_000)}`;
+
     this.#serialize = opts?.serialize;
   }
 
-  step(ms?: number) {
+  step(ms?: number): void {
+    if (this.#isPaused && !this.isReplaying) {
+      // console.log({ paused: this.#isPaused, isReplaying: this.isReplaying });
+      return;
+    }
     this.wasm.step(ms ?? 16);
+  }
+
+  /**
+   * Clone a session from another running sim.
+   * This dumps a snapshot at the current frame and the tape data from the source
+   *
+   * @param source
+   */
+  cloneSession(source: Sim): void {
+    this.loadTape(source.saveTape());
+    this.restore(source.snapshot());
+  }
+
+  pause() {
+    this.#isPaused = true;
+  }
+
+  unpause() {
+    this.#isPaused = false;
+  }
+
+  get isPaused(): boolean {
+    return this.#isPaused;
   }
 
   stepBack() {
@@ -227,7 +260,7 @@ export class Runtime {
   }
 
   /**
-   * Unmount the runtime and free all associated memory
+   * Unmount the simulation and free all associated memory
    */
   unmount() {
     this.wasm.deinit();

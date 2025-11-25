@@ -16,16 +16,16 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime } = await mount(bloop);
-      runtime.step();
+      const { sim } = await mount(bloop);
+      sim.step();
 
       expect(bloop.bag.cool).toEqual(43);
-      const snapshot = runtime.snapshot();
+      const snapshot = sim.snapshot();
 
-      runtime.step();
+      sim.step();
       expect(bloop.bag.cool).toEqual(44);
 
-      runtime.restore(snapshot);
+      sim.restore(snapshot);
       expect(bloop.bag.cool).toEqual(43);
     });
 
@@ -36,9 +36,9 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime } = await mount(bloop);
-      const snapshot = runtime.snapshot();
-      runtime.restore(snapshot);
+      const { sim } = await mount(bloop);
+      const snapshot = sim.snapshot();
+      sim.restore(snapshot);
       expect(bloop.bag.score).toEqual(10);
     });
 
@@ -59,9 +59,9 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime } = await mount(bloop);
+      const { sim } = await mount(bloop);
 
-      runtime.step();
+      sim.step();
 
       expect(timeCheck.dt).toBeCloseTo(0.016);
       expect(timeCheck.time).toBeCloseTo(0.016);
@@ -69,17 +69,17 @@ describe("tapes", () => {
       expect(bloop.context.time.frame).toEqual(1);
 
       // const snapshot = bloop.snapshot();
-      const snapshot = runtime.snapshot();
+      const snapshot = sim.snapshot();
 
-      runtime.step();
+      sim.step();
       expect(timeCheck.dt).toBeCloseTo(0.016);
       expect(timeCheck.time).toBeCloseTo(0.016 * 2);
       expect(timeCheck.frame).toEqual(1);
       expect(bloop.context.time.frame).toEqual(2);
 
-      runtime.restore(snapshot);
+      sim.restore(snapshot);
       expect(bloop.context.time.frame).toEqual(1);
-      runtime.step();
+      sim.step();
 
       expect(timeCheck.dt).toBeCloseTo(0.016);
       expect(timeCheck.time).toBeCloseTo(0.016 * 2);
@@ -103,37 +103,37 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime } = await mount(bloop);
+      const { sim } = await mount(bloop);
 
-      runtime.emit.mousedown("Left");
+      sim.emit.mousedown("Left");
       expect(bloop.context.time.frame).toEqual(0);
       expect(bloop.context.bag.clicks).toEqual(0);
 
-      runtime.step();
+      sim.step();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
 
-      runtime.emit.mouseup("Left");
-      runtime.step();
+      sim.emit.mouseup("Left");
+      sim.step();
       expect(bloop.context.time.frame).toEqual(2);
       expect(bloop.bag.clicks).toEqual(1);
 
-      runtime.stepBack();
+      sim.stepBack();
       expect(bloop.context.time.frame).toEqual(1);
       expect(bloop.bag.clicks).toEqual(1);
 
-      runtime.stepBack();
+      sim.stepBack();
       expect(bloop.context.time.frame).toEqual(0);
       expect(bloop.bag.clicks).toEqual(0);
     });
 
     it("regression - steps back after one frame", async () => {
       const game = Bloop.create({});
-      const { runtime } = await mount(game);
+      const { sim } = await mount(game);
 
-      runtime.step();
-      runtime.step();
-      runtime.stepBack();
+      sim.step();
+      sim.step();
+      sim.stepBack();
 
       expect(game.context.time.frame).toEqual(1);
     });
@@ -155,33 +155,33 @@ describe("tapes", () => {
         },
       });
 
-      const { runtime } = await mount(bloop);
+      const { sim } = await mount(bloop);
 
-      runtime.step();
+      sim.step();
       expect(bloop.bag.score).toEqual(0);
       expect(bloop.context.time.frame).toEqual(1);
 
-      runtime.emit.keydown("Slash");
-      runtime.step();
+      sim.emit.keydown("Slash");
+      sim.step();
       expect(bloop.bag.score).toEqual(10);
       expect(bloop.context.time.frame).toEqual(2);
 
-      runtime.emit.keyup("Slash");
-      runtime.step();
+      sim.emit.keyup("Slash");
+      sim.step();
       expect(bloop.bag.score).toEqual(10);
       expect(bloop.context.time.frame).toEqual(3);
 
-      const tape = runtime.saveTape();
+      const tape = sim.saveTape();
 
-      const { runtime: runtime1 } = await mount(bloop);
-      runtime1.loadTape(tape);
+      const { sim: sim1 } = await mount(bloop);
+      sim1.loadTape(tape);
 
       // at the start of frame 2, score should be 10
-      runtime1.seek(2);
+      sim1.seek(2);
       expect(bloop.bag.score).toEqual(10);
       expect(bloop.context.time.frame).toEqual(2);
 
-      runtime1.step();
+      sim1.step();
       expect(bloop.bag.score).toEqual(10);
     });
   });

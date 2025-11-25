@@ -8,6 +8,9 @@
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
+    "ci": "bun run ci:tsc && bun test",
+    "ci:tsc": "bun run --filter '*' ci:tsc",
+    "ci:jsr": "bun run --filter '*' ci:jsr",
     "publish": "bun bin/publish.ts"
   },
   "devDependencies": {

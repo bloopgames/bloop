@@ -34,6 +34,6 @@
   },
   "dependencies": {
     "@bloopjs/bloop": "workspace:*",
-    "@bloopjs/engine": "^0.0.25"
+    "@bloopjs/engine": "workspace:*"
   }
 }

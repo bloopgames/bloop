@@ -5,8 +5,9 @@ import {
   MOUSE_OFFSET,
   MouseContext,
 } from "@bloopjs/engine";
+import { Bloop } from "../src/bloop";
 import { mount } from "../src/mount";
-import type { EngineHooks } from "../src/runtime";
+import type { EngineHooks } from "../src/sim";
 
 const defaultHooks: EngineHooks = {
   serialize: () => ({
@@ -21,7 +22,7 @@ const defaultHooks: EngineHooks = {
 
 it("hello wasm", async () => {
   let count = 0;
-  const { wasm } = await mount({
+  const { sim } = await mount({
     hooks: {
       ...defaultHooks,
       systemsCallback() {
@@ -30,31 +31,31 @@ it("hello wasm", async () => {
     },
   });
 
-  wasm.step(16);
+  sim.wasm.step(16);
   expect(count).toBe(1);
 });
 
 describe("time", () => {
   it("injects frame and dt", async () => {
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: defaultHooks,
     });
 
-    runtime.step(16);
-    expect(runtime.time.frame).toEqual(1);
-    expect(runtime.time.dt).toEqual(0.016);
+    sim.step(16);
+    expect(sim.time.frame).toEqual(1);
+    expect(sim.time.dt).toEqual(0.016);
   });
 
   it("exposes time context pointer in system callback", async () => {
     let called = false;
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: {
         ...defaultHooks,
         systemsCallback(_handle, ptr) {
           called = true;
-          const dataView = new DataView(runtime.buffer, ptr);
+          const dataView = new DataView(sim.buffer, ptr);
           const timeCtxPtr = dataView.getUint32(0, true);
-          const timeDataView = new DataView(runtime.buffer, timeCtxPtr);
+          const timeDataView = new DataView(sim.buffer, timeCtxPtr);
           const frame = timeDataView.getUint32(0, true);
           const dt = timeDataView.getUint32(4, true);
           expect(frame).toEqual(0);
@@ -62,7 +63,7 @@ describe("time", () => {
         },
       },
     });
-    runtime.step(16);
+    sim.step(16);
 
     expect(called).toEqual(true);
   });
@@ -70,25 +71,25 @@ describe("time", () => {
 
 describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: defaultHooks,
     });
 
-    runtime.step(16);
-    runtime.step(16);
-    expect(runtime.time.frame).toEqual(2);
-    expect(runtime.time.dt).toEqual(0.016);
+    sim.step(16);
+    sim.step(16);
+    expect(sim.time.frame).toEqual(2);
+    expect(sim.time.dt).toEqual(0.016);
 
-    const snapshot = runtime.snapshot();
+    const snapshot = sim.snapshot();
 
-    runtime.step(16);
-    expect(runtime.time.frame).toEqual(3);
+    sim.step(16);
+    expect(sim.time.frame).toEqual(3);
 
-    runtime.restore(snapshot);
-    expect(runtime.time.frame).toEqual(2);
+    sim.restore(snapshot);
+    expect(sim.time.frame).toEqual(2);
 
-    runtime.step(16);
-    expect(runtime.time.frame).toEqual(3);
+    sim.step(16);
+    expect(sim.time.frame).toEqual(3);
   });
 });
 
@@ -97,13 +98,13 @@ describe("inputs", () => {
     let called = false;
     const states: KeyState[] = [];
 
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: {
         ...defaultHooks,
         systemsCallback(_handle, ptr) {
-          const dataView = new DataView(runtime.buffer, ptr);
+          const dataView = new DataView(sim.buffer, ptr);
           const inputCtxPtr = dataView.getUint32(4, true);
-          const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+          const inputDataView = new DataView(sim.buffer, inputCtxPtr);
 
           const keyboardContext = new KeyboardContext(inputDataView);
           states.push(keyboardContext.digit8);
@@ -113,11 +114,11 @@ describe("inputs", () => {
       },
     });
 
-    runtime.emit.keydown("Digit8");
-    runtime.step();
-    runtime.step();
-    runtime.emit.keyup("Digit8");
-    runtime.step();
+    sim.emit.keydown("Digit8");
+    sim.step();
+    sim.step();
+    sim.emit.keyup("Digit8");
+    sim.step();
     expect(called).toEqual(true);
 
     expect(states[0]).toEqual({
@@ -150,14 +151,14 @@ describe("inputs", () => {
     };
     const states: MouseState[] = [];
 
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: {
         ...defaultHooks,
 
         systemsCallback(_handle, ptr) {
-          const dataView = new DataView(runtime.buffer, ptr);
+          const dataView = new DataView(sim.buffer, ptr);
           const inputCtxPtr = dataView.getUint32(4, true);
-          const inputDataView = new DataView(runtime.buffer, inputCtxPtr);
+          const inputDataView = new DataView(sim.buffer, inputCtxPtr);
 
           const dv = new DataView(
             inputDataView.buffer,
@@ -178,15 +179,15 @@ describe("inputs", () => {
       },
     });
 
-    runtime.emit.mousedown("Left");
-    runtime.step();
+    sim.emit.mousedown("Left");
+    sim.step();
 
-    runtime.emit.mousemove(123, 456);
-    runtime.emit.mousewheel(789, 101);
-    runtime.step();
+    sim.emit.mousemove(123, 456);
+    sim.emit.mousewheel(789, 101);
+    sim.step();
 
-    runtime.emit.mouseup("Left");
-    runtime.step();
+    sim.emit.mouseup("Left");
+    sim.step();
 
     expect(called).toEqual(true);
 
@@ -221,13 +222,13 @@ describe("inputs", () => {
 
   it("updates platform events with input events", async () => {
     let called = false;
-    const { runtime } = await mount({
+    const { sim } = await mount({
       hooks: {
         ...defaultHooks,
         systemsCallback(_handle, ptr) {
-          const dataView = new DataView(runtime.buffer, ptr);
+          const dataView = new DataView(sim.buffer, ptr);
           const eventsPtr = dataView.getUint32(8, true);
-          const eventsDataView = new DataView(runtime.buffer, eventsPtr);
+          const eventsDataView = new DataView(sim.buffer, eventsPtr);
           const eventCount = eventsDataView.getUint32(0, true);
           expect(eventCount).toEqual(1);
           // kind = 1 byte + 3 bytes padding
@@ -244,8 +245,8 @@ describe("inputs", () => {
       },
     });
 
-    runtime.emit.keydown("BracketLeft");
-    runtime.step();
+    sim.emit.keydown("BracketLeft");
+    sim.step();
     expect(called).toEqual(true);
   });
 });
@@ -253,26 +254,26 @@ describe("inputs", () => {
 describe("tapes", () => {
   describe("engine snapshot", () => {
     it("saves and restores time context", async () => {
-      const { runtime } = await mount({
+      const { sim } = await mount({
         hooks: defaultHooks,
       });
 
-      const snapshot = runtime.snapshot();
-      expect(runtime.time.frame).toEqual(0);
-      runtime.step();
-      expect(runtime.time.frame).toEqual(1);
-      runtime.step();
-      expect(runtime.time.frame).toEqual(2);
-      runtime.restore(snapshot);
+      const snapshot = sim.snapshot();
+      expect(sim.time.frame).toEqual(0);
+      sim.step();
+      expect(sim.time.frame).toEqual(1);
+      sim.step();
+      expect(sim.time.frame).toEqual(2);
+      sim.restore(snapshot);
 
-      expect(runtime.time.frame).toEqual(0);
+      expect(sim.time.frame).toEqual(0);
     });
   });
 
   describe("caller payload", () => {
     it("can capture and restore arbitrary payloads", async () => {
       let called = false;
-      const { runtime } = await mount({
+      const { sim } = await mount({
         startRecording: false,
         hooks: {
           ...defaultHooks,
@@ -295,10 +296,155 @@ describe("tapes", () => {
         },
       });
 
-      const snapshot = runtime.snapshot();
-      runtime.restore(snapshot);
+      const snapshot = sim.snapshot();
+      sim.restore(snapshot);
       expect(called).toEqual(true);
     });
+  });
+});
+
+describe("dump", () => {
+  it("dumps a snapshot from the current game to the new game", async () => {
+    const bloop0 = Bloop.create({
+      bag: {
+        score: 0,
+      },
+    });
+
+    bloop0.system("increment", {
+      update({ bag }) {
+        bag.score++;
+      },
+    });
+
+    const { sim: sim0 } = await mount(bloop0);
+
+    sim0.step();
+    sim0.step();
+    expect(bloop0.bag.score).toEqual(2);
+    expect(bloop0.context.time.frame).toEqual(2);
+
+    const bloop1 = Bloop.create({
+      bag: {
+        score: 100,
+      },
+    });
+
+    bloop1.system("increment", {
+      update({ bag }) {
+        bag.score += 2;
+      },
+    });
+
+    const { sim: sim1 } = await mount(bloop1);
+    sim1.restore(sim0.snapshot());
+
+    expect(bloop1.bag.score).toEqual(2);
+    expect(sim1.time.frame).toEqual(2);
+
+    sim1.step();
+    expect(bloop1.bag.score).toEqual(4);
+    expect(bloop1.context.time.frame).toEqual(3);
+  });
+
+  it("allows dumping a tape and retaining session", async () => {
+    const bloop0 = Bloop.create({
+      bag: {
+        score: 0,
+      },
+    });
+
+    bloop0.system("increment", {
+      update({ bag, inputs }) {
+        if (inputs.keys.space.held) {
+          bag.score++;
+        }
+      },
+    });
+
+    const { sim: sim0 } = await mount(bloop0);
+
+    sim0.step();
+    sim0.emit.keydown("Space");
+    sim0.step();
+    sim0.step();
+    sim0.emit.keyup("Space");
+    sim0.step();
+
+    expect(bloop0.bag.score).toEqual(2);
+    expect(bloop0.context.time.frame).toEqual(4);
+
+    const bloop1 = Bloop.create({
+      bag: {
+        score: 0,
+      },
+    });
+
+    bloop1.system("increment", {
+      update({ bag, inputs }) {
+        if (inputs.keys.space.held) {
+          bag.score += 2;
+        }
+      },
+    });
+
+    const { sim: sim1 } = await mount(bloop1);
+    sim1.loadTape(sim0.saveTape());
+
+    sim1.seek(0);
+    expect(bloop1.bag.score).toEqual(0);
+    expect(sim1.time.frame).toEqual(0);
+
+    sim1.seek(2);
+    expect(bloop1.bag.score).toEqual(2);
+    expect(bloop1.context.time.frame).toEqual(2);
+
+    sim1.seek(3);
+    expect(bloop1.bag.score).toEqual(4);
+    expect(bloop1.context.time.frame).toEqual(3);
+
+    sim1.seek(4);
+    expect(bloop1.bag.score).toEqual(4);
+    expect(bloop1.context.time.frame).toEqual(4);
+  });
+
+  it("regression: accepts live inputs after dumping", async () => {
+    const game = Bloop.create({
+      bag: {
+        x: 0,
+        y: 0,
+      },
+    });
+    game.system("hello", {
+      update({ bag, inputs }) {
+        bag.x = inputs.mouse.x;
+        bag.y = inputs.mouse.y;
+      },
+    });
+    const { sim } = await mount(game);
+    sim.emit.mousemove(10, 20);
+    sim.step();
+    expect(game.bag).toEqual({ x: 10, y: 20 });
+
+    const game1 = Bloop.create({
+      bag: {
+        x: 0,
+        y: 0,
+      },
+    });
+    game1.system("hello", {
+      update({ bag, inputs }) {
+        bag.x = inputs.mouse.x;
+        bag.y = inputs.mouse.y;
+      },
+    });
+
+    const { sim: sim1 } = await mount(game1);
+    sim1.cloneSession(sim);
+    expect(game1.bag).toEqual({ x: 10, y: 20 });
+    sim1.emit.mousemove(30, 40);
+    sim1.step();
+    expect(game1.bag).toEqual({ x: 30, y: 40 });
   });
 });
 
