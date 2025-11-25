@@ -1,4 +1,4 @@
-import { type Bloop, mount, type Sim } from "@bloopjs/bloop";
+import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 
@@ -56,7 +56,6 @@ export class App {
   /** Subscribe to the browser events and start the render loop */
   subscribe() {
     const handleKeydown = (event: KeyboardEvent) => {
-      console.log("got keydown", this.sim.id, event.code);
       this.sim.emit.keydown(event.code as Key);
     };
     window.addEventListener("keydown", handleKeydown);
@@ -128,6 +127,27 @@ export class App {
   cleanup() {
     this.#unsubscribe?.();
     this.sim.unmount();
+  }
+
+  async acceptHmr(module: any, opts?: Partial<MountOpts>) {
+    const game = (module.game ?? module) as Bloop<any>;
+    if (!game.hooks) {
+      throw new Error(
+        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`,
+      );
+    }
+
+    // load session from the current sim
+    this.sim.pause();
+    const { sim } = await mount({
+      hooks: game.hooks,
+      wasmUrl: new URL("/bloop-wasm/bloop.wasm", window.location.href),
+      ...opts,
+    });
+    sim.cloneSession(this.sim);
+    this.sim.unmount();
+    this.sim = sim;
+    this.game = game;
   }
 }
 

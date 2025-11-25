@@ -99,11 +99,23 @@ export class Sim {
     this.#serialize = opts?.serialize;
   }
 
-  step(ms?: number) {
+  step(ms?: number): void {
     if (this.#isPaused && !this.isReplaying) {
+      console.log({ paused: this.#isPaused, isReplaying: this.isReplaying });
       return;
     }
     this.wasm.step(ms ?? 16);
+  }
+
+  /**
+   * Clone a session from another running sim.
+   * This dumps a snapshot at the current frame and the tape data from the source
+   *
+   * @param source
+   */
+  cloneSession(source: Sim): void {
+    this.loadTape(source.saveTape());
+    this.restore(source.snapshot());
   }
 
   pause() {

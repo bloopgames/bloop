@@ -142,7 +142,6 @@ pub export fn alloc(size: usize) wasmPointer {
     if (size == 0) {
         @panic("Tried to allocate 0 bytes");
     }
-    // log_fmt("Success {d}", .{ptr});
     return ptr;
 }
 
@@ -288,7 +287,7 @@ pub export fn restore(snapshot_ptr: wasmPointer) void {
 
 pub export fn seek(frame: u32) void {
     if (tape == null) {
-        log_fmt("seek(frame: {})", .{frame});
+        logf("seek(frame: {})", .{frame});
         @panic("Tried to seek to frame without an active tape");
     }
 
@@ -307,7 +306,7 @@ pub export fn seek(frame: u32) void {
         // log_fmt("Replaying frame {} with {d} events", .{ time.*.frame, tape_events.len });
 
         events.*.count = std.math.cast(u8, tape_events.len) orelse {
-            log_fmt("Too many events in tape for event buffer: {}", .{tape_events.len});
+            logf("Too many events in tape for event buffer: {}", .{tape_events.len});
             @panic("Too many events in tape for event buffer - must be 255 or fewer");
         };
         for (tape_events, 0..) |event, idx| {
@@ -334,6 +333,9 @@ pub export fn step(ms: u32) void {
     while (accumulator >= hz) {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
+        if (vcr.is_replaying and time.*.frame < tape.?.frame_count() - 1) {
+            use_tape_events();
+        }
         process_events();
         __cb(global_cb_handle, cb_ptr, hz);
         time.*.frame += 1;
@@ -393,20 +395,41 @@ pub export fn get_time_ctx() wasmPointer {
     return time_ctx_ptr;
 }
 
+fn use_tape_events() void {
+    if (vcr.is_replaying) {
+        if (tape == null) {
+            @panic("Replaying without an active tape");
+        }
+        const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+        if (time.*.frame > tape.?.frame_count()) {
+            // No more events to replay
+            return;
+        }
+
+        const tape_events = tape.?.get_events(time.*.frame);
+        const events: *EventBuffer = @ptrFromInt(events_ptr);
+        events.*.count = std.math.cast(u8, tape_events.len) orelse {
+            logf("Too many events in tape for event buffer: {}", .{tape_events.len});
+            @panic("Too many events in tape for event buffer - must be 255 or fewer");
+        };
+        for (tape_events, 0..) |event, idx| {
+            events.*.events[idx] = event;
+        }
+    }
+}
+
 fn append_event(event: Event) void {
     if (vcr.is_recording) {
         tape.?.append_event(event) catch @panic("Failed to record event");
     }
-    // todo - do this check somewhere less janky
-    if (true or !vcr.is_replaying) {
-        const events: *EventBuffer = @ptrFromInt(events_ptr);
-        const idx = events.*.count;
-        if (idx < 256) {
-            events.*.count += 1;
-            events.*.events[idx] = event;
-        } else {
-            @panic("Event buffer full");
-        }
+
+    const events: *EventBuffer = @ptrFromInt(events_ptr);
+    const idx = events.*.count;
+    if (idx < 256) {
+        events.*.count += 1;
+        events.*.events[idx] = event;
+    } else {
+        @panic("Event buffer full");
     }
 }
 
@@ -426,7 +449,7 @@ fn flush_events() void {
 /// Logs a message to the console
 /// @param msg The message to log
 /// to log an allocated message, use the arena allocator, e.g.
-fn log_fmt(comptime fmt: []const u8, args: anytype) void {
+fn logf(comptime fmt: []const u8, args: anytype) void {
     const msg = std.fmt.allocPrint(arena(), fmt, args) catch {
         wasm_log(fmt);
         @panic("Failed to allocate log message");
