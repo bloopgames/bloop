@@ -45,7 +45,7 @@ export class App {
     this.subscribe();
   }
 
-  get sim() {
+  get sim(): Sim {
     return this.#sim;
   }
 
@@ -54,7 +54,7 @@ export class App {
   }
 
   /** Subscribe to the browser events and start the render loop */
-  subscribe() {
+  subscribe(): void {
     const handleKeydown = (event: KeyboardEvent) => {
       this.sim.emit.keydown(event.code as Key);
     };
@@ -123,12 +123,12 @@ export class App {
   }
 
   /** Clean up wasm resources and event listeners */
-  cleanup() {
+  cleanup(): void {
     this.#unsubscribe?.();
     this.sim.unmount();
   }
 
-  async acceptHmr(module: any, opts?: Partial<MountOpts>) {
+  async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
