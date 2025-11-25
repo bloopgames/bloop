@@ -6,7 +6,6 @@ export const game = Bloop.create({
     x: 0,
     y: 0,
     scale: 1,
-    simId: "",
     mouse: {
       x: 0,
       y: 0,

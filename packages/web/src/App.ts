@@ -85,7 +85,6 @@ export class App {
         event.key === "Enter" && (event.ctrlKey || event.metaKey);
       if (isPauseHotkey || event.key === "6") {
         this.sim.isPaused ? this.sim.unpause() : this.sim.pause();
-        console.log("toggle pause", this.sim.isPaused, this.sim.id);
       }
 
       if (this.sim.isPaused) {
