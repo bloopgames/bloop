@@ -397,7 +397,8 @@ fn append_event(event: Event) void {
     if (vcr.is_recording) {
         tape.?.append_event(event) catch @panic("Failed to record event");
     }
-    if (!vcr.is_replaying) {
+    // todo - do this check somewhere less janky
+    if (true or !vcr.is_replaying) {
         const events: *EventBuffer = @ptrFromInt(events_ptr);
         const idx = events.*.count;
         if (idx < 256) {

@@ -44,7 +44,6 @@ import.meta.hot?.accept("./game", async (newModule) => {
   app.sim = sim;
   app.game = newModule.game;
   app.game.bag.simId = sim.id;
-
   newModule.game.context.bag.scale = 40;
 
   console.log(app.sim.time.frame, sim.time.frame);

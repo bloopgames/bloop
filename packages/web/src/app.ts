@@ -50,7 +50,6 @@ export class App {
   }
 
   set sim(sim: Sim) {
-    console.trace("set sim", sim.id);
     this.#sim = sim;
   }
 
@@ -107,7 +106,6 @@ export class App {
 
     const frame = () => {
       this.sim.step(performance.now() - this.#now);
-      console.log("stepping", this.sim.id);
       this.#now = performance.now();
       this.#rafHandle = requestAnimationFrame(frame);
     };

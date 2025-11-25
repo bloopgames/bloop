@@ -7,6 +7,10 @@ export const game = Bloop.create({
     y: 0,
     scale: 1,
     simId: "",
+    mouse: {
+      x: 0,
+      y: 0,
+    },
   },
 });
 
@@ -17,8 +21,9 @@ game.system("move", {
     if (inputs.keys.w.held) bag.y += moveSpeed;
     if (inputs.keys.s.held) bag.y -= moveSpeed;
 
-    console.table(bag);
+    bag.mouse.x = inputs.mouse.x;
+    bag.mouse.y = inputs.mouse.y;
 
-    bag.scale = 1;
+    bag.scale = 2;
   },
 });

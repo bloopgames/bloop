@@ -12,5 +12,15 @@ export function draw(g: typeof game, toodle: Toodle) {
       color: Colors.web.hotPink,
     }),
   );
+  toodle.draw(
+    toodle.shapes.Rect({
+      idealSize: { width: 10, height: 10 },
+      position: toodle.convertSpace(
+        { x: bag.mouse.x, y: bag.mouse.y },
+        { from: "screen", to: "world" },
+      ),
+      color: Colors.web.lightGreen,
+    }),
+  );
   toodle.endFrame();
 }
