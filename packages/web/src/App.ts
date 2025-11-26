@@ -53,6 +53,9 @@ export class App {
     this.#sim = sim;
   }
 
+  beforeFrame = createListener<[number]>();
+  afterFrame = createListener<[number]>();
+
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
     const handleKeydown = (event: KeyboardEvent) => {
@@ -103,7 +106,9 @@ export class App {
     window.addEventListener("keydown", playbarHotkeys);
 
     const frame = () => {
+      this.beforeFrame.notify(this.sim.time.frame);
       this.sim.step(performance.now() - this.#now);
+      this.afterFrame.notify(this.sim.time.frame);
       this.#now = performance.now();
       this.#rafHandle = requestAnimationFrame(frame);
     };
@@ -126,13 +131,15 @@ export class App {
   cleanup(): void {
     this.#unsubscribe?.();
     this.sim.unmount();
+    this.beforeFrame.unsubscribeAll();
+    this.afterFrame.unsubscribeAll();
   }
 
   async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
-        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`,
+        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`
       );
     }
 
@@ -148,6 +155,31 @@ export class App {
     this.sim = sim;
     this.game = game;
   }
+}
+
+function createListener<T extends any[]>() {
+  const listeners = new Set<(...args: T) => void>();
+
+  const subscribe = (callback: (...args: T) => void): (() => void) => {
+    listeners.add(callback);
+
+    // Return unsubscribe function
+    return () => {
+      listeners.delete(callback);
+    };
+  };
+
+  const notify = (...args: T): void => {
+    listeners.forEach((callback) => {
+      callback(...args);
+    });
+  };
+
+  return {
+    subscribe,
+    notify,
+    unsubscribeAll: () => listeners.clear(),
+  };
 }
 
 export type UnsubscribeFn = () => void;
