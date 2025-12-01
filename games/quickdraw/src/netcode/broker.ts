@@ -63,6 +63,7 @@ export function joinRoom(_roomId: string, cbs: RoomEvents) {
           cbs.onPeerIdAssign(envelope.yourId);
           console.log("[ws] connected", { serverId: envelope.serverId });
           for (const peerId of envelope.peerIds) {
+            if (peerId === ourId) continue;
             cbs.onPeerConnected(peerId);
           }
           break;
@@ -71,6 +72,7 @@ export function joinRoom(_roomId: string, cbs: RoomEvents) {
         case "peer:connect": {
           const pipe = await connect(broker, envelope.peerId);
           registerPipe(pipe, cbs);
+          cbs.onPeerConnected(envelope.peerId);
           break;
         }
         case "peer:disconnect":
