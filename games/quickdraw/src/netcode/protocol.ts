@@ -1,32 +1,34 @@
+export type PeerId = string;
+
 export type BrokerMessage =
   | {
       type: "welcome";
-      yourId: string;
-      peerIds: string[];
+      yourId: PeerId;
+      peerIds: PeerId[];
       serverId: string;
     }
   | {
       type: "message:json";
-      peerId: string;
+      peerId: PeerId;
       message: PeerMessage;
     }
   | {
       type: "message:string";
-      peerId: string;
+      peerId: PeerId;
       message: string;
     }
   | {
       type: "message:buffer";
-      peerId: string;
+      peerId: PeerId;
       message: ArrayBuffer;
     }
   | {
       type: "peer:connect";
-      peerId: string;
+      peerId: PeerId;
     }
   | {
       type: "peer:disconnect";
-      peerId: string;
+      peerId: PeerId;
     };
 
 export type PeerMessage =

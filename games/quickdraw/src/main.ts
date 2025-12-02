@@ -1,8 +1,11 @@
+import "./style.css";
 import { start } from "@bloopjs/web";
 import { createApp } from "vue";
 import App from "./App.vue";
 import { game, makePeer } from "./game";
-import { joinRoom } from "./netcode/broker";
+import { joinRoom, type Logger } from "./netcode/broker";
+import { netcode } from "./netcode/transport";
+import { type Log, type LogOpts, logs } from "./ui";
 
 const vueApp = createApp(App);
 vueApp.mount("#app");
@@ -15,7 +18,47 @@ const app = await start({
 
 let udp: RTCDataChannel;
 
-joinRoom("nope", {
+const logger: Logger = {
+  log: (log: LogOpts) => {
+    logs.value.push({
+      ...log,
+      timestamp: Date.now(),
+      frame_number: app.sim.time.frame,
+      severity: "log",
+    });
+  },
+  warn: (log: LogOpts) => {
+    logs.value.push({
+      ...log,
+      timestamp: Date.now(),
+      frame_number: app.sim.time.frame,
+      severity: "warn",
+    });
+  },
+  error: (log: LogOpts) => {
+    logs.value.push({
+      ...log,
+      timestamp: Date.now(),
+      frame_number: app.sim.time.frame,
+      severity: "error",
+    });
+  },
+};
+
+netcode.logRtc = (...args: any[]) => {
+  logger.log({
+    source: "webrtc",
+    json: args,
+  });
+};
+netcode.logWs = (...args: any[]) => {
+  logger.log({
+    source: "ws",
+    json: args,
+  });
+};
+
+joinRoom("nope", logger, {
   onPeerIdAssign: (peerId) => {
     console.log(`Assigned peer ID: ${peerId}`);
   },

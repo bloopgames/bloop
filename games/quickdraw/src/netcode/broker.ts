@@ -1,11 +1,11 @@
 import { WebSocket } from "partysocket";
+import type { Logger } from "./logs";
 import type { BrokerMessage } from "./protocol";
 import {
   connect,
   listenForOffers,
   logErrors,
   logPeerConnection,
-  netcode,
   type WebRtcPipe,
 } from "./transport";
 
@@ -27,19 +27,30 @@ export type RoomEvents = {
   onDataChannelClose: (peerId: string, reliable: boolean) => void;
 };
 
-export function joinRoom(_roomId: string, cbs: RoomEvents) {
+export function joinRoom(_roomId: string, console: Logger, cbs: RoomEvents) {
   const broker = new WebSocket(remoteWsUrl);
 
   broker.addEventListener("open", () => {
-    console.log("[ws] connection opened");
+    console.log({
+      source: "ws",
+      label: "Connection opened",
+    });
   });
 
   broker.addEventListener("close", (event) => {
-    console.warn("[ws] connection closed:", event);
+    console.warn({
+      source: "ws",
+      label: "Connection closed",
+      json: event,
+    });
   });
 
   broker.addEventListener("error", (event) => {
-    console.error("[ws] error:", event);
+    console.error({
+      source: "ws",
+      label: "Connection error",
+      json: event,
+    });
   });
 
   const pipes: Map<string, WebRtcPipe> = new Map();
@@ -47,21 +58,18 @@ export function joinRoom(_roomId: string, cbs: RoomEvents) {
   let ourId = "";
 
   broker.addEventListener("message", async (event) => {
-    console.log("[ws] Received message:", event.data);
-    if (typeof event.data !== "string") {
-      console.warn("Unknown data type");
-      return;
-    }
-
     try {
       const envelope = JSON.parse(event.data) as BrokerMessage;
-      netcode.logWs(envelope);
+      console.log({
+        source: "ws",
+        direction: "inbound",
+        json: envelope,
+      });
 
       switch (envelope.type) {
         case "welcome":
           ourId = envelope.yourId;
           cbs.onPeerIdAssign(envelope.yourId);
-          console.log("[ws] connected", { serverId: envelope.serverId });
           for (const peerId of envelope.peerIds) {
             if (peerId === ourId) continue;
             cbs.onPeerConnected(peerId);
@@ -79,11 +87,21 @@ export function joinRoom(_roomId: string, cbs: RoomEvents) {
           cbs.onPeerDisconnected(envelope.peerId);
           break;
         default:
-          console.log("Unhandled message", envelope);
+          console.warn({
+            source: "ws",
+            label: `Unknown message type: ${envelope.type}`,
+            json: envelope,
+          });
       }
     } catch (e) {
-      netcode.logWs(`Unparseable message: ${event.data}`);
-      console.error("Failed to parse json", event.data, e);
+      console.error({
+        source: "ws",
+        label: "Failed to parse json",
+        json: {
+          data: event.data,
+          error: e,
+        },
+      });
     }
   });
 
