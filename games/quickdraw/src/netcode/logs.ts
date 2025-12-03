@@ -14,7 +14,7 @@ export type Log = {
   reliable?: boolean;
   packet?: {
     size: number;
-    bytes?: Uint8Array;
+    bytes: Uint8Array;
   };
 };
 

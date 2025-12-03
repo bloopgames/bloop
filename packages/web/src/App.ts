@@ -106,9 +106,21 @@ export class App {
     window.addEventListener("keydown", playbarHotkeys);
 
     const frame = () => {
-      this.beforeFrame.notify(this.sim.time.frame);
+      if (!this.sim.isPaused) {
+        try {
+          this.beforeFrame.notify(this.sim.time.frame);
+        } catch (e) {
+          console.error("Error in beforeFrame listeners:", e);
+        }
+      }
       this.sim.step(performance.now() - this.#now);
-      this.afterFrame.notify(this.sim.time.frame);
+      if (!this.sim.isPaused) {
+        try {
+          this.afterFrame.notify(this.sim.time.frame);
+        } catch (e) {
+          console.error("Error in afterFrame listeners:", e);
+        }
+      }
       this.#now = performance.now();
       this.#rafHandle = requestAnimationFrame(frame);
     };

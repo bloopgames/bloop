@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { peers } from "./ui";
 import Game from "./ui/Game.vue";
 import Stats from "./ui/Stats.vue";
 import Logs from "./ui/Logs.vue";

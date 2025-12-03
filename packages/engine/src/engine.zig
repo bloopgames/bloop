@@ -300,6 +300,7 @@ pub export fn seek(frame: u32) void {
     defer {
         vcr.is_replaying = false;
     }
+
     while (time.*.frame < frame) {
         const tape_events = tape.?.get_events(time.*.frame);
         const events: *EventBuffer = @ptrFromInt(events_ptr);
@@ -312,7 +313,10 @@ pub export fn seek(frame: u32) void {
         for (tape_events, 0..) |event, idx| {
             events.*.events[idx] = event;
         }
-        step(hz);
+        const count = step(hz);
+        if (count == 0) {
+            @panic("Failed to advance frame during seek");
+        }
     }
 }
 
@@ -320,7 +324,7 @@ pub export fn register_systems(handle: cb_handle) void {
     global_cb_handle = handle;
 }
 
-pub export fn step(ms: u32) void {
+pub export fn step(ms: u32) u32 {
     defer {
         if (arena_alloc != null) {
             _ = arena_alloc.?.reset(.retain_capacity);
@@ -330,6 +334,7 @@ pub export fn step(ms: u32) void {
 
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
 
+    var step_count: u32 = 0;
     while (accumulator >= hz) {
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
@@ -338,6 +343,7 @@ pub export fn step(ms: u32) void {
         }
         process_events();
         __cb(global_cb_handle, cb_ptr, hz);
+        step_count += 1;
         time.*.frame += 1;
         accumulator -= hz;
         flush_events();
@@ -365,6 +371,7 @@ pub export fn step(ms: u32) void {
         button_state.* |= is_held;
     }
     accumulator = @max(accumulator, 0);
+    return step_count;
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {
@@ -425,11 +432,11 @@ fn append_event(event: Event) void {
 
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     const idx = events.*.count;
-    if (idx < 256) {
+    if (idx < 128) {
         events.*.count += 1;
         events.*.events[idx] = event;
     } else {
-        @panic("Event buffer full");
+        @panic("Event buffer full. Have you called flush?");
     }
 }
 

@@ -37,6 +37,9 @@ function bloopWasmDevPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), vueDevTools(), bloopWasmDevPlugin()],
+  server: {
+    allowedHosts: ["localhost", "bloop.ngrok.dev"],
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

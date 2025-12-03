@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import {  watch } from 'vue';
 import { logs } from '../ui';
 import { useAutoScroll } from './useAutoscroll';
 
@@ -14,13 +14,29 @@ function formatTimestamp(ms: number): string {
   return `${hours}:${minutes}:${seconds}.${millis}`;
 }
 
-
 const { container, onContentUpdated } = useAutoScroll(80);
 
 watch(() => logs.value.length, () => {
   onContentUpdated();
 })
 
+function formatPacketType(bytes: Uint8Array): string {
+  const typeByte = bytes[0];
+  switch (typeByte) {
+    case 1: return "Inputs";
+    default: return `Unknown (${typeByte})`;
+  }
+}
+
+function formatSeq(bytes: Uint8Array): number {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return dv.getUint32(1, true);
+}
+
+function formatAck(bytes: Uint8Array): number {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return dv.getUint32(5, true);
+}
 </script>
 
 <template>
@@ -35,6 +51,21 @@ watch(() => logs.value.length, () => {
         <div class="content">
           <p v-if="log.label">{{ log.label }}</p>
           <pre v-if="log.json" class="json">{{ log.json }}</pre>
+          <table v-if="false && log.packet">
+            <tr>
+              <th colspan="1">Packet Type</th>
+              <th colspan="4" title="Latest tick received">Ack</th>
+              <th colspan="4" title="Latest tick sent">Seq</th>
+            </tr>
+            <tr>
+              <td colspan="1">{{ formatPacketType(log.packet.bytes) }}</td>
+              <td colspan="4">{{ formatAck(log.packet.bytes) }}</td>
+              <td colspan="4">{{ formatSeq(log.packet.bytes) }}</td>
+            </tr>
+          </table>
+          <div v-if="log.packet">
+            <h4>{{ log.packet.size }}b Packet</h4>
+          </div>
         </div>
       </div>
     </li>

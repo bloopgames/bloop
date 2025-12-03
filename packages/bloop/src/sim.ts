@@ -99,12 +99,12 @@ export class Sim {
     this.#serialize = opts?.serialize;
   }
 
-  step(ms?: number): void {
+  step(ms?: number): number {
     if (this.#isPaused && !this.isReplaying) {
       // console.log({ paused: this.#isPaused, isReplaying: this.isReplaying });
-      return;
+      return 0;
     }
-    this.wasm.step(ms ?? 16);
+    return this.wasm.step(ms ?? 16);
   }
 
   /**
