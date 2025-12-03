@@ -78,6 +78,11 @@ export class App {
     };
     window.addEventListener("mousedown", handleMousedown);
 
+    const handleMouseup = (event: MouseEvent) => {
+      this.sim.emit.mouseup(mouseButtonCodeToMouseButton(event.button + 1));
+    };
+    window.addEventListener("mouseup", handleMouseup);
+
     const handleMousewheel = (event: WheelEvent) => {
       this.sim.emit.mousewheel(event.deltaX, event.deltaY);
     };
@@ -131,6 +136,7 @@ export class App {
       window.removeEventListener("keyup", handleKeyup);
       window.removeEventListener("mousemove", handleMousemove);
       window.removeEventListener("mousedown", handleMousedown);
+      window.removeEventListener("mouseup", handleMouseup);
       window.removeEventListener("wheel", handleMousewheel);
       window.removeEventListener("keydown", playbarHotkeys);
       if (this.#rafHandle != null) {

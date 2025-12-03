@@ -129,4 +129,56 @@ describe("buzzer game", () => {
     expect(game.bag.winner).toEqual(1);
     expect(game.bag.player1Score).toEqual(1);
   });
+
+  it("should detect mouse down after mouse up", async () => {
+    const { sim } = await mount(game);
+
+    // First click
+    sim.emit.mousedown("Left");
+    sim.step();
+
+    expect(game.context.inputs.mouse.left.down).toEqual(true);
+
+    // Release
+    sim.emit.mouseup("Left");
+    sim.step();
+
+    expect(game.context.inputs.mouse.left.down).toEqual(false);
+
+    // Second click
+    sim.emit.mousedown("Left");
+    sim.step();
+
+    expect(game.context.inputs.mouse.left.down).toEqual(true);
+  });
+
+  it("should handle multiple rounds with mouse clicks", async () => {
+    const { sim } = await mount(game);
+
+    // Round 1 - Player 1 wins
+    sim.step(3100);
+    expect(game.bag.phase).toEqual("active");
+
+    sim.emit.mousedown("Left");
+    sim.step();
+    sim.emit.mouseup("Left");
+    sim.step();
+
+    expect(game.bag.phase).toEqual("won");
+    expect(game.bag.player1Score).toEqual(1);
+
+    // Wait for round to reset
+    sim.step(600);
+    expect(game.bag.phase).toEqual("waiting");
+
+    // Round 2 - Player 1 wins again
+    sim.step(3100);
+    expect(game.bag.phase).toEqual("active");
+
+    sim.emit.mousedown("Left");
+    sim.step();
+
+    expect(game.bag.phase).toEqual("won");
+    expect(game.bag.player1Score).toEqual(2);
+  });
 });

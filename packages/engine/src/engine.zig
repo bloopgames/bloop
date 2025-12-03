@@ -334,8 +334,23 @@ pub export fn step(ms: u32) u32 {
 
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
 
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+
     var step_count: u32 = 0;
     while (accumulator >= hz) {
+        // Age input states at the start of each frame
+        for (&input_ctx.*.key_ctx.key_states) |*key_state| {
+            // Shift left by 1 to age the state, keep the current value
+            const is_held = key_state.* & 1;
+            key_state.* = key_state.* << 1;
+            key_state.* |= is_held;
+        }
+        for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
+            const is_held = button_state.* & 1;
+            button_state.* = button_state.* << 1;
+            button_state.* |= is_held;
+        }
+
         time.*.dt_ms = hz;
         time.*.total_ms += hz;
         if (vcr.is_replaying and time.*.frame < tape.?.frame_count() - 1) {
@@ -356,19 +371,6 @@ pub export fn step(ms: u32) u32 {
                 };
             }
         }
-    }
-
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-    for (&input_ctx.*.key_ctx.key_states) |*key_state| {
-        // Shift left by 1 to age the state, keep the current value
-        const is_held = key_state.* & 1;
-        key_state.* = key_state.* << 1;
-        key_state.* |= is_held;
-    }
-    for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
-        const is_held = button_state.* & 1;
-        button_state.* = button_state.* << 1;
-        button_state.* |= is_held;
     }
     accumulator = @max(accumulator, 0);
     return step_count;

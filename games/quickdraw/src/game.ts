@@ -1,4 +1,5 @@
 import { Bloop } from "@bloopjs/bloop";
+import { buzzer } from "./ui";
 
 export type GamePhase = "waiting" | "active" | "won" | "lost";
 
@@ -124,6 +125,19 @@ game.system("handle inputs", {
         bag.timer = 0;
       }
     }
+  },
+});
+
+// Update UI state from bag every frame
+game.system("update ui", {
+  update({ bag }) {
+    buzzer.value.blockX = bag.blockX;
+    buzzer.value.phase = bag.phase;
+    buzzer.value.player1Score = bag.player1Score;
+    buzzer.value.player2Score = bag.player2Score;
+    buzzer.value.winner = bag.winner;
+    buzzer.value.screenWidth = bag.screenWidth;
+    buzzer.value.screenHeight = bag.screenHeight;
   },
 });
 

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(zig build:*)",
-      "Bash(bun test:*)"
+      "Bash(bun test:*)",
+      "Bash(bun run build:wasm:*)"
     ],
     "deny": [],
     "ask": []
