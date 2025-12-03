@@ -19,6 +19,11 @@ const app = await start({
   startRecording: false,
 });
 
+// Set screen dimensions from actual window size
+game.bag.screenWidth = window.innerWidth;
+game.bag.screenHeight = window.innerHeight;
+game.bag.blockX = game.bag.screenWidth / 2; // Re-center the block
+
 let udp: RTCDataChannel;
 
 const logger: Logger = {
