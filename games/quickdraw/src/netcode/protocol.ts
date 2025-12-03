@@ -1,5 +1,11 @@
 export type PeerId = string;
 
+// Wire format packet types
+export enum PacketType {
+  None = 0,
+  Inputs = 1,
+}
+
 export type BrokerMessage =
   | {
       type: "welcome";

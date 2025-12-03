@@ -9,6 +9,7 @@ export type WasmEngine = {
   register_systems: (cb_handle: number) => void;
 
   get_time_ctx: () => EnginePointer;
+  get_events_ptr: () => EnginePointer;
 
   /**
    * Step forward one simulation frame

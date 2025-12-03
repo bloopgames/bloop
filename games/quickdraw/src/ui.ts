@@ -14,4 +14,6 @@ export const buzzer = ref({
   winner: null as null | 1 | 2,
   screenWidth: 800,
   screenHeight: 600,
+  remoteCursorX: 0,
+  remoteCursorY: 0,
 });

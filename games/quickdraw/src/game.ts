@@ -21,14 +21,20 @@ export type Packet = {
 };
 
 export type PeerStats = {
-  /** Packet round trip time */
-  rtt: Stat;
-  /** Frame delta times */
-  dt: Stat;
-  /** Number of inputs ahead */
-  inputsAhead: Stat;
-  /** Number of inputs behind */
-  inputsBehind: Stat;
+  /** Latest seq we received from this peer */
+  currentSeq: number;
+  /** Latest ack we received from this peer */
+  currentAck: number;
+  /** Time since last packet received (ms) */
+  timeSinceLastPacket: number;
+  /** Packets received per second */
+  packetsPerSecond: number;
+  /** Average delta between packets over last minute (ms) */
+  averagePacketDelta: number;
+  /** Timestamp of last packet received */
+  lastPacketTime: number;
+  /** Packet timestamps for rate calculation */
+  packetTimestamps: number[];
 };
 
 export type Stat = {
@@ -59,6 +65,10 @@ export const game = Bloop.create({
     localPeerId: "" as PeerId,
     peers: [] as Peer[],
     outbound: [] as Packet[],
+
+    // Remote player cursor position
+    remoteCursorX: 0,
+    remoteCursorY: 0,
   },
 });
 
@@ -129,6 +139,8 @@ game.system("handle inputs", {
 });
 
 // Update UI state from bag every frame
+import { peers } from "./ui";
+
 game.system("update ui", {
   update({ bag }) {
     buzzer.value.blockX = bag.blockX;
@@ -138,20 +150,31 @@ game.system("update ui", {
     buzzer.value.winner = bag.winner;
     buzzer.value.screenWidth = bag.screenWidth;
     buzzer.value.screenHeight = bag.screenHeight;
+    buzzer.value.remoteCursorX = bag.remoteCursorX;
+    buzzer.value.remoteCursorY = bag.remoteCursorY;
+
+    // Deep copy peers to trigger reactivity for nested stats changes
+    peers.value = bag.peers.map(p => ({
+      ...p,
+      stats: { ...p.stats }
+    }));
   },
 });
 
-export function makePeer(id: PeerId) {
+export function makePeer(id: PeerId): Peer {
   return {
     id,
     nickname: id.substring(0, 6),
     inAck: -1,
     outAck: -1,
     stats: {
-      rtt: { history: [], average: 0, last: 0 },
-      dt: { history: [], average: 0, last: 0 },
-      inputsAhead: { history: [], average: 0, last: 0 },
-      inputsBehind: { history: [], average: 0, last: 0 },
+      currentSeq: 0,
+      currentAck: 0,
+      timeSinceLastPacket: 0,
+      packetsPerSecond: 0,
+      averagePacketDelta: 0,
+      lastPacketTime: 0,
+      packetTimestamps: [],
     },
   };
 }

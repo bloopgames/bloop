@@ -101,6 +101,15 @@ const message = computed(() => {
     <div v-if="buzzer.phase === 'waiting'" class="instructions">
       Wait for the background to turn green, then click as fast as you can!
     </div>
+
+    <!-- Remote player cursor -->
+    <div
+      class="remote-cursor"
+      :style="{
+        left: `${buzzer.remoteCursorX}px`,
+        top: `${buzzer.remoteCursorY}px`,
+      }"
+    />
   </div>
 </template>
 
@@ -177,5 +186,18 @@ const message = computed(() => {
   opacity: 0.8;
   max-width: 90%;
   user-select: none;
+}
+
+.remote-cursor {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: rgba(255, 165, 0, 0.6);
+  border: 2px solid rgb(255, 140, 0);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: left 0.05s linear, top 0.05s linear;
+  z-index: 100;
 }
 </style>

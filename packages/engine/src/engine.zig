@@ -404,6 +404,10 @@ pub export fn get_time_ctx() wasmPointer {
     return time_ctx_ptr;
 }
 
+pub export fn get_events_ptr() wasmPointer {
+    return events_ptr;
+}
+
 fn use_tape_events() void {
     if (vcr.is_replaying) {
         if (tape == null) {

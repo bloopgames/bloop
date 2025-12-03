@@ -4,7 +4,9 @@ import Game from "./ui/Game.vue";
 import Stats from "./ui/Stats.vue";
 import Logs from "./ui/Logs.vue";
 
-const debug = ref(false);
+// Check if debug parameter is in URL
+const urlParams = new URLSearchParams(window.location.search);
+const debug = ref(urlParams.has('debug'));
 
 function handleKeydown(event: KeyboardEvent) {
   // Toggle debug on Cmd+Enter (Mac) or Ctrl+Enter (Windows/Linux)
@@ -54,11 +56,12 @@ onUnmounted(() => {
   grid-template-areas:
     "game stats"
     "logs logs";
-  grid-template-columns: 50vw 50vw;
-  grid-template-rows: 50vh 50vh;
+  grid-template-columns: calc(50vw - 1.5rem) calc(50vw - 1.5rem);
+  grid-template-rows: calc(50vh - 1.5rem) calc(50vh - 1.5rem);
   gap: 1rem;
   height: 100vh;
   padding: 1rem;
+  box-sizing: border-box;
 }
 
 .game {
