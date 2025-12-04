@@ -21,11 +21,15 @@ import { logs } from "./ui";
 const vueApp = createApp(App);
 vueApp.mount("#app");
 
-// Parse artificial lag from URL params (e.g., ?lag=100 for 100ms)
+// Parse URL params for netcode options
 const urlParams = new URLSearchParams(window.location.search);
 const artificialLag = parseInt(urlParams.get("lag") || "0", 10);
+let skipRollback = urlParams.has("skipRollback");
 if (artificialLag > 0) {
   console.log(`[netcode] Artificial lag enabled: ${artificialLag}ms`);
+}
+if (skipRollback) {
+  console.log(`[netcode] Rollback disabled - using immediate injection`);
 }
 
 const monorepoWasmUrl = new URL("/bloop-wasm/bloop.wasm", window.location.href);
@@ -45,6 +49,9 @@ let udp: RTCDataChannel;
 // Session timing: when the match starts, we capture the local frame number
 // All match frames are relative to this start frame
 let sessionStartFrame: number | null = null;
+
+// Last confirmed snapshot for rollback - updated as inputs are confirmed
+let confirmedState: { frame: number; snapshot: Uint8Array } | null = null;
 
 const logger: Logger = {
   log: (log: LogOpts) => {
@@ -132,7 +139,13 @@ joinRoom("nope", logger, {
     if (!reliable) {
       udp = channel;
       sessionStartFrame = app.sim.time.frame;
-      console.log(`[netcode] Session started at local frame ${sessionStartFrame}`);
+      confirmedState = {
+        frame: 0,
+        snapshot: app.sim.snapshot(),
+      };
+      console.log(
+        `[netcode] Session started at local frame ${sessionStartFrame}, captured initial snapshot`
+      );
     }
   },
   onPeerConnected(peerId) {
@@ -176,10 +189,22 @@ function readEventsFromEngine(frame: number): InputEvent[] {
   return events;
 }
 
-// Maintain unacked events by frame
+// Maintain unacked events by frame (for sending to remote)
 const unackedEvents = new Map<number, InputEvent[]>();
 let nextSeq = 0;
 let remoteSeq = 0; // Latest seq we've received from remote (we send this back as our ack)
+
+// Store all events by match frame for rollback resimulation
+// localEvents: our inputs, remoteEvents: their inputs
+const localEvents = new Map<number, InputEvent[]>();
+const remoteEvents = new Map<number, InputEvent[]>();
+
+// The highest match frame where we've received remote inputs
+// -1 means we haven't received any remote inputs yet
+let latestRemoteFrame = -1;
+
+// Guard flag to prevent recursive rollback processing
+let isResimulating = false;
 
 // Helper to inject an event into the engine
 // isRemote: true if this event came from another player
@@ -272,6 +297,11 @@ function injectEvent(
 }
 
 app.beforeFrame.subscribe((frame) => {
+  // Skip normal processing during resimulation
+  if (isResimulating) {
+    return;
+  }
+
   // Update time since last packet for all peers
   const now = Date.now();
   for (const peer of game.bag.peers) {
@@ -347,21 +377,128 @@ app.beforeFrame.subscribe((frame) => {
         }
       }
 
-      // Inject events with optional artificial lag
-      // This will cause desync because events arrive late!
-      const injectPacketEvents = () => {
-        for (const event of packet.events) {
-          // console.log(
-          //   `[netcode] Injecting event from frame ${event.frame} into current frame ${frame} (lag: ${frame - event.frame})`
-          // );
-          injectEvent(event.eventType, event.payload, true); // isRemote = true
-        }
-      };
+      // Update latest remote frame from packet's match frame
+      if (packet.matchFrame > latestRemoteFrame) {
+        latestRemoteFrame = packet.matchFrame;
+      }
 
-      if (artificialLag > 0) {
-        setTimeout(injectPacketEvents, artificialLag);
+      // Store remote events by their match frame for rollback
+      for (const event of packet.events) {
+        if (!remoteEvents.has(event.frame)) {
+          remoteEvents.set(event.frame, []);
+        }
+        remoteEvents.get(event.frame)!.push(event);
+      }
+
+      if (confirmedState === null) {
+        throw new Error("confirmedState is null");
+      }
+
+      const currentMatchFrame =
+        frame - Util.unwrap(sessionStartFrame, "Session has not started");
+      const currentConfirmFrame = confirmedState.frame;
+      const nextConfirmFrame = Math.min(latestRemoteFrame, currentMatchFrame);
+
+      const confirmFramesToResim = nextConfirmFrame - currentConfirmFrame;
+      const predictionFramesToResim = Math.max(
+        0,
+        currentMatchFrame - nextConfirmFrame
+      );
+      const totalFramesToResim = nextConfirmFrame - currentConfirmFrame;
+      // console.log({
+      //   frame,
+      //   totalFramesToResim,
+      //   confirmFramesToResim,
+      //   predictionFramesToResim,
+      //   currentMatchFrame,
+      //   currentConfirmFrame,
+      //   nextConfirmFrame,
+      //   latestRemoteFrame,
+      // });
+
+      if (skipRollback || totalFramesToResim >= 30) {
+        // inject events immediately to demonstrate desync
+        const injectPacketEvents = () => {
+          for (const event of packet.events) {
+            injectEvent(event.eventType, event.payload, true); // isRemote = true
+          }
+        };
+
+        if (artificialLag > 0) {
+          setTimeout(injectPacketEvents, artificialLag);
+        } else {
+          injectPacketEvents();
+        }
       } else {
-        injectPacketEvents();
+        // Rollback path: resimulate from confirmed state
+
+        // Only resimulate up to frames we've actually reached locally
+        // Remote may be ahead of us, but we can't confirm frames we haven't simulated yet
+        // Only resimulate if we have new frames to confirm
+        if (nextConfirmFrame <= currentConfirmFrame) {
+          continue; // Nothing new to confirm, skip rollback
+        }
+
+        const resimStart = performance.now();
+        isResimulating = true;
+        // const absFrameWas = app.sim.time.frame;
+        try {
+          // console.time("resim");
+          // 1. Restore to last confirmed state
+          app.sim.restore(confirmedState.snapshot);
+
+          // 2. Resimulate from confirmed frame to confirmable frame (with both local + remote events)
+          // Start from confirmedState.frame + 1 since we're already AT the confirmed frame after restore
+          for (let f = confirmedState.frame + 1; f <= nextConfirmFrame; f++) {
+            // Inject local events for this frame
+            const localFrameEvents = localEvents.get(f) || [];
+            for (const event of localFrameEvents) {
+              injectEvent(event.eventType, event.payload, false);
+            }
+
+            // Inject remote events for this frame
+            const remoteFrameEvents = remoteEvents.get(f) || [];
+            for (const event of remoteFrameEvents) {
+              injectEvent(event.eventType, event.payload, true);
+            }
+
+            // Step the simulation forward one frame
+            // console.log("Simulating confirm frame", app.sim.time.frame);
+            app.sim.step(16);
+          }
+
+          // 3. Update confirmed state
+          confirmedState = {
+            frame: nextConfirmFrame,
+            snapshot: app.sim.snapshot(),
+          };
+
+          // 4. Predict forward to current frame using only local events
+          for (let f = nextConfirmFrame + 1; f <= currentMatchFrame; f++) {
+            const localFrameEvents = localEvents.get(f) || [];
+            for (const event of localFrameEvents) {
+              injectEvent(event.eventType, event.payload, false);
+            }
+            // console.log("Simulating prediction frame", app.sim.time.frame);
+            app.sim.step(16);
+          }
+          const resimDuration = performance.now() - resimStart;
+          // console.timeEnd("resim");
+          // console.log({
+          //   before: absFrameWas,
+          //   after: app.sim.time.frame,
+          // });
+
+          if (resimDuration > 16) {
+            throw new Error(
+              `[rollback] Resimulation took ${resimDuration.toFixed(
+                2
+              )}ms (>${16}ms frame budget) for ${totalFramesToResim} frames`
+            );
+          }
+        } finally {
+          isResimulating = false;
+        }
       }
     }
   }
@@ -378,7 +515,11 @@ app.beforeFrame.subscribe((frame) => {
 
   if (frameEvents.length > 0) {
     unackedEvents.set(matchFrame, frameEvents);
-    // console.log(`[netcode] Match frame ${matchFrame}: ${frameEvents.length} events`);
+    // Store local events for rollback resimulation
+    if (!localEvents.has(matchFrame)) {
+      localEvents.set(matchFrame, []);
+    }
+    localEvents.get(matchFrame)!.push(...frameEvents);
   }
 
   // Collect all unacked events
@@ -392,6 +533,7 @@ app.beforeFrame.subscribe((frame) => {
     type: PacketType.Inputs,
     ack: remoteSeq, // Acknowledge the latest seq we received from remote
     seq: nextSeq++,
+    matchFrame, // Our current match frame
     events: allUnackedEvents,
   });
 

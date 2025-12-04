@@ -1,9 +1,9 @@
 import { PacketType } from "./protocol";
 
 // Packet structure (prototype - should move to zig + codegen):
-// [u8 packet_type] [u32 ack] [u32 seq] [u8 event_count]
+// [u8 packet_type] [u32 ack] [u32 seq] [u32 match_frame] [u8 event_count]
 // Each event: [u32 frame_number] [u8 event_type] [u8[8] event_payload]
-export const PACKET_HEADER_SIZE = 1 + 4 + 4 + 1; // type + ack + seq + count
+export const PACKET_HEADER_SIZE = 1 + 4 + 4 + 4 + 1; // type + ack + seq + match_frame + count
 export const EVENT_SIZE = 4 + 1 + 8; // frame + type + payload
 export const EVENT_PAYLOAD_SIZE = 8;
 
@@ -17,6 +17,7 @@ export type InputPacket = {
   type: PacketType.Inputs;
   ack: number;
   seq: number;
+  matchFrame: number; // sender's current match frame
   events: InputEvent[];
 };
 
@@ -33,6 +34,8 @@ export function encodeInputPacket(packet: InputPacket): ArrayBuffer {
   dv.setUint32(offset, packet.ack, true);
   offset += 4;
   dv.setUint32(offset, packet.seq, true);
+  offset += 4;
+  dv.setUint32(offset, packet.matchFrame, true);
   offset += 4;
   dv.setUint8(offset, packet.events.length);
   offset += 1;
@@ -72,6 +75,8 @@ export function decodeInputPacket(data: Uint8Array): InputPacket {
   offset += 4;
   const seq = dv.getUint32(offset, true);
   offset += 4;
+  const matchFrame = dv.getUint32(offset, true);
+  offset += 4;
   const eventCount = dv.getUint8(offset);
   offset += 1;
 
@@ -103,6 +108,7 @@ export function decodeInputPacket(data: Uint8Array): InputPacket {
     type: PacketType.Inputs,
     ack,
     seq,
+    matchFrame,
     events,
   };
 }
