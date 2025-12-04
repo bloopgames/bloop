@@ -42,6 +42,10 @@ game.bag.blockX = game.bag.screenWidth / 2; // Re-center the block
 
 let udp: RTCDataChannel;
 
+// Session timing: when the match starts, we capture the local frame number
+// All match frames are relative to this start frame
+let sessionStartFrame: number | null = null;
+
 const logger: Logger = {
   log: (log: LogOpts) => {
     logs.value.push({
@@ -127,6 +131,8 @@ joinRoom("nope", logger, {
     console.log(`Data channel opened: ${peerId} (reliable: ${reliable})`);
     if (!reliable) {
       udp = channel;
+      sessionStartFrame = app.sim.time.frame;
+      console.log(`[netcode] Session started at local frame ${sessionStartFrame}`);
     }
   },
   onPeerConnected(peerId) {
@@ -361,16 +367,18 @@ app.beforeFrame.subscribe((frame) => {
   }
   packets.clear();
 
-  // Read events that occurred this frame
-  const frameEvents = readEventsFromEngine(frame);
-
-  if (frameEvents.length > 0) {
-    unackedEvents.set(frame, frameEvents);
-    // console.log(`[netcode] Frame ${frame}: ${frameEvents.length} events`);
+  // Don't send events until we have a session
+  if (!udp || sessionStartFrame === null) {
+    return;
   }
 
-  if (!udp) {
-    return;
+  // Read events that occurred this frame (using match-relative frame numbers)
+  const matchFrame = frame - sessionStartFrame;
+  const frameEvents = readEventsFromEngine(matchFrame);
+
+  if (frameEvents.length > 0) {
+    unackedEvents.set(matchFrame, frameEvents);
+    // console.log(`[netcode] Match frame ${matchFrame}: ${frameEvents.length} events`);
   }
 
   // Collect all unacked events

@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What is Bloop?
 
 Bloop is a rewindable 2D game simulation library. It enables:
+
 - Writing game state and logic in TypeScript
 - Rewinding any live or recorded gameplay session
 - Hot reloading code changes during rewinded play sessions
@@ -43,11 +44,13 @@ cd games/quickdraw && bun run dev
 ## Monorepo Structure
 
 **Packages (publishable libraries):**
+
 - `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording
 - `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games
 - `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR
 
 **Games (example apps):**
+
 - `games/hello` - Minimal example game
 - `games/quickdraw` - Vue-based game with netcode (uses Vite, not Bun.serve)
 
@@ -74,6 +77,7 @@ cd games/quickdraw && bun run dev
 ### Engine (Zig/WASM)
 
 The engine in `packages/engine/src/*.zig` manages:
+
 - Time context (frame, dt, elapsed time)
 - Input state (keyboard/mouse)
 - Event queue
@@ -91,7 +95,9 @@ import { Bloop, mount } from "@bloopjs/bloop";
 it("test name", async () => {
   const game = Bloop.create({ bag: { value: 0 } });
   game.system("test", {
-    update({ bag }) { bag.value++; }
+    update({ bag }) {
+      bag.value++;
+    },
   });
 
   const { sim } = await mount(game);
@@ -99,3 +105,7 @@ it("test name", async () => {
   expect(game.bag.value).toBe(1);
 });
 ```
+
+## General Guidelines
+
+In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state.
