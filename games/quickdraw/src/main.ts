@@ -9,7 +9,6 @@ import { joinRoom } from "./netcode/broker";
 import {
   decodeInputPacket,
   EVENT_PAYLOAD_SIZE,
-  EVENT_SIZE,
   encodeInputPacket,
   type InputEvent,
 } from "./netcode/inputs";
@@ -101,10 +100,13 @@ joinRoom("nope", logger, {
 
     const bytes = new Uint8Array(data);
     const inputPacket = decodeInputPacket(bytes);
-    // skip noisy mousemove and mousewheel events - mousemove is visible in remote cursor
     const hasEvents =
-      inputPacket.events.filter((e) => e.eventType !== 3 && e.eventType !== 6)
-        .length > 0;
+      inputPacket.events.filter(
+        (e) =>
+          ![Enums.EventType.MouseMove, Enums.EventType.MouseWheel].includes(
+            e.eventType
+          )
+      ).length > 0;
     if (hasEvents) {
       logger.log({
         source: "webrtc",
@@ -358,9 +360,7 @@ app.beforeFrame.subscribe((frame) => {
     }
   }
   packets.clear();
-});
 
-app.afterFrame.subscribe((frame) => {
   // Read events that occurred this frame
   const frameEvents = readEventsFromEngine(frame);
 

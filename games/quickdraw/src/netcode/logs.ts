@@ -1,7 +1,7 @@
 import type { PeerId } from "./protocol";
 
 export type Log = {
-  source: "webrtc" | "ws";
+  source: "webrtc" | "ws" | "local";
   frame_number: number;
   timestamp: number;
   severity: "debug" | "log" | "warn" | "error";
@@ -19,7 +19,7 @@ export type Log = {
 };
 
 export type LogOpts = Partial<Log> & {
-  source: "webrtc" | "ws";
+  source: "webrtc" | "ws" | "local";
 };
 
 export type LogDirection = "inbound" | "outbound";

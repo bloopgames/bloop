@@ -32,16 +32,21 @@ function formatPacketType(bytes: Uint8Array | undefined): string {
   }
 }
 
-function formatSeq(bytes: Uint8Array | undefined): number | string {
-  if (!bytes) return "N/A";
-  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return dv.getUint32(1, true);
-}
-
 function formatAck(bytes: Uint8Array | undefined): number | string {
   if (!bytes) return "N/A";
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return dv.getUint32(5, true);
+}
+
+function formatHeader(bytes: Uint8Array | undefined): string {
+  if (!bytes) return "N/A";
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const [seq, ack] = [
+    dv.getUint32(1, true),
+    dv.getUint32(5, true),
+  ];
+
+  return `adv=${ack - seq} seq=${seq} ack=${ack}`
 }
 
 const eventTypeNames: Record<number, string> = {
@@ -106,7 +111,7 @@ function formatEventPayload(eventType: number, payload: Uint8Array): string {
               <tr>
                 <td>--</td>
                 <td>Header</td>
-                <td>Seq = {{ formatSeq(log.packet?.bytes) }} Ack = {{ formatAck(log.packet?.bytes) }}</td>
+                <td>{{ formatHeader(log.packet?.bytes)}}</td>
               </tr>
               <tr v-for="(event, idx) in decodeInputPacket(log.packet.bytes)?.events || []" :key="idx">
                 <td>{{ event.frame }}</td>
