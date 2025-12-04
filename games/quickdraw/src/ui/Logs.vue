@@ -3,6 +3,8 @@ import {  watch } from 'vue';
 import { logs } from '../ui';
 import { useAutoScroll } from './useAutoscroll';
 import { decodeInputPacket } from '../netcode/inputs';
+import { Enums } from '@bloopjs/engine';
+import { Util } from '@bloopjs/bloop';
 
 function formatTimestamp(ms: number): string {
   const date = new Date(ms);
@@ -70,7 +72,15 @@ function formatEventPayload(eventType: number, payload: Uint8Array): string {
     return `(${deltaX.toFixed(1)}, ${deltaY.toFixed(1)})`;
   }
   // For key/button events, just show the first byte
-  return `code=${payload[0]}`;
+
+  const buttonCode = Util.unwrap(payload[0], "Missing button code in payload");
+
+  if (eventType === 1 || eventType === 2) {
+    return Enums.Key[buttonCode] || `Unknown Key(${buttonCode})`;
+  }
+  if (eventType === 4 || eventType === 5) {
+    return Enums.MouseButton[buttonCode] || `Unknown Button(${buttonCode})`;
+  }
 }
 </script>
 
@@ -87,12 +97,16 @@ function formatEventPayload(eventType: number, payload: Uint8Array): string {
           <p v-if="log.label">{{ log.label }}</p>
           <pre v-if="log.json" class="json">{{ log.json }}</pre>
           <div v-if="log.packet">
-            <h4>{{ log.packet.size }}b Packet - Seq: {{ formatSeq(log.packet?.bytes) }}, Ack: {{ formatAck(log.packet?.bytes) }}</h4>
             <table v-if="log.packet.bytes" class="events-table">
               <tr>
                 <th>Frame</th>
                 <th>Event Type</th>
                 <th>Payload</th>
+              </tr>
+              <tr>
+                <td>--</td>
+                <td>Header</td>
+                <td>Seq = {{ formatSeq(log.packet?.bytes) }} Ack = {{ formatAck(log.packet?.bytes) }}</td>
               </tr>
               <tr v-for="(event, idx) in decodeInputPacket(log.packet.bytes)?.events || []" :key="idx">
                 <td>{{ event.frame }}</td>

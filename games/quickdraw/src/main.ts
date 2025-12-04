@@ -98,7 +98,14 @@ joinRoom("nope", logger, {
       packets.set(peerId, []);
     }
     packets.get(peerId)!.push(new Uint8Array(data));
-    if (lastSample-- <= 0) {
+
+    const bytes = new Uint8Array(data);
+    const inputPacket = decodeInputPacket(bytes);
+    // skip noisy mousemove and mousewheel events - mousemove is visible in remote cursor
+    const hasEvents =
+      inputPacket.events.filter((e) => e.eventType !== 3 && e.eventType !== 6)
+        .length > 0;
+    if (hasEvents) {
       logger.log({
         source: "webrtc",
         from: peerId,
@@ -328,9 +335,7 @@ app.beforeFrame.subscribe((frame) => {
       if (packet.ack >= 0) {
         // Remove old unacked events (keep last 60 frames as a safety margin)
         for (const [eventFrame, _] of unackedEvents) {
-          if (eventFrame < frame - 60) {
-            unackedEvents.delete(eventFrame);
-          }
+          unackedEvents.delete(eventFrame);
         }
       }
 
@@ -374,11 +379,6 @@ app.afterFrame.subscribe((frame) => {
     allUnackedEvents.push(...events);
   }
 
-  // Debug: log event count occasionally
-  if (frame % 60 === 0) {
-    console.log(`[netcode] Frame ${frame}: ${allUnackedEvents.length} unacked events`);
-  }
-
   // Always send packets (heartbeat/ack even with no events)
   const packet = encodeInputPacket({
     type: PacketType.Inputs,
@@ -387,10 +387,5 @@ app.afterFrame.subscribe((frame) => {
     events: allUnackedEvents,
   });
 
-  // console.log(
-  //   `[netcode] Sending packet: seq=${nextSeq - 1}, events=${
-  //     allUnackedEvents.length
-  //   }`
-  // );
   udp.send(packet);
 });

@@ -52,9 +52,9 @@ export function encodeInputPacket(packet: InputPacket): ArrayBuffer {
   return buffer;
 }
 
-export function decodeInputPacket(data: Uint8Array): InputPacket | null {
+export function decodeInputPacket(data: Uint8Array): InputPacket {
   if (data.byteLength < PACKET_HEADER_SIZE) {
-    return null;
+    throw new Error("Data too short to be a valid InputPacket");
   }
 
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -63,7 +63,9 @@ export function decodeInputPacket(data: Uint8Array): InputPacket | null {
   const type = dv.getUint8(offset);
   offset += 1;
   if (type !== PacketType.Inputs) {
-    return null;
+    throw new Error(
+      `Tried to decode non-input packet as InputPacket. type=${type}`
+    );
   }
 
   const ack = dv.getUint32(offset, true);
@@ -83,7 +85,11 @@ export function decodeInputPacket(data: Uint8Array): InputPacket | null {
     offset += 4;
     const eventType = dv.getUint8(offset);
     offset += 1;
-    const payload = new Uint8Array(data.buffer, data.byteOffset + offset, EVENT_PAYLOAD_SIZE);
+    const payload = new Uint8Array(
+      data.buffer,
+      data.byteOffset + offset,
+      EVENT_PAYLOAD_SIZE
+    );
     offset += EVENT_PAYLOAD_SIZE;
 
     events.push({
