@@ -60,7 +60,7 @@ export function logEvery(now: number, interval: number = 10, ...args: any[]) {
 
 export function unwrap<T>(
   value: T | null | undefined,
-  message?: string
+  message?: string,
 ): NonNullable<T> {
   assert(value != null, message ?? `Unwrap failed: value is ${value}`);
   return value;

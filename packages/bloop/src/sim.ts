@@ -16,7 +16,7 @@ const originalConsole = (globalThis as any).console;
 const noop = () => {};
 
 const stubConsole = Object.fromEntries(
-  Object.keys(originalConsole).map((key) => [key, noop])
+  Object.keys(originalConsole).map((key) => [key, noop]),
 ) as unknown as Console;
 
 function muteConsole() {
@@ -58,7 +58,7 @@ export type EngineHooks = {
 
 export type SystemsCallback = (
   system_handle: number,
-  ptr: EnginePointer
+  ptr: EnginePointer,
 ) => void;
 
 export type SerializeFn = () => {
@@ -69,7 +69,7 @@ export type SerializeFn = () => {
 export type DeserializeFn = (
   buffer: ArrayBufferLike,
   ptr: EnginePointer,
-  size: number
+  size: number,
 ) => void;
 
 /**
@@ -90,12 +90,12 @@ export class Sim {
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
-    opts?: { serialize?: SerializeFn }
+    opts?: { serialize?: SerializeFn },
   ) {
     this.wasm = wasm;
     this.#memory = memory;
     this.#time = new TimeContext(
-      new DataView(this.#memory.buffer, this.wasm.get_time_ctx())
+      new DataView(this.#memory.buffer, this.wasm.get_time_ctx()),
     );
 
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
@@ -157,7 +157,7 @@ export class Sim {
   seek(frame: number, inclusive?: boolean) {
     assert(
       this.hasHistory,
-      "Not recording or playing back, can't seek to frame"
+      "Not recording or playing back, can't seek to frame",
     );
 
     const targetFrame = inclusive ? frame + 1 : frame;
@@ -175,7 +175,7 @@ export class Sim {
   record() {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    const result = this.wasm.start_recording(size, 1_000_000);
+    const result = this.wasm.start_recording(size, 1024);
     if (result !== 0) {
       throw new Error(`failed to start recording, error code=${result}`);
     }
@@ -226,14 +226,14 @@ export class Sim {
     const tapePtr = this.wasm.alloc(tape.byteLength);
     assert(
       tapePtr > 0,
-      `failed to allocate ${tape.byteLength} bytes for tape load, pointer=${tapePtr}`
+      `failed to allocate ${tape.byteLength} bytes for tape load, pointer=${tapePtr}`,
     );
 
     // copy tape into wasm memory
     const memoryView = new Uint8Array(
       this.#memory.buffer,
       tapePtr,
-      tape.byteLength
+      tape.byteLength,
     );
     memoryView.set(tape);
 
@@ -253,14 +253,14 @@ export class Sim {
     const dataPtr = this.wasm.alloc(snapshot.byteLength);
     assert(
       dataPtr > 0,
-      `failed to allocate ${snapshot.byteLength} bytes for snapshot restore, pointer=${dataPtr}`
+      `failed to allocate ${snapshot.byteLength} bytes for snapshot restore, pointer=${dataPtr}`,
     );
 
     // copy snapshot into wasm memory
     const memoryView = new Uint8Array(
       this.#memory.buffer,
       dataPtr,
-      snapshot.byteLength
+      snapshot.byteLength,
     );
     memoryView.set(snapshot);
 
@@ -286,7 +286,7 @@ export class Sim {
       // update the data view to the latest memory buffer
       this.#time.dataView = new DataView(
         this.#memory.buffer,
-        this.wasm.get_time_ctx()
+        this.wasm.get_time_ctx(),
       );
     }
     return this.#time;
