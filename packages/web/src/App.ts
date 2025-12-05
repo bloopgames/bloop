@@ -42,6 +42,10 @@ export class App {
     this.#sim = sim;
     this.game = game;
 
+    this.game.hooks.beforeFrame = (frame: number) => {
+      this.beforeFrame.notify(frame);
+    };
+
     this.subscribe();
   }
 
@@ -52,6 +56,9 @@ export class App {
   set sim(sim: Sim) {
     this.#sim = sim;
   }
+
+  beforeFrame = createListener<[number]>();
+  afterFrame = createListener<[number]>();
 
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
@@ -75,10 +82,38 @@ export class App {
     };
     window.addEventListener("mousedown", handleMousedown);
 
+    const handleMouseup = (event: MouseEvent) => {
+      this.sim.emit.mouseup(mouseButtonCodeToMouseButton(event.button + 1));
+    };
+    window.addEventListener("mouseup", handleMouseup);
+
     const handleMousewheel = (event: WheelEvent) => {
       this.sim.emit.mousewheel(event.deltaX, event.deltaY);
     };
     window.addEventListener("wheel", handleMousewheel);
+
+    // Touch events for mobile support
+    const handleTouchstart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+        this.sim.emit.mousedown("Left");
+      }
+    };
+    window.addEventListener("touchstart", handleTouchstart);
+
+    const handleTouchend = () => {
+      this.sim.emit.mouseup("Left");
+    };
+    window.addEventListener("touchend", handleTouchend);
+
+    const handleTouchmove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+      }
+    };
+    window.addEventListener("touchmove", handleTouchmove);
 
     const playbarHotkeys = (event: KeyboardEvent) => {
       const isPauseHotkey =
@@ -104,6 +139,13 @@ export class App {
 
     const frame = () => {
       this.sim.step(performance.now() - this.#now);
+      if (!this.sim.isPaused) {
+        try {
+          this.afterFrame.notify(this.sim.time.frame);
+        } catch (e) {
+          console.error("Error in afterFrame listeners:", e);
+        }
+      }
       this.#now = performance.now();
       this.#rafHandle = requestAnimationFrame(frame);
     };
@@ -114,8 +156,12 @@ export class App {
       window.removeEventListener("keyup", handleKeyup);
       window.removeEventListener("mousemove", handleMousemove);
       window.removeEventListener("mousedown", handleMousedown);
+      window.removeEventListener("mouseup", handleMouseup);
       window.removeEventListener("wheel", handleMousewheel);
       window.removeEventListener("keydown", playbarHotkeys);
+      window.removeEventListener("touchstart", handleTouchstart);
+      window.removeEventListener("touchend", handleTouchend);
+      window.removeEventListener("touchmove", handleTouchmove);
       if (this.#rafHandle != null) {
         cancelAnimationFrame(this.#rafHandle);
       }
@@ -126,13 +172,15 @@ export class App {
   cleanup(): void {
     this.#unsubscribe?.();
     this.sim.unmount();
+    this.beforeFrame.unsubscribeAll();
+    this.afterFrame.unsubscribeAll();
   }
 
   async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
-        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`,
+        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`
       );
     }
 
@@ -148,6 +196,31 @@ export class App {
     this.sim = sim;
     this.game = game;
   }
+}
+
+function createListener<T extends any[]>() {
+  const listeners = new Set<(...args: T) => void>();
+
+  const subscribe = (callback: (...args: T) => void): (() => void) => {
+    listeners.add(callback);
+
+    // Return unsubscribe function
+    return () => {
+      listeners.delete(callback);
+    };
+  };
+
+  const notify = (...args: T): void => {
+    listeners.forEach((callback) => {
+      callback(...args);
+    });
+  };
+
+  return {
+    subscribe,
+    notify,
+    unsubscribeAll: () => listeners.clear(),
+  };
 }
 
 export type UnsubscribeFn = () => void;

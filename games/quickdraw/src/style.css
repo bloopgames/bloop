@@ -1,0 +1,9 @@
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+a, button { cursor: pointer; }
+
+body {
+  font-family: system-ui, sans-serif;
+}

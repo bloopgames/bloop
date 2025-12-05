@@ -9,11 +9,16 @@ export type WasmEngine = {
   register_systems: (cb_handle: number) => void;
 
   get_time_ctx: () => EnginePointer;
+  get_events_ptr: () => EnginePointer;
 
   /**
    * Step forward one simulation frame
    */
-  step: (ms: number) => void;
+  step: (ms: number) => number;
+  /**
+   * Run a single simulation frame. step wraps this in an accumulator
+   */
+  tick: () => void;
   /**
    * Seek to a specific frame number (inclusive).
    * Seeking to frame 1 will run events for frame 0 and frame 1.
