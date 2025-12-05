@@ -310,7 +310,6 @@ function injectEvent(
 
 app.beforeFrame.subscribe((frame) => {
   try {
-    console.log("before frame");
     // Skip normal processing during resimulation
     if (isResimulating) {
       return;
@@ -448,11 +447,7 @@ app.beforeFrame.subscribe((frame) => {
             }
           };
 
-          if (artificialLag > 0) {
-            setTimeout(injectPacketEvents, artificialLag);
-          } else {
-            injectPacketEvents();
-          }
+          injectPacketEvents();
         } else {
           // Rollback path: resimulate from confirmed state
 
@@ -634,7 +629,11 @@ app.beforeFrame.subscribe((frame) => {
       events: allUnackedEvents,
     });
 
-    udp.send(packet);
+    if (artificialLag > 0) {
+      setTimeout(() => udp.send(packet), artificialLag);
+    } else {
+      udp.send(packet);
+    }
   } catch (e) {
     console.error("Error in beforeFrame:", e);
   }

@@ -92,6 +92,29 @@ export class App {
     };
     window.addEventListener("wheel", handleMousewheel);
 
+    // Touch events for mobile support
+    const handleTouchstart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+        this.sim.emit.mousedown("Left");
+      }
+    };
+    window.addEventListener("touchstart", handleTouchstart);
+
+    const handleTouchend = () => {
+      this.sim.emit.mouseup("Left");
+    };
+    window.addEventListener("touchend", handleTouchend);
+
+    const handleTouchmove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) {
+        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+      }
+    };
+    window.addEventListener("touchmove", handleTouchmove);
+
     const playbarHotkeys = (event: KeyboardEvent) => {
       const isPauseHotkey =
         event.key === "Enter" && (event.ctrlKey || event.metaKey);
@@ -136,6 +159,9 @@ export class App {
       window.removeEventListener("mouseup", handleMouseup);
       window.removeEventListener("wheel", handleMousewheel);
       window.removeEventListener("keydown", playbarHotkeys);
+      window.removeEventListener("touchstart", handleTouchstart);
+      window.removeEventListener("touchend", handleTouchend);
+      window.removeEventListener("touchmove", handleTouchmove);
       if (this.#rafHandle != null) {
         cancelAnimationFrame(this.#rafHandle);
       }
