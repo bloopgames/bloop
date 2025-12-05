@@ -1,0 +1,139 @@
+# Rollback Netcode Demo Plan
+
+**Demo date**: Week of Dec 9, 2024
+**Audience**: Paul Weeks (indie fighting game dev)
+**Goal**: Show working rollback netcode with debug visualization, code walkthrough, ideally tape replay with per-frame rollback dissection
+
+## Reference Material
+
+- [Muno's Rollback Explainer](https://bymuno.com/post/rollback) - Visual reference we're recreating
+- `games/quickdraw/` - Proof of concept spike with working rollback, packet encoding, debug UI
+- Websocket broker server - (TODO: add path once imported)
+
+## Configuration
+
+- Max rollback frames: 30
+- Local input delay: 3 frames
+
+---
+
+## Workstreams
+
+### 1. Mario Coin Block Game (~0.5 day)
+New game in `games/mario-rollback/` recreating the Muno article visual:
+- Two players (Mario/Luigi sprites from Aseprite)
+- Single moving block with coin
+- Simple platformer physics (gravity, jump, collision)
+- Rendered with Toodle
+- Local two-player first (Player 1: WASD, Player 2: IJKL)
+
+**Status**: In progress (Dec 5)
+
+### 2. Engine: Per-Player Inputs (~0.5-1 day)
+Extend `packages/engine` to support multiplayer input streams:
+- Add `peer_id` to events (u8, 0 = local, 1-255 = remote peers)
+- New context struct for per-player input state (so `players[0].inputs.keys.a.down` works)
+- Events tagged with frame + peer_id at capture time
+- Unit tests for input merging across peers
+
+**Status**: Not started
+
+### 3. Engine: Rollback Core (~1 day)
+Formalize rollback logic in Zig (currently in TS in quickdraw):
+- Confirmed frame tracking
+- Remote input buffer (per peer, keyed by frame)
+- `rollback(to_frame)` -> restore snapshot, resimulate with confirmed inputs
+- `predict(from_frame, to_frame)` -> resimulate with local-only inputs
+- Max rollback window of 30 frames
+- Configurable local input delay (3 frames)
+- Unit tests for rollback scenarios
+
+**Status**: Not started
+
+### 4. Engine: Packet Format (~0.5 day)
+Binary packet encode/decode in Zig (port from quickdraw's `inputs.ts`):
+- `[u8 type][u32 seq][u32 ack][u32 match_frame][u8 event_count][Event...]`
+- Encode/decode exports for WASM boundary
+- Include unacked events for retransmission
+- Unit tests
+
+**Status**: Not started
+
+### 5. Tape Format: Add Packets (~0.25 day)
+Extend tape format to record network packets:
+- Store received packets per frame (for replay dissection)
+- Store which inputs were predicted vs confirmed at each frame
+- Enables the "step through rollback" visualization
+
+**Status**: Not started
+
+### 6. Web: Network Transport (~0.5 day)
+Port/clean up from quickdraw to `packages/web`:
+- WebSocket broker connection
+- WebRTC peer connection with reliable/unreliable channels
+- Integrate websocket server repo
+- `context.net.peers` API surface
+
+**Status**: Not started
+
+### 7. Web: Cloudflare TURN (~0.5 day)
+Fix connectivity for cross-region play:
+- Add Cloudflare TURN server credentials
+- Test with someone remote
+
+**Status**: Not started
+
+### 8. Debug UI (~0.5 day)
+Reuse/port from quickdraw:
+- Stats panel: current frame, confirm frame, rollback depth, ping, packet stats
+- Connection health indicators (green/yellow/red/grey)
+- Logs panel (reuse Logs.vue pattern)
+- Integrate with mario game
+
+**Status**: Not started
+
+### 9. Tape Replay + Rollback Dissection (stretch, ~0.5 day)
+The "maximum wow factor":
+- Side-by-side replay of two networked sessions
+- Step through resimulation frames
+- Visual indicator of predicted vs confirmed inputs per frame
+- Show the actual rollback correction visually
+
+**Status**: Not started
+
+---
+
+## Priority Order
+
+| Priority | Item | Notes |
+|----------|------|-------|
+| P0 | Mario game (local multiplayer) | Foundation for demo |
+| P0 | Engine: per-player inputs | Required for netcode |
+| P0 | Engine: rollback core | The main feature |
+| P0 | Engine: packet format | Wire protocol |
+| P1 | Web: network transport | Connect it all |
+| P1 | Debug UI | Show the internals |
+| P2 | Cloudflare TURN | Cross-region connectivity |
+| P3 | Tape packets + rollback dissection | Maximum wow factor |
+
+---
+
+## Session Log
+
+### Dec 5 (2.5 hours)
+- Created this plan
+- TODO: Start mario game with local multiplayer (WASD vs IJKL)
+- TODO: Import websocket broker server repo
+
+---
+
+## Quick Reference: Existing Code to Reuse
+
+From `games/quickdraw/`:
+- `netcode/inputs.ts` - Packet encoding/decoding (port to Zig)
+- `netcode/transport.ts` - WebRTC connection management
+- `netcode/broker.ts` - WebSocket room management
+- `netcode/logs.ts` - Log schema
+- `main.ts` - Rollback loop logic (port to Zig)
+- `ui/Logs.vue` - Debug log display
+- `ui/Stats.vue` - Network stats display
