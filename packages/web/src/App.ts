@@ -57,8 +57,8 @@ export class App {
     this.#sim = sim;
   }
 
-  beforeFrame = createListener<[number]>();
-  afterFrame = createListener<[number]>();
+  beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
+  afterFrame: ReturnType<typeof createListener> = createListener<[number]>();
 
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
@@ -198,7 +198,11 @@ export class App {
   }
 }
 
-function createListener<T extends any[]>() {
+function createListener<T extends any[]>(): {
+  subscribe: (callback: (...args: T) => void) => UnsubscribeFn;
+  notify: (...args: T) => void;
+  unsubscribeAll: UnsubscribeFn;
+} {
   const listeners = new Set<(...args: T) => void>();
 
   const subscribe = (callback: (...args: T) => void): (() => void) => {
