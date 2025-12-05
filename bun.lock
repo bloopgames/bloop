@@ -24,6 +24,19 @@
         "vite": "^7.2.2",
       },
     },
+    "games/mario-rollback": {
+      "name": "mario-rollback",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/toodle": "^0.0.100",
+        "@bloopjs/web": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "~5.9.3",
+        "vite": "^7.2.2",
+      },
+    },
     "games/quickdraw": {
       "name": "quickdraw",
       "version": "0.0.0",
@@ -399,6 +412,8 @@
     "lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
 
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
+
+    "mario-rollback": ["mario-rollback@workspace:games/mario-rollback"],
 
     "memorystream": ["memorystream@0.3.1", "", {}, "sha512-S3UwM3yj5mtUSEfP41UZmt/0SCoVYUcU1rkXv+BQ5Ig8ndL4sPoJNBUJERafdPb5jjHJGuMgytgKvKIf58XNBw=="],
 
