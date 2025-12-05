@@ -138,8 +138,8 @@ joinRoom("nope", logger, {
       inputPacket.events.filter(
         (e) =>
           ![Enums.EventType.MouseMove, Enums.EventType.MouseWheel].includes(
-            e.eventType
-          )
+            e.eventType,
+          ),
       ).length > 0;
     if (hasEvents) {
       logger.log({
@@ -166,7 +166,7 @@ joinRoom("nope", logger, {
         snapshot: app.sim.snapshot(),
       };
       console.log(
-        `[netcode] Session started at local frame ${net.sessionStartFrame}, captured initial snapshot`
+        `[netcode] Session started at local frame ${net.sessionStartFrame}, captured initial snapshot`,
       );
     }
   },
@@ -225,7 +225,7 @@ function receivePackets(frame: number) {
     const peer = connectedPeers.find((p) => p.id === peerId);
     if (!peer) {
       console.warn(
-        `[netcode] Received packet from unknown peer: ${peerId}, total peers: ${connectedPeers.length}`
+        `[netcode] Received packet from unknown peer: ${peerId}, total peers: ${connectedPeers.length}`,
       );
     }
 
@@ -250,7 +250,7 @@ function receivePackets(frame: number) {
         // Track packet timestamps for rate calculation (keep last 60 seconds)
         const cutoff = now - 60000;
         stats.packetTimestamps = stats.packetTimestamps.filter(
-          (t) => t > cutoff
+          (t) => t > cutoff,
         );
         stats.packetTimestamps.push(now);
         stats.packetsPerSecond = stats.packetTimestamps.length / 60;
@@ -309,7 +309,9 @@ function receivePackets(frame: number) {
 
 function hasNewConfirmFrames(frame: number): boolean {
   if (net.confirmedState === null) {
-    throw new Error("confirmedState is null");
+    // still waiting to establish data connection
+    console.warn(`Waiting to establish data connection...`);
+    return false;
   }
   const currentMatchFrame =
     frame - Util.unwrap(net.sessionStartFrame, "Session has not started");
@@ -320,9 +322,7 @@ function hasNewConfirmFrames(frame: number): boolean {
 }
 
 /** Perform rollback resimulation if we have new remote inputs to confirm */
-function doRollback(
-  frame: number
-) {
+function doRollback(frame: number) {
   if (net.confirmedState === null) {
     throw new Error("confirmedState is null");
   }
@@ -342,7 +342,10 @@ function doRollback(
 
   // Read current frame's events from buffer before rollback
   const currentFrameEvents = readEventsFromEngine(currentMatchFrame);
-  if (currentFrameEvents.length > 0 && !net.localEvents.has(currentMatchFrame)) {
+  if (
+    currentFrameEvents.length > 0 &&
+    !net.localEvents.has(currentMatchFrame)
+  ) {
     net.localEvents.set(currentMatchFrame, currentFrameEvents);
   }
 
@@ -371,7 +374,11 @@ function doRollback(
 
     const resimDuration = performance.now() - resimStart;
     if (resimDuration > 16) {
-      console.warn(`[rollback] Resimulation took ${resimDuration.toFixed(2)}ms (>16ms frame budget) for ${totalFramesToResim} frames`);
+      console.warn(
+        `[rollback] Resimulation took ${resimDuration.toFixed(
+          2,
+        )}ms (>16ms frame budget) for ${totalFramesToResim} frames`,
+      );
     }
   } finally {
     net.isResimulating = false;
@@ -386,7 +393,9 @@ function resimFrame(f: number, isPrediction: boolean) {
     if (event.eventType === Enums.EventType.MouseDown) {
       logger.log({
         source: "rollback",
-        label: `[${isPrediction ? "PREDICT" : "CONFIRM"}] Injecting LOCAL MouseDown at resimFrame=${f}`,
+        label: `[${
+          isPrediction ? "PREDICT" : "CONFIRM"
+        }] Injecting LOCAL MouseDown at resimFrame=${f}`,
       });
     }
     if (
@@ -395,7 +404,9 @@ function resimFrame(f: number, isPrediction: boolean) {
     ) {
       logger.log({
         source: "rollback",
-        label: `[${isPrediction ? "PREDICT" : "CONFIRM"}] Injecting LOCAL KeyL at resimFrame=${f}`,
+        label: `[${
+          isPrediction ? "PREDICT" : "CONFIRM"
+        }] Injecting LOCAL KeyL at resimFrame=${f}`,
       });
     }
     injectEvent(event.eventType, event.payload, false);
@@ -407,7 +418,9 @@ function resimFrame(f: number, isPrediction: boolean) {
     if (event.eventType === Enums.EventType.MouseDown) {
       logger.log({
         source: "rollback",
-        label: `[${isPrediction ? "PREDICT" : "CONFIRM"}] Injecting REMOTE MouseDown (as KeyL) at resimFrame=${f}`,
+        label: `[${
+          isPrediction ? "PREDICT" : "CONFIRM"
+        }] Injecting REMOTE MouseDown (as KeyL) at resimFrame=${f}`,
       });
     }
     injectEvent(event.eventType, event.payload, !isPrediction);
@@ -415,7 +428,6 @@ function resimFrame(f: number, isPrediction: boolean) {
 
   app.sim.tick();
 }
-
 
 /** Send packet with local events to remote peer */
 function sendPacket(frame: number) {
@@ -494,13 +506,12 @@ function readEventsFromEngine(frame: number): InputEvent[] {
   return events;
 }
 
-
 // Helper to inject an event into the engine
 // isRemote: true if this event came from another player
 function injectEvent(
   eventType: number,
   payload: Uint8Array,
-  isRemote: boolean
+  isRemote: boolean,
 ) {
   // For remote events, translate mouse clicks to 'l' key (player 2)
   if (isRemote) {
@@ -516,7 +527,7 @@ function injectEvent(
       const dv = new DataView(
         payload.buffer,
         payload.byteOffset,
-        payload.byteLength
+        payload.byteLength,
       );
       const x = dv.getFloat32(0, true);
       const y = dv.getFloat32(4, true);
@@ -534,7 +545,7 @@ function injectEvent(
     case Enums.EventType.KeyDown: {
       const keyCode = Util.unwrap(
         payload[0],
-        "KeyDown payload missing keyCode"
+        "KeyDown payload missing keyCode",
       );
       app.sim.wasm.emit_keydown(keyCode);
       break;
@@ -547,7 +558,7 @@ function injectEvent(
     case Enums.EventType.MouseDown: {
       const buttonCode = Util.unwrap(
         payload[0],
-        "MouseDown payload missing buttonCode"
+        "MouseDown payload missing buttonCode",
       );
       app.sim.wasm.emit_mousedown(buttonCode);
       break;
@@ -555,7 +566,7 @@ function injectEvent(
     case Enums.EventType.MouseUp: {
       const buttonCode = Util.unwrap(
         payload[0],
-        "MouseUp payload missing buttonCode"
+        "MouseUp payload missing buttonCode",
       );
       app.sim.wasm.emit_mouseup(buttonCode);
       break;
@@ -564,7 +575,7 @@ function injectEvent(
       const dv = new DataView(
         payload.buffer,
         payload.byteOffset,
-        payload.byteLength
+        payload.byteLength,
       );
       const x = dv.getFloat32(0, true);
       const y = dv.getFloat32(4, true);
@@ -575,7 +586,7 @@ function injectEvent(
       const dv = new DataView(
         payload.buffer,
         payload.byteOffset,
-        payload.byteLength
+        payload.byteLength,
       );
       const deltaX = dv.getFloat32(0, true);
       const deltaY = dv.getFloat32(4, true);
