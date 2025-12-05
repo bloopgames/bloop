@@ -1,5 +1,7 @@
 export type PeerId = string;
 
+// TODO: bring the websocket server from neilsarkar/labs into this repo
+
 // Wire format packet types
 export enum PacketType {
   None = 0,

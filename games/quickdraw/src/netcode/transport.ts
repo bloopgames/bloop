@@ -60,6 +60,7 @@ export async function connect(
 }
 
 export async function logErrors(dc: RTCDataChannel) {
+  // TODO: handle errors and disconnects in example game
   dc.onerror = (event) => {
     netcode.logRtc(`[${dc.label}] ${JSON.stringify(event)}`);
   };

@@ -1,6 +1,7 @@
 import { PacketType } from "./protocol";
 
-// Packet structure (prototype - should move to zig + codegen):
+// TODO: move to zig and codegen this ABI
+// Packet structure (hardcoded for prototype):
 // [u8 packet_type] [u32 ack] [u32 seq] [u32 match_frame] [u8 event_count]
 // Each event: [u32 frame_number] [u8 event_type] [u8[8] event_payload]
 export const PACKET_HEADER_SIZE = 1 + 4 + 4 + 4 + 1; // type + ack + seq + match_frame + count
