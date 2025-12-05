@@ -42,6 +42,10 @@ export class App {
     this.#sim = sim;
     this.game = game;
 
+    this.game.hooks.beforeFrame = (frame: number) => {
+      this.beforeFrame.notify(frame);
+    };
+
     this.subscribe();
   }
 
@@ -111,13 +115,6 @@ export class App {
     window.addEventListener("keydown", playbarHotkeys);
 
     const frame = () => {
-      if (!this.sim.isPaused) {
-        try {
-          this.beforeFrame.notify(this.sim.time.frame);
-        } catch (e) {
-          console.error("Error in beforeFrame listeners:", e);
-        }
-      }
       this.sim.step(performance.now() - this.#now);
       if (!this.sim.isPaused) {
         try {

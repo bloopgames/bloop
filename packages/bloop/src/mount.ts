@@ -28,6 +28,13 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
         opts.hooks.setBuffer(memory.buffer);
         opts.hooks.systemsCallback(system_handle, ptr);
       },
+      __before_frame: function (frame: number) {
+        try {
+          opts.hooks.beforeFrame?.(frame);
+        } catch (e) {
+          console.error("Error in beforeFrame hook:", e);
+        }
+      },
       console_log: function (ptr: EnginePointer, len: number) {
         const bytes = new Uint8Array(memory.buffer, ptr, len);
         const string = new TextDecoder("utf-8").decode(bytes);

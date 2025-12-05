@@ -50,6 +50,10 @@ export type EngineHooks = {
    * Sets the context pointer
    */
   setContext: (ptr: EnginePointer) => void;
+  /**
+   * Called from the engine right before each simulation step.
+   */
+  beforeFrame?: (frame: number) => void;
 };
 
 export type SystemsCallback = (
@@ -105,6 +109,14 @@ export class Sim {
       return 0;
     }
     return this.wasm.step(ms ?? 16);
+  }
+
+  /**
+   * Run a single simulation frame. step wraps this in an accumulator.
+   * Use this for rollback resimulation to avoid re-entrancy issues with step().
+   */
+  tick(): void {
+    this.wasm.tick();
   }
 
   /**

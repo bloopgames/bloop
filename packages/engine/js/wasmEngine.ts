@@ -16,6 +16,10 @@ export type WasmEngine = {
    */
   step: (ms: number) => number;
   /**
+   * Run a single simulation frame. step wraps this in an accumulator
+   */
+  tick: () => void;
+  /**
    * Seek to a specific frame number (inclusive).
    * Seeking to frame 1 will run events for frame 0 and frame 1.
    */

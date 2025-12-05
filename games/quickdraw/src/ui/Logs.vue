@@ -95,7 +95,8 @@ function formatEventPayload(eventType: number, payload: Uint8Array): string {
       <div class="contents">
         <h3 :class="{ [log.source]: true}">
           <span class="source">{{ log.source }} | </span>
-          <span class="frame-number">f{{ log.frame_number }} | </span>
+          <span class="frame-number" v-if="!!log.match_frame">m{{ log.match_frame}} | </span>
+          <span class="frame-number" v-else>f{{ log.frame_number}} | </span>
           <span class="timestamp">{{ formatTimestamp(log.timestamp) }}</span>
         </h3>
         <div class="content">

@@ -16,6 +16,10 @@ extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 /// @param ptr Pointer to engine context and events data
 extern "env" fn __cb(fn_handle: u32, ptr: u32, dt: u32) void;
 
+/// Callback into JS before each simulation step
+/// @param frame The frame number about to be simulated
+extern "env" fn __before_frame(frame: u32) void;
+
 /// Writes user data from js to the given snapshot pointer
 /// @param ptr Pointer to the user data
 /// @param len Expected length of the user data
@@ -332,48 +336,57 @@ pub export fn step(ms: u32) u32 {
     }
     accumulator += ms;
 
-    const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
-
-    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
-
     var step_count: u32 = 0;
     while (accumulator >= hz) {
-        // Age input states at the start of each frame
-        for (&input_ctx.*.key_ctx.key_states) |*key_state| {
-            // Shift left by 1 to age the state, keep the current value
-            const is_held = key_state.* & 1;
-            key_state.* = key_state.* << 1;
-            key_state.* |= is_held;
-        }
-        for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
-            const is_held = button_state.* & 1;
-            button_state.* = button_state.* << 1;
-            button_state.* |= is_held;
-        }
+        // Notify JS before each simulation step
+        const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+        __before_frame(time.*.frame);
 
-        time.*.dt_ms = hz;
-        time.*.total_ms += hz;
-        if (vcr.is_replaying and time.*.frame < tape.?.frame_count() - 1) {
-            use_tape_events();
-        }
-        process_events();
-        __cb(global_cb_handle, cb_ptr, hz);
+        tick();
         step_count += 1;
-        time.*.frame += 1;
         accumulator -= hz;
-        flush_events();
-
-        // Advance to the next frame
-        if (vcr.is_recording and !vcr.is_replaying) {
-            if (tape) |*t| {
-                t.start_frame() catch {
-                    @panic("Failed to advance tape frame");
-                };
-            }
-        }
     }
     accumulator = @max(accumulator, 0);
     return step_count;
+}
+
+/// Run a single simulation frame without accumulator management.
+/// Use this for rollback resimulation to avoid re-entrancy issues with step().
+pub export fn tick() void {
+    const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
+    const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
+
+    // Age input states at the start of each frame
+    for (&input_ctx.*.key_ctx.key_states) |*key_state| {
+        // Shift left by 1 to age the state, keep the current value
+        const is_held = key_state.* & 1;
+        key_state.* = key_state.* << 1;
+        key_state.* |= is_held;
+    }
+    for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
+        const is_held = button_state.* & 1;
+        button_state.* = button_state.* << 1;
+        button_state.* |= is_held;
+    }
+
+    time.*.dt_ms = hz;
+    time.*.total_ms += hz;
+    if (vcr.is_replaying and time.*.frame < tape.?.frame_count() - 1) {
+        use_tape_events();
+    }
+    process_events();
+    __cb(global_cb_handle, cb_ptr, hz);
+    time.*.frame += 1;
+    flush_events();
+
+    // Advance to the next frame
+    if (vcr.is_recording and !vcr.is_replaying) {
+        if (tape) |*t| {
+            t.start_frame() catch {
+                @panic("Failed to advance tape frame");
+            };
+        }
+    }
 }
 
 pub export fn emit_keydown(key_code: Events.Key) void {

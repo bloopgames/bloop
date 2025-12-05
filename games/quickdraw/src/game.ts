@@ -8,8 +8,11 @@ export type Peer = {
   nickname: string;
   inAck: FrameNumber;
   outAck: FrameNumber;
-  stats: PeerStats;
 };
+
+// Peers and stats live outside the bag so they don't get rolled back
+export const connectedPeers: Peer[] = [];
+export const peerStats = new Map<PeerId, PeerStats>();
 
 export type FrameNumber = number;
 export type PeerId = string;
@@ -60,11 +63,6 @@ export const game = Bloop.create({
     player2Score: 0,
     winner: null as null | 1 | 2, // Which player won the round
     winnerDisplayTime: 0.5, // How long to display winner (seconds)
-
-    // Networking state (for later)
-    localPeerId: "" as PeerId,
-    peers: [] as Peer[],
-    outbound: [] as Packet[],
 
     // Remote player cursor position
     remoteCursorX: 0,
@@ -138,6 +136,7 @@ game.system("handle inputs", {
   },
 });
 
+import { unwrap } from "@bloopjs/bloop";
 // Update UI state from bag every frame
 import { peers } from "./ui";
 
@@ -153,28 +152,32 @@ game.system("update ui", {
     buzzer.value.remoteCursorX = bag.remoteCursorX;
     buzzer.value.remoteCursorY = bag.remoteCursorY;
 
-    // Deep copy peers to trigger reactivity for nested stats changes
-    peers.value = bag.peers.map(p => ({
+    // Deep copy peers with stats from external map to trigger reactivity
+    peers.value = connectedPeers.map((p) => ({
       ...p,
-      stats: { ...p.stats }
+      stats: {
+        ...unwrap(peerStats.get(p.id), `Missing stats for peer ${p.id}`),
+      },
     }));
   },
 });
 
 export function makePeer(id: PeerId): Peer {
+  // Create stats in external map (won't be rolled back)
+  peerStats.set(id, {
+    currentSeq: 0,
+    currentAck: 0,
+    timeSinceLastPacket: 0,
+    packetsPerSecond: 0,
+    averagePacketDelta: 0,
+    lastPacketTime: 0,
+    packetTimestamps: [],
+  });
+
   return {
     id,
     nickname: id.substring(0, 6),
     inAck: -1,
     outAck: -1,
-    stats: {
-      currentSeq: 0,
-      currentAck: 0,
-      timeSinceLastPacket: 0,
-      packetsPerSecond: 0,
-      averagePacketDelta: 0,
-      lastPacketTime: 0,
-      packetTimestamps: [],
-    },
   };
 }
