@@ -17,6 +17,9 @@ extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 /// Callback into JS before each simulation step
 extern "env" fn __before_frame(frame: u32) void;
 
+/// Returns the current size of user data for snapshots
+extern "env" fn user_data_len() u32;
+
 /// Writes user data from js to the given snapshot pointer
 extern "env" fn user_data_serialize(ptr: wasmPointer, len: u32) void;
 
@@ -107,6 +110,7 @@ pub export fn initialize() wasmPointer {
         .systems = wasm_systems_callback,
         .user_serialize = wasm_user_serialize,
         .user_deserialize = wasm_user_deserialize,
+        .user_data_len = wasm_user_data_len,
     };
 
     return cb_ptr;
@@ -129,6 +133,10 @@ fn wasm_user_deserialize(ptr: usize, len: u32) void {
     user_data_deserialize(@intCast(ptr), len);
 }
 
+fn wasm_user_data_len() u32 {
+    return user_data_len();
+}
+
 pub export fn alloc(size: usize) wasmPointer {
     const slice = wasm_alloc.alloc(u8, size) catch {
         @panic("Failed to allocate memory from engine");
@@ -146,8 +154,8 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
-    sim.?.start_recording(user_data_len, max_events) catch |e| {
+pub export fn start_recording(data_len: u32, max_events: u32) u8 {
+    sim.?.start_recording(data_len, max_events) catch |e| {
         switch (e) {
             Sim.RecordingError.AlreadyRecording => {
                 wasm_log("Already recording");
@@ -240,8 +248,8 @@ pub export fn deinit() void {
     }
 }
 
-pub export fn take_snapshot(user_data_len: u32) wasmPointer {
-    const snap = sim.?.take_snapshot(user_data_len) catch {
+pub export fn take_snapshot(data_len: u32) wasmPointer {
+    const snap = sim.?.take_snapshot(data_len) catch {
         @panic("Snapshot allocation failed: Out of memory");
     };
     return @intFromPtr(snap);
@@ -313,8 +321,8 @@ pub export fn get_events_ptr() wasmPointer {
 
 /// Initialize a multiplayer session with rollback support
 /// Captures current frame as session_start_frame
-pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
-    sim.?.sessionInit(peer_count, user_data_len) catch {
+pub export fn session_init(peer_count: u8, data_len: u32) u8 {
+    sim.?.sessionInit(peer_count, data_len) catch {
         wasm_log("Failed to initialize session: Out of memory");
         return 1;
     };
