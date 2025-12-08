@@ -20,7 +20,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size
-  const memory = new WebAssembly.Memory({ initial: 17, maximum: 1000 });
+  const memory = new WebAssembly.Memory({ initial: 23, maximum: 1000 });
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       memory,
@@ -40,7 +40,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
         const string = new TextDecoder("utf-8").decode(bytes);
         console.log(string);
       },
-      user_data_len: function () {
+      __user_data_len: function () {
         const serializer = opts.hooks.serialize();
         return serializer ? serializer.size : 0;
       },

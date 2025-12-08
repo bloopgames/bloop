@@ -17,6 +17,9 @@ extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 /// Callback into JS before each simulation step
 extern "env" fn __before_frame(frame: u32) void;
 
+/// Returns the current size of user data for snapshots
+extern "env" fn __user_data_len() u32;
+
 /// Writes user data from js to the given snapshot pointer
 extern "env" fn user_data_serialize(ptr: wasmPointer, len: u32) void;
 
@@ -107,6 +110,7 @@ pub export fn initialize() wasmPointer {
         .systems = wasm_systems_callback,
         .user_serialize = wasm_user_serialize,
         .user_deserialize = wasm_user_deserialize,
+        .user_data_len = wasm_user_data_len,
     };
 
     return cb_ptr;
@@ -127,6 +131,10 @@ fn wasm_user_serialize(ptr: usize, len: u32) void {
 
 fn wasm_user_deserialize(ptr: usize, len: u32) void {
     user_data_deserialize(@intCast(ptr), len);
+}
+
+fn wasm_user_data_len() u32 {
+    return __user_data_len();
 }
 
 pub export fn alloc(size: usize) wasmPointer {
@@ -305,6 +313,54 @@ pub export fn get_time_ctx() wasmPointer {
 
 pub export fn get_events_ptr() wasmPointer {
     return @intFromPtr(sim.?.events);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Session / Rollback exports
+// ─────────────────────────────────────────────────────────────
+
+/// Initialize a multiplayer session with rollback support
+/// Captures current frame as session_start_frame
+pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
+    sim.?.sessionInit(peer_count, user_data_len) catch {
+        wasm_log("Failed to initialize session: Out of memory");
+        return 1;
+    };
+    return 0;
+}
+
+/// End the current session
+pub export fn session_end() void {
+    sim.?.sessionEnd();
+}
+
+/// Emit inputs for a peer at a given match frame
+/// events_ptr points to an array of Event structs
+/// events_len is the number of events (not bytes)
+pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPointer, events_len: u32) void {
+    const events: [*]const Events.Event = @ptrFromInt(events_ptr);
+    const events_slice = events[0..events_len];
+    sim.?.sessionEmitInputs(peer, match_frame, events_slice);
+}
+
+/// Get current match frame (0 if no session)
+pub export fn get_match_frame() u32 {
+    return sim.?.getMatchFrame();
+}
+
+/// Get confirmed frame (0 if no session)
+pub export fn get_confirmed_frame() u32 {
+    return sim.?.getConfirmedFrame();
+}
+
+/// Get confirmed frame for a specific peer
+pub export fn get_peer_frame(peer: u8) u32 {
+    return sim.?.getPeerFrame(peer);
+}
+
+/// Get rollback depth (match_frame - confirmed_frame)
+pub export fn get_rollback_depth() u32 {
+    return sim.?.getRollbackDepth();
 }
 
 // ─────────────────────────────────────────────────────────────
