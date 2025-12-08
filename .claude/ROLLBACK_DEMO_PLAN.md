@@ -27,16 +27,16 @@ New game in `games/mario-rollback/` recreating the Muno article visual:
 - Rendered with Toodle
 - Local two-player first (Player 1: WASD, Player 2: IJKL)
 
-**Status**: In progress (Dec 5)
+**Status**: First pass completed
 
 ### 2. Engine: Per-Player Inputs (~0.5-1 day)
 Extend `packages/engine` to support multiplayer input streams:
-- Add `peer_id` to events (u8, 0 = local, 1-255 = remote peers)
-- New context struct for per-player input state (so `players[0].inputs.keys.a.down` works)
+- Add `source_id` to events (u8, 0 = local, 1-255 = remote peers)
+- New context struct for per-player input state (so `players[0].keys.a.down` works)
 - Events tagged with frame + peer_id at capture time
 - Unit tests for input merging across peers
 
-**Status**: Not started
+**Status**: Completed
 
 ### 3. Engine: Rollback Core (~1 day)
 Formalize rollback logic in Zig (currently in TS in quickdraw):
