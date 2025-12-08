@@ -25,6 +25,7 @@
     "build:tsc": "tsc -p publish/tsconfig.publish.json",
     "build:wasm": "zig build -p .",
     "ci:tsc": "tsc --noEmit",
+    "ci:jsr": "bunx jsr publish --dry-run --allow-dirty",
     "check:wasm": "wasm-objdump -x wasm/bloop.wasm",
     "dev": "zig build -p . --watch"
   },

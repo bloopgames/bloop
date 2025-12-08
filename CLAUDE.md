@@ -9,7 +9,7 @@ Bloop is a rewindable 2D game simulation library. It enables:
 - Writing game state and logic in TypeScript
 - Rewinding any live or recorded gameplay session
 - Hot reloading code changes during rewinded play sessions
-- Rollback netcode (in development)
+- Rollback netcode (in development) for up to 12 player sessions.
 
 ## Build & Development Commands
 
@@ -25,17 +25,20 @@ bun run dev
 # Type checking
 bun run ci:tsc
 
-# Run tests
+# Run ts tests
 bun test
+
+# Run engine tests
+cd packages/engine && zig build test
 
 # Run a single test file
 bun test packages/bloop/test/bloop.test.ts
 
 # Build engine WASM (requires zig)
-cd packages/engine && zig build -p .
+cd packages/engine && bun run build:wasm
 
 # Watch engine WASM during development
-cd packages/engine && zig build -p . --watch
+cd packages/engine && bun dev
 
 # Run a specific game dev server
 cd games/quickdraw && bun run dev
@@ -45,14 +48,17 @@ cd games/quickdraw && bun run dev
 
 **Packages (publishable libraries):**
 
-- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording
-- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games
-- `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR
+- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording. Performance is the north star, and we should have high unit test coverage here. Also we should prefer having one explicit way to do things instead more ergonomic apis.
+
+- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games. Ergonomics and expressiveness are the north star here. Tests are integration tests, integrating with the `Bloop` and `Sim` objects the way the developer would. We want code that changes often to have as little friction as possible to provide a great DX. While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
+
+- `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR, translating browser APIs into bloop calls. Tests should be end-to-end tests using a real browser environment (e.g. Playwright).
 
 **Games (example apps):**
 
 - `games/hello` - Minimal example game
-- `games/quickdraw` - Vue-based game with netcode (uses Vite, not Bun.serve)
+- `games/quickdraw` - Vue-based prototype with netcode (uses Vite, not Bun.serve)
+- `games/mario_rollback` - Mario platformer with rollback netcode
 
 ## Architecture
 
@@ -71,7 +77,7 @@ cd games/quickdraw && bun run dev
 1. Browser events captured by `App` -> emit to `Sim`
 2. `Sim.step()` calls WASM engine which processes inputs and fires callback
 3. WASM callback invokes TypeScript systems with current `Context`
-4. Systems read `context.inputs` and mutate `context.bag`
+4. Systems read `context.players` for inputs and mutate `context.bag`
 5. Engine snapshots bag via `serialize`/`deserialize` hooks for rewind capability
 
 ### Engine (Zig/WASM)
@@ -79,7 +85,7 @@ cd games/quickdraw && bun run dev
 The engine in `packages/engine/src/*.zig` manages:
 
 - Time context (frame, dt, elapsed time)
-- Input state (keyboard/mouse)
+- Multiplayer input states (eg player[0].keys, player[0].mouse)
 - Event queue
 - Tape recording/playback
 - Snapshot/restore
