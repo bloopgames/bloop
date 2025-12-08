@@ -280,8 +280,8 @@ test "snapshot headers with no user data" {
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);
     try std.testing.expectEqual(@sizeOf(Snapshot), snapshot.engine_data_len);
-    // engine payload should be less than 4kb (we can optimize later)
-    try std.testing.expect(snapshot.engine_data_len < 4_096);
+    // engine payload should be less than 16kb (12 players + 512 events)
+    try std.testing.expect(snapshot.engine_data_len < 16_384);
     try std.testing.expectEqual(0, snapshot.user_data_len);
 }
 
@@ -297,23 +297,17 @@ test "snapshot engine data" {
     const time_ptr = @intFromPtr(&time_ctx);
     snapshot.write_time(time_ptr);
 
-    const input_ctx = Ctx.InputCtx{
-        .key_ctx = Ctx.KeyCtx{
-            .key_states = [_]u8{0} ** 256,
-        },
-        .mouse_ctx = Ctx.MouseCtx{
-            .x = 100.0,
-            .y = 200.0,
-            .button_states = [_]u8{0} ** 8,
-            .wheel_x = 3.0,
-            .wheel_y = -3.0,
-        },
-    };
+    var input_ctx: Ctx.InputCtx = undefined;
+    @memset(std.mem.asBytes(&input_ctx), 0);
+    input_ctx.players[0].mouse_ctx.x = 100.0;
+    input_ctx.players[0].mouse_ctx.y = 200.0;
+    input_ctx.players[0].mouse_ctx.wheel_x = 3.0;
+    input_ctx.players[0].mouse_ctx.wheel_y = -3.0;
     const input_ptr = @intFromPtr(&input_ctx);
     snapshot.write_inputs(input_ptr);
 
-    const empty_event = Event{ .kind = .None, .payload = .{ .key = .None } };
-    const events_buffer = EventBuffer{ .count = 2, .events = [_]Event{empty_event} ** 128 };
+    const empty_event = Event{ .kind = .None, .source = .None, .payload = .{ .key = .None } };
+    const events_buffer = EventBuffer{ .count = 2, .events = [_]Event{empty_event} ** 512 };
     const events_ptr = @intFromPtr(&events_buffer);
     snapshot.write_events(events_ptr);
 
@@ -369,11 +363,11 @@ test "tape can index events by frame" {
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
-    try tape.append_event(Event.keyDown(.KeyA));
-    try tape.append_event(Event.mouseMove(150.0, 250.0));
+    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.mouseMove(150.0, 250.0, .LocalKeyboard));
 
     try tape.start_frame();
-    try tape.append_event(Event.keyUp(.KeyA));
+    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
 
     try std.testing.expectEqual(5, tape.event_count());
 
@@ -439,8 +433,8 @@ test "tape header is updated with event count" {
     var tape = try Tape.init(std.testing.allocator, snapshot, 3);
     defer tape.free(std.testing.allocator);
 
-    try tape.append_event(Event.keyDown(.KeyA));
-    try tape.append_event(Event.keyUp(.KeyA));
+    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
 
     const header_slice = tape.buf[0..@sizeOf(TapeHeader)];
     const header: *const TapeHeader = @ptrCast(@alignCast(header_slice.ptr));
@@ -456,10 +450,10 @@ test "tape can be serialized and deserialized" {
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
-    try tape.append_event(Event.keyDown(.KeyA));
-    try tape.append_event(Event.mouseMove(150.0, 250.0));
+    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.mouseMove(150.0, 250.0, .LocalKeyboard));
     try tape.start_frame();
-    try tape.append_event(Event.keyUp(.KeyA));
+    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
 
     // Simulate serialization by copying the tape buffer
     const len = tape.buf.len;

@@ -1,4 +1,9 @@
-import type { EnginePointer, InputContext, TimeContext } from "@bloopjs/engine";
+import type {
+  EnginePointer,
+  InputContext,
+  PlayerInputContext,
+  TimeContext,
+} from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
 
 export type Context<
@@ -20,6 +25,11 @@ export type Context<
   time: TimeContext;
   /** The input snapshot */
   inputs: InputContext;
+  /**
+   * Per-player input states. Shorthand for inputs.players.
+   * Access via: context.players[0].keys.a.held
+   */
+  players: readonly PlayerInputContext[];
   /** The engine pointer to the injected system arguments (for advanced use cases) */
   rawPointer: EnginePointer;
 };

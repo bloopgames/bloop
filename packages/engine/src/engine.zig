@@ -310,9 +310,9 @@ pub export fn seek(frame: u32) void {
         const events: *EventBuffer = @ptrFromInt(events_ptr);
         // log_fmt("Replaying frame {} with {d} events", .{ time.*.frame, tape_events.len });
 
-        events.*.count = std.math.cast(u8, tape_events.len) orelse {
+        events.*.count = std.math.cast(u16, tape_events.len) orelse {
             logf("Too many events in tape for event buffer: {}", .{tape_events.len});
-            @panic("Too many events in tape for event buffer - must be 255 or fewer");
+            @panic("Too many events in tape for event buffer - must be 512 or fewer");
         };
         for (tape_events, 0..) |event, idx| {
             events.*.events[idx] = event;
@@ -356,18 +356,8 @@ pub export fn tick() void {
     const time: *TimeCtx = @ptrFromInt(time_ctx_ptr);
     const input_ctx: *InputCtx = @ptrFromInt(input_ctx_ptr);
 
-    // Age input states at the start of each frame
-    for (&input_ctx.*.key_ctx.key_states) |*key_state| {
-        // Shift left by 1 to age the state, keep the current value
-        const is_held = key_state.* & 1;
-        key_state.* = key_state.* << 1;
-        key_state.* |= is_held;
-    }
-    for (&input_ctx.*.mouse_ctx.button_states) |*button_state| {
-        const is_held = button_state.* & 1;
-        button_state.* = button_state.* << 1;
-        button_state.* |= is_held;
-    }
+    // Age input states at the start of each frame (all players)
+    input_ctx.age_all_states();
 
     time.*.dt_ms = hz;
     time.*.total_ms += hz;
@@ -389,28 +379,28 @@ pub export fn tick() void {
     }
 }
 
-pub export fn emit_keydown(key_code: Events.Key) void {
-    append_event(Event.keyDown(key_code));
+pub export fn emit_keydown(key_code: Events.Key, source: Events.InputSource) void {
+    append_event(Event.keyDown(key_code, source));
 }
 
-pub export fn emit_keyup(key_code: Events.Key) void {
-    append_event(Event.keyUp(key_code));
+pub export fn emit_keyup(key_code: Events.Key, source: Events.InputSource) void {
+    append_event(Event.keyUp(key_code, source));
 }
 
-pub export fn emit_mousedown(button: Events.MouseButton) void {
-    append_event(Event.mouseDown(button));
+pub export fn emit_mousedown(button: Events.MouseButton, source: Events.InputSource) void {
+    append_event(Event.mouseDown(button, source));
 }
 
-pub export fn emit_mouseup(button: Events.MouseButton) void {
-    append_event(Event.mouseUp(button));
+pub export fn emit_mouseup(button: Events.MouseButton, source: Events.InputSource) void {
+    append_event(Event.mouseUp(button, source));
 }
 
-pub export fn emit_mousemove(x: f32, y: f32) void {
-    append_event(Event.mouseMove(x, y));
+pub export fn emit_mousemove(x: f32, y: f32, source: Events.InputSource) void {
+    append_event(Event.mouseMove(x, y, source));
 }
 
-pub export fn emit_mousewheel(delta_x: f32, delta_y: f32) void {
-    append_event(Event.mouseWheel(delta_x, delta_y));
+pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, source: Events.InputSource) void {
+    append_event(Event.mouseWheel(delta_x, delta_y, source));
 }
 
 pub export fn get_time_ctx() wasmPointer {
@@ -434,9 +424,9 @@ fn use_tape_events() void {
 
         const tape_events = tape.?.get_events(time.*.frame);
         const events: *EventBuffer = @ptrFromInt(events_ptr);
-        events.*.count = std.math.cast(u8, tape_events.len) orelse {
+        events.*.count = std.math.cast(u16, tape_events.len) orelse {
             logf("Too many events in tape for event buffer: {}", .{tape_events.len});
-            @panic("Too many events in tape for event buffer - must be 255 or fewer");
+            @panic("Too many events in tape for event buffer - must be 512 or fewer");
         };
         for (tape_events, 0..) |event, idx| {
             events.*.events[idx] = event;
@@ -451,7 +441,7 @@ fn append_event(event: Event) void {
 
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     const idx = events.*.count;
-    if (idx < 128) {
+    if (idx < 512) {
         events.*.count += 1;
         events.*.events[idx] = event;
     } else {

@@ -112,6 +112,8 @@ In typescript code, avoid silently failing unless explicitly requested to swallo
 
 Prefer typescript types to interfaces wherever possible.
 
+This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
+
 ## Rendering
 
 While bloop has no rendering capabilities, games you can't see are not very fun to play.

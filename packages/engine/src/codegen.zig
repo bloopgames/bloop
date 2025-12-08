@@ -26,5 +26,6 @@ pub fn main() !void {
     try writeTsEnum(&writer, Events.EventType, "EventType");
     try writeTsEnum(&writer, Events.MouseButton, "MouseButton");
     try writeTsEnum(&writer, Events.Key, "Key");
+    try writeTsEnum(&writer, Events.InputSource, "InputSource");
     try writer.interface.flush();
 }

@@ -73,10 +73,14 @@ export class Bloop<GS extends BloopSchema> {
       );
     }
 
+    const inputs = new InputContext();
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
-      inputs: new InputContext(),
+      inputs,
+      get players() {
+        return inputs.players;
+      },
       rawPointer: -1,
     };
   }
@@ -175,20 +179,21 @@ export class Bloop<GS extends BloopSchema> {
       for (const system of this.#systems) {
         system.update?.(this.#context);
 
-        const eventCount = eventsDataView.getUint32(0, true);
+        // EventBuffer: count (u16) + padding (2 bytes) + events
+        const eventCount = eventsDataView.getUint16(0, true);
 
-        let offset = Uint32Array.BYTES_PER_ELEMENT;
+        let offset = 4; // Skip count (u16) + padding (2 bytes)
 
         for (let i = 0; i < eventCount; i++) {
+          // Event layout: kind (u8) + source (u8) + padding (2 bytes) + payload (8 bytes) = 12 bytes
           const eventType = eventsDataView.getUint8(offset);
-          const payloadSize = EVENT_PAYLOAD_SIZE;
-          const payloadByte = eventsDataView.getUint8(
-            offset + EVENT_PAYLOAD_ALIGN,
-          );
+          const eventSource = eventsDataView.getUint8(offset + 1);
+          const payloadOffset = offset + 4; // Skip kind + source + padding
+          const payloadByte = eventsDataView.getUint8(payloadOffset);
           const payloadVec2 = {
-            x: eventsDataView.getFloat32(offset + EVENT_PAYLOAD_ALIGN, true),
+            x: eventsDataView.getFloat32(payloadOffset, true),
             y: eventsDataView.getFloat32(
-              offset + EVENT_PAYLOAD_ALIGN + Float32Array.BYTES_PER_ELEMENT,
+              payloadOffset + Float32Array.BYTES_PER_ELEMENT,
               true,
             ),
           };
@@ -242,8 +247,8 @@ export class Bloop<GS extends BloopSchema> {
             default:
               throw new Error(`Unknown event type: ${eventType}`);
           }
-          // the event type u8 + padding + payload
-          offset += EVENT_PAYLOAD_ALIGN + EVENT_PAYLOAD_SIZE;
+          // Event is 12 bytes: kind (1) + source (1) + padding (2) + payload (8)
+          offset += 12;
         }
         (this.#context as any).event = undefined;
       }

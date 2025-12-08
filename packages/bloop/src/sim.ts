@@ -1,5 +1,8 @@
 import {
   type EnginePointer,
+  Enums,
+  type InputSource,
+  inputSourceToInputSourceCode,
   type Key,
   keyToKeyCode,
   type MouseButton,
@@ -309,23 +312,49 @@ export class Sim {
   }
 
   emit = {
-    keydown: (key: Key): void => {
-      this.wasm.emit_keydown(keyToKeyCode(key));
+    keydown: (key: Key, source: InputSource = "LocalKeyboard"): void => {
+      this.wasm.emit_keydown(
+        keyToKeyCode(key),
+        inputSourceToInputSourceCode(source),
+      );
     },
-    keyup: (key: Key): void => {
-      this.wasm.emit_keyup(keyToKeyCode(key));
+    keyup: (key: Key, source: InputSource = "LocalKeyboard"): void => {
+      this.wasm.emit_keyup(
+        keyToKeyCode(key),
+        inputSourceToInputSourceCode(source),
+      );
     },
-    mousemove: (x: number, y: number): void => {
-      this.wasm.emit_mousemove(x, y);
+    mousemove: (
+      x: number,
+      y: number,
+      source: InputSource = "LocalKeyboard",
+    ): void => {
+      this.wasm.emit_mousemove(x, y, inputSourceToInputSourceCode(source));
     },
-    mousedown: (button: MouseButton): void => {
-      this.wasm.emit_mousedown(mouseButtonToMouseButtonCode(button));
+    mousedown: (
+      button: MouseButton,
+      source: InputSource = "LocalKeyboard",
+    ): void => {
+      this.wasm.emit_mousedown(
+        mouseButtonToMouseButtonCode(button),
+        inputSourceToInputSourceCode(source),
+      );
     },
-    mouseup: (button: MouseButton): void => {
-      this.wasm.emit_mouseup(mouseButtonToMouseButtonCode(button));
+    mouseup: (
+      button: MouseButton,
+      source: InputSource = "LocalKeyboard",
+    ): void => {
+      this.wasm.emit_mouseup(
+        mouseButtonToMouseButtonCode(button),
+        inputSourceToInputSourceCode(source),
+      );
     },
-    mousewheel: (x: number, y: number): void => {
-      this.wasm.emit_mousewheel(x, y);
+    mousewheel: (
+      x: number,
+      y: number,
+      source: InputSource = "LocalKeyboard",
+    ): void => {
+      this.wasm.emit_mousewheel(x, y, inputSourceToInputSourceCode(source));
     },
   };
 }

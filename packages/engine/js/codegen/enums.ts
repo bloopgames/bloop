@@ -221,3 +221,33 @@ export enum Key {
   F35 = 194,
 }
 
+export enum InputSource {
+  None = 0,
+  LocalKeyboard = 1,
+  LocalGamepad0 = 2,
+  LocalGamepad1 = 3,
+  LocalGamepad2 = 4,
+  LocalGamepad3 = 5,
+  LocalGamepad4 = 6,
+  LocalGamepad5 = 7,
+  LocalGamepad6 = 8,
+  LocalGamepad7 = 9,
+  LocalGamepad8 = 10,
+  LocalGamepad9 = 11,
+  LocalGamepad10 = 12,
+  LocalGamepad11 = 13,
+  RemotePeer0 = 128,
+  RemotePeer1 = 129,
+  RemotePeer2 = 130,
+  RemotePeer3 = 131,
+  RemotePeer4 = 132,
+  RemotePeer5 = 133,
+  RemotePeer6 = 134,
+  RemotePeer7 = 135,
+  RemotePeer8 = 136,
+  RemotePeer9 = 137,
+  RemotePeer10 = 138,
+  RemotePeer11 = 139,
+  Unmapped = 255,
+}
+
