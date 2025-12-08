@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
-    "ci": "bun run ci:tsc && bun test",
+    "ci": "bun run ci:tsc && bun test && bun run ci:jsr && bun run ci:build",
+    "ci:build": "bun run --filter './packages/*' build",
     "ci:tsc": "bun run --filter '*' ci:tsc",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
     "publish": "bun bin/publish.ts"
