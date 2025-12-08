@@ -48,7 +48,7 @@ cd games/quickdraw && bun run dev
 
 **Packages (publishable libraries):**
 
-- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording. Performance is the north star, and we should have high unit test coverage here. Also we should prefer having one explicit way to do things instead more ergonomic apis.
+- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording. Performance is the north star, and we should have high unit test coverage here. Also we should prefer having one explicit way to do things instead more ergonomic apis. Exported wasm functions must be listed explicitly in build.zig
 
 - `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games. Ergonomics and expressiveness are the north star here. Tests are integration tests, integrating with the `Bloop` and `Sim` objects the way the developer would. We want code that changes often to have as little friction as possible to provide a great DX. While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
 
