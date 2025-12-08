@@ -15,8 +15,38 @@ pub fn build(b: *std.Build) void {
 
     exe.entry = .disabled;
 
-    // this is needed to export functions properly
-    exe.rdynamic = true;
+    // Explicitly export WASM functions (instead of rdynamic which exports all symbols)
+    exe.root_module.export_symbol_names = &.{
+        "initialize",
+        "deinit",
+        "alloc",
+        "free",
+        "step",
+        "tick",
+        "seek",
+        "register_systems",
+        // Recording/playback
+        "start_recording",
+        "stop_recording",
+        "is_recording",
+        "is_replaying",
+        "get_tape_ptr",
+        "get_tape_len",
+        "load_tape",
+        // Snapshots
+        "take_snapshot",
+        "restore",
+        // Input events
+        "emit_keydown",
+        "emit_keyup",
+        "emit_mousedown",
+        "emit_mouseup",
+        "emit_mousemove",
+        "emit_mousewheel",
+        // Context accessors
+        "get_time_ctx",
+        "get_events_ptr",
+    };
 
     // read memory from JS side
     exe.import_memory = true;

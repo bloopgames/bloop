@@ -24,7 +24,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       memory,
-      __cb: function (system_handle: number, ptr: number) {
+      __systems: function (system_handle: number, ptr: number) {
         opts.hooks.setBuffer(memory.buffer);
         opts.hooks.systemsCallback(system_handle, ptr);
       },
