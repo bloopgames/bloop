@@ -41,13 +41,13 @@ export type WasmEngine = {
    */
   is_replaying: () => boolean;
 
-  // Input platform events
-  emit_keydown: (key: Enums.Key) => void;
-  emit_keyup: (key: Enums.Key) => void;
-  emit_mousedown: (button: Enums.MouseButton) => void;
-  emit_mouseup: (button: Enums.MouseButton) => void;
-  emit_mousemove: (x: number, y: number) => void;
-  emit_mousewheel: (x: number, y: number) => void;
+  // Input platform events (all take source as second/last parameter)
+  emit_keydown: (key: Enums.Key, source: Enums.InputSource) => void;
+  emit_keyup: (key: Enums.Key, source: Enums.InputSource) => void;
+  emit_mousedown: (button: Enums.MouseButton, source: Enums.InputSource) => void;
+  emit_mouseup: (button: Enums.MouseButton, source: Enums.InputSource) => void;
+  emit_mousemove: (x: number, y: number, source: Enums.InputSource) => void;
+  emit_mousewheel: (x: number, y: number, source: Enums.InputSource) => void;
 
   /**
    * Returns a pointer to the snapshot data.

@@ -2,41 +2,30 @@ import * as Enums from "../codegen/enums";
 import {
   KEYBOARD_OFFSET,
   type KeyState,
+  MAX_PLAYERS,
   MOUSE_BUTTONS_OFFSET,
   MOUSE_OFFSET,
+  PLAYER_INPUTS_SIZE,
 } from "../inputs";
 
-// todo - generate these offsets and sizes from codegen
-export class InputContext {
-  #dataView?: DataView;
+/**
+ * Per-player input state containing keyboard and mouse state
+ */
+export class PlayerInputContext {
+  #dataView: DataView;
   #keys?: KeyboardContext;
   #mouse?: MouseContext;
 
-  constructor(dataView?: DataView) {
-    if (dataView) {
-      this.#dataView = dataView;
-    }
-  }
-
-  get dataView(): NonNullable<DataView> {
-    if (!this.#dataView) {
-      throw new Error("DataView is not initialized on InputContext");
-    }
-    return this.#dataView!;
-  }
-
-  set dataView(dataView: DataView) {
+  constructor(dataView: DataView) {
     this.#dataView = dataView;
-    this.#keys = undefined;
-    this.#mouse = undefined;
   }
 
   get keys(): KeyboardContext {
     if (!this.#keys) {
       this.#keys = new KeyboardContext(
         new DataView(
-          this.dataView.buffer,
-          this.dataView.byteOffset + KEYBOARD_OFFSET,
+          this.#dataView.buffer,
+          this.#dataView.byteOffset + KEYBOARD_OFFSET,
         ),
       );
     }
@@ -47,12 +36,81 @@ export class InputContext {
     if (!this.#mouse) {
       this.#mouse = new MouseContext(
         new DataView(
-          this.dataView.buffer,
-          this.dataView.byteOffset + MOUSE_OFFSET,
+          this.#dataView.buffer,
+          this.#dataView.byteOffset + MOUSE_OFFSET,
         ),
       );
     }
     return this.#mouse;
+  }
+}
+
+/**
+ * Input context containing all player input states.
+ *
+ * Provides convenience methods to access player 0 keyboard and mouse
+ */
+export class InputContext {
+  #dataView?: DataView;
+  #players: PlayerInputContext[] = [];
+
+  constructor(dataView?: DataView) {
+    if (dataView) {
+      this.#dataView = dataView;
+      this.#buildPlayers();
+    }
+  }
+
+  /**
+   * Access the input context dataview for debugging.
+   * Typically you would access player inputs via `players`
+   */
+  get dataView(): NonNullable<DataView> {
+    if (!this.#dataView) {
+      throw new Error("DataView is not initialized on InputContext");
+    }
+    return this.#dataView!;
+  }
+
+  set dataView(dataView: DataView) {
+    this.#dataView = dataView;
+    this.#buildPlayers();
+  }
+
+  #buildPlayers() {
+    this.#players = [];
+    for (let i = 0; i < MAX_PLAYERS; i++) {
+      const playerOffset = i * PLAYER_INPUTS_SIZE;
+      const playerDataView = new DataView(
+        this.dataView.buffer,
+        this.dataView.byteOffset + playerOffset,
+        PLAYER_INPUTS_SIZE,
+      );
+      this.#players.push(new PlayerInputContext(playerDataView));
+    }
+  }
+
+  /**
+   * Array of all player input contexts.
+   * Access via: context.players[0].keys.a.held
+   */
+  get players(): readonly PlayerInputContext[] {
+    return this.#players;
+  }
+
+  // Convenience: delegate to player 0 if no player is specified
+  get keys(): KeyboardContext {
+    if (!this.#players[0]) {
+      throw new Error("No player inputs available in InputContext");
+    }
+    return this.#players[0].keys;
+  }
+
+  get mouse(): MouseContext {
+    if (!this.#players[0]) {
+      throw new Error("No player inputs available in InputContext");
+    }
+    return this.#players[0].mouse;
   }
 }
 

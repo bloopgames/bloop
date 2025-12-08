@@ -25,7 +25,6 @@ Bloop is in early development. The goals for 1.0 are:
 - [x] Rewind any live or recorded gameplay session
 - [x] Hot reload code changes during a rewinded play session
 - [ ] Rollback netcode out of the box
-- [ ] Run anywhere you can allocate a byte buffer
 
 ### Table Stakes
 
@@ -54,6 +53,7 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Steam Deck
 - [ ] PC
 - [ ] Nintendo Switch
+- [ ] Run anywhere you can allocate a byte buffer
 
 ### Editing Integrations
 
