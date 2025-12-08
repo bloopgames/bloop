@@ -31,4 +31,7 @@ function bloopWasmDevPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [bloopWasmDevPlugin()],
+  optimizeDeps: {
+    exclude: ["@bloopjs/engine", "@bloopjs/bloop"],
+  },
 });
