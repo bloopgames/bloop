@@ -312,7 +312,7 @@ pub export fn seek(frame: u32) void {
 
         events.*.count = std.math.cast(u16, tape_events.len) orelse {
             logf("Too many events in tape for event buffer: {}", .{tape_events.len});
-            @panic("Too many events in tape for event buffer - must be 512 or fewer");
+            @panic("Too many events in tape for event buffer - must be " ++ Events.MAX_EVENTS ++ " or fewer");
         };
         for (tape_events, 0..) |event, idx| {
             events.*.events[idx] = event;
@@ -426,7 +426,7 @@ fn use_tape_events() void {
         const events: *EventBuffer = @ptrFromInt(events_ptr);
         events.*.count = std.math.cast(u16, tape_events.len) orelse {
             logf("Too many events in tape for event buffer: {}", .{tape_events.len});
-            @panic("Too many events in tape for event buffer - must be 512 or fewer");
+            @panic("Too many events in tape for event buffer - must be " ++ Events.MAX_EVENTS ++ " or fewer");
         };
         for (tape_events, 0..) |event, idx| {
             events.*.events[idx] = event;
@@ -441,7 +441,7 @@ fn append_event(event: Event) void {
 
     const events: *EventBuffer = @ptrFromInt(events_ptr);
     const idx = events.*.count;
-    if (idx < 512) {
+    if (idx < Events.MAX_EVENTS) {
         events.*.count += 1;
         events.*.events[idx] = event;
     } else {

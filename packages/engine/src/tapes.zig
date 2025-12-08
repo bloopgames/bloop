@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const Ctx = @import("context.zig");
 const Event = @import("events.zig").Event;
 const EventBuffer = @import("events.zig").EventBuffer;
+const MAX_EVENTS = @import("events.zig").MAX_EVENTS;
 const log = @import("log.zig").log;
 
 const EnginePointer = if (builtin.target.cpu.arch.isWasm()) u32 else usize;
@@ -280,7 +281,7 @@ test "snapshot headers with no user data" {
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);
     try std.testing.expectEqual(@sizeOf(Snapshot), snapshot.engine_data_len);
-    // engine payload should be less than 16kb (12 players + 512 events)
+    // engine payload should be less than 16kb (12 players + MAX_EVENTS events)
     try std.testing.expect(snapshot.engine_data_len < 16_384);
     try std.testing.expectEqual(0, snapshot.user_data_len);
 }
@@ -307,7 +308,7 @@ test "snapshot engine data" {
     snapshot.write_inputs(input_ptr);
 
     const empty_event = Event{ .kind = .None, .source = .None, .payload = .{ .key = .None } };
-    const events_buffer = EventBuffer{ .count = 2, .events = [_]Event{empty_event} ** 512 };
+    const events_buffer = EventBuffer{ .count = 2, .events = [_]Event{empty_event} ** MAX_EVENTS };
     const events_ptr = @intFromPtr(&events_buffer);
     snapshot.write_events(events_ptr);
 

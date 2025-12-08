@@ -92,13 +92,13 @@ export class InputContext {
 
   /**
    * Array of all player input contexts.
-   * Access via: context.inputs.players[0].keys.a.held
+   * Access via: context.players[0].keys.a.held
    */
   get players(): readonly PlayerInputContext[] {
     return this.#players;
   }
 
-  // Backward compat: delegate to player 0
+  // Convenience: delegate to player 0 if no player is specified
   get keys(): KeyboardContext {
     if (!this.#players[0]) {
       throw new Error("No player inputs available in InputContext");

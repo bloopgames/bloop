@@ -1,7 +1,9 @@
+pub const MAX_EVENTS = 512;
+
 pub const EventBuffer = extern struct {
     count: u16,
     _padding: [2]u8 = .{ 0, 0 },
-    events: [512]Event,
+    events: [MAX_EVENTS]Event,
 };
 
 pub const Event = extern struct {
