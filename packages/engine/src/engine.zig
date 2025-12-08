@@ -18,7 +18,7 @@ extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 extern "env" fn __before_frame(frame: u32) void;
 
 /// Returns the current size of user data for snapshots
-extern "env" fn user_data_len() u32;
+extern "env" fn __user_data_len() u32;
 
 /// Writes user data from js to the given snapshot pointer
 extern "env" fn user_data_serialize(ptr: wasmPointer, len: u32) void;
@@ -134,7 +134,7 @@ fn wasm_user_deserialize(ptr: usize, len: u32) void {
 }
 
 fn wasm_user_data_len() u32 {
-    return user_data_len();
+    return __user_data_len();
 }
 
 pub export fn alloc(size: usize) wasmPointer {
@@ -154,8 +154,8 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn start_recording(data_len: u32, max_events: u32) u8 {
-    sim.?.start_recording(data_len, max_events) catch |e| {
+pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
+    sim.?.start_recording(user_data_len, max_events) catch |e| {
         switch (e) {
             Sim.RecordingError.AlreadyRecording => {
                 wasm_log("Already recording");
@@ -248,8 +248,8 @@ pub export fn deinit() void {
     }
 }
 
-pub export fn take_snapshot(data_len: u32) wasmPointer {
-    const snap = sim.?.take_snapshot(data_len) catch {
+pub export fn take_snapshot(user_data_len: u32) wasmPointer {
+    const snap = sim.?.take_snapshot(user_data_len) catch {
         @panic("Snapshot allocation failed: Out of memory");
     };
     return @intFromPtr(snap);
@@ -321,8 +321,8 @@ pub export fn get_events_ptr() wasmPointer {
 
 /// Initialize a multiplayer session with rollback support
 /// Captures current frame as session_start_frame
-pub export fn session_init(peer_count: u8, data_len: u32) u8 {
-    sim.?.sessionInit(peer_count, data_len) catch {
+pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
+    sim.?.sessionInit(peer_count, user_data_len) catch {
         wasm_log("Failed to initialize session: Out of memory");
         return 1;
     };

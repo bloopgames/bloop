@@ -42,6 +42,9 @@ cd packages/engine && bun dev
 
 # Run a specific game dev server
 cd games/quickdraw && bun run dev
+
+# Run all ci checks
+bun run ci
 ```
 
 ## Monorepo Structure

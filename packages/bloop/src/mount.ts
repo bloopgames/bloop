@@ -40,7 +40,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
         const string = new TextDecoder("utf-8").decode(bytes);
         console.log(string);
       },
-      user_data_len: function () {
+      __user_data_len: function () {
         const serializer = opts.hooks.serialize();
         return serializer ? serializer.size : 0;
       },
