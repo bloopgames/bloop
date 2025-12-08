@@ -160,6 +160,7 @@ export class Bloop<GS extends BloopSchema> {
       const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
 
       this.#context.rawPointer = ptr;
+      // todo - only rebuild these if the buffer has changed due to memory growth or the pointers have changed
       this.#context.inputs.dataView = new DataView(
         this.#engineBuffer,
         inputCtxPtr,
@@ -180,8 +181,12 @@ export class Bloop<GS extends BloopSchema> {
         system.update?.(this.#context);
 
         // EventBuffer: count (u16) + padding (2 bytes) + events
-        const eventCount = eventsDataView.getUint16(0, true);
+        // TODO: it would be better to have all the offset math centralized to the
+        // engine package, and just do something like
+        // const {jsEvent, size} = engine.decodeEvent(eventPtr, eventOffset)
+        // eventOffset += size;
 
+        const eventCount = eventsDataView.getUint16(0, true);
         let offset = 4; // Skip count (u16) + padding (2 bytes)
 
         for (let i = 0; i < eventCount; i++) {

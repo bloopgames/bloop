@@ -327,13 +327,13 @@ export class Sim {
     mousemove: (
       x: number,
       y: number,
-      source: InputSource = "LocalKeyboard",
+      source: InputSource = "LocalMouse",
     ): void => {
       this.wasm.emit_mousemove(x, y, inputSourceToInputSourceCode(source));
     },
     mousedown: (
       button: MouseButton,
-      source: InputSource = "LocalKeyboard",
+      source: InputSource = "LocalMouse",
     ): void => {
       this.wasm.emit_mousedown(
         mouseButtonToMouseButtonCode(button),
@@ -342,7 +342,7 @@ export class Sim {
     },
     mouseup: (
       button: MouseButton,
-      source: InputSource = "LocalKeyboard",
+      source: InputSource = "LocalMouse",
     ): void => {
       this.wasm.emit_mouseup(
         mouseButtonToMouseButtonCode(button),
@@ -352,7 +352,7 @@ export class Sim {
     mousewheel: (
       x: number,
       y: number,
-      source: InputSource = "LocalKeyboard",
+      source: InputSource = "LocalMouse",
     ): void => {
       this.wasm.emit_mousewheel(x, y, inputSourceToInputSourceCode(source));
     },
