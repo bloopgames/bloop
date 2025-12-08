@@ -1,4 +1,4 @@
-name: Publish
+name: CI Checks
 on:
   workflow_dispatch:
   pull_request: {}
@@ -16,4 +16,6 @@ jobs:
         with:
           version: "master"
       - name: Run ci checks
-        run: bun run ci
+        run: |
+          bun install --frozen-lockfile
+          bun run ci
