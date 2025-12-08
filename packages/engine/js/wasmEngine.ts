@@ -76,4 +76,45 @@ export type WasmEngine = {
    * Free all memory associated with it
    */
   deinit: () => void;
+
+  // Session / Rollback
+  /**
+   * Initialize a multiplayer session with rollback support
+   * @param peer_count Number of peers in the session
+   * @param user_data_len Size of user data to include in snapshots
+   */
+  session_init: (peer_count: number, user_data_len: number) => EngineOk;
+  /**
+   * End the current session
+   */
+  session_end: () => void;
+  /**
+   * Emit inputs for a peer at a given match frame
+   * @param peer Peer ID (0-indexed)
+   * @param match_frame Frame number relative to session start
+   * @param events_ptr Pointer to Event array in WASM memory
+   * @param events_len Number of events
+   */
+  session_emit_inputs: (
+    peer: number,
+    match_frame: number,
+    events_ptr: EnginePointer,
+    events_len: number,
+  ) => void;
+  /**
+   * Get current match frame (frames since session start)
+   */
+  get_match_frame: () => number;
+  /**
+   * Get confirmed frame (latest frame where all peers have sent inputs)
+   */
+  get_confirmed_frame: () => number;
+  /**
+   * Get the latest confirmed frame for a specific peer
+   */
+  get_peer_frame: (peer: number) => number;
+  /**
+   * Get rollback depth (match_frame - confirmed_frame)
+   */
+  get_rollback_depth: () => number;
 };

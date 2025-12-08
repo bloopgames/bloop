@@ -9,7 +9,7 @@ function bloopWasmDevPlugin(): Plugin {
   // adjust path to wherever engine builds the wasm
   const wasmPath = path.resolve(
     __dirname,
-    "../../packages/engine/wasm/bloop.wasm"
+    "../../packages/engine/wasm/bloop.wasm",
   );
 
   return {
@@ -28,7 +28,7 @@ function bloopWasmDevPlugin(): Plugin {
             res.statusCode = 404;
             res.end("wasm not found");
           }
-        }
+        },
       );
     },
   };
@@ -39,6 +39,9 @@ export default defineConfig({
   plugins: [vue(), vueDevTools(), bloopWasmDevPlugin()],
   server: {
     allowedHosts: ["localhost", "bloop.ngrok.dev"],
+  },
+  optimizeDeps: {
+    exclude: ["@bloopjs/engine", "@bloopjs/bloop"],
   },
   resolve: {
     alias: {

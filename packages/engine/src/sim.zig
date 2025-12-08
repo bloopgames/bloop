@@ -2,11 +2,13 @@ const std = @import("std");
 const Ctx = @import("context.zig");
 const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
+const Rollback = @import("rollback.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
+const RollbackState = Rollback.RollbackState;
 
 pub const hz = 1000 / 60;
 
@@ -34,6 +36,10 @@ pub const Sim = struct {
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
+    /// Rollback state (null if not in a session)
+    rollback: ?RollbackState = null,
+    /// User data length for snapshots (cached from last snapshot)
+    user_data_len: u32 = 0,
 
     /// Initialize a new simulation with allocated contexts
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
@@ -91,6 +97,10 @@ pub const Sim = struct {
 
     /// Free all simulation resources
     pub fn deinit(self: *Sim) void {
+        if (self.rollback) |*r| {
+            r.deinit();
+            self.rollback = null;
+        }
         if (self.tape) |*t| {
             t.free(self.allocator);
             self.tape = null;
@@ -101,10 +111,81 @@ pub const Sim = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Session / Rollback
+    // ─────────────────────────────────────────────────────────────
+
+    /// Initialize a multiplayer session with rollback support
+    /// Captures current frame as session_start_frame
+    pub fn sessionInit(self: *Sim, peer_count: u8, user_data_len: u32) !void {
+        // Clean up existing session if any
+        if (self.rollback) |*r| {
+            r.deinit();
+        }
+
+        self.user_data_len = user_data_len;
+        self.rollback = RollbackState.init(self.allocator, self.time.frame, peer_count);
+
+        // Take initial confirmed snapshot at frame 0
+        const snap = try self.take_snapshot(user_data_len);
+        self.rollback.?.confirmed_snapshot = snap;
+    }
+
+    /// End the current session
+    pub fn sessionEnd(self: *Sim) void {
+        if (self.rollback) |*r| {
+            r.deinit();
+            self.rollback = null;
+        }
+    }
+
+    /// Emit inputs for a peer at a given match frame
+    pub fn sessionEmitInputs(self: *Sim, peer: u8, match_frame: u32, events: []const Event) void {
+        if (self.rollback) |*r| {
+            r.emitInputs(peer, match_frame, events);
+        }
+    }
+
+    /// Get current match frame (0 if no session)
+    pub fn getMatchFrame(self: *const Sim) u32 {
+        if (self.rollback) |r| {
+            return r.getMatchFrame(self.time.frame);
+        }
+        return 0;
+    }
+
+    /// Get confirmed frame (0 if no session)
+    pub fn getConfirmedFrame(self: *const Sim) u32 {
+        if (self.rollback) |r| {
+            return r.confirmed_frame;
+        }
+        return 0;
+    }
+
+    /// Get confirmed frame for a specific peer
+    pub fn getPeerFrame(self: *const Sim, peer: u8) u32 {
+        if (self.rollback) |r| {
+            if (peer < r.peer_count) {
+                return r.peer_confirmed_frame[peer];
+            }
+        }
+        return 0;
+    }
+
+    /// Get rollback depth (match_frame - confirmed_frame)
+    pub fn getRollbackDepth(self: *const Sim) u32 {
+        if (self.rollback) |r| {
+            const match_frame = r.getMatchFrame(self.time.frame);
+            return match_frame - r.confirmed_frame;
+        }
+        return 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Time stepping
     // ─────────────────────────────────────────────────────────────
 
     /// Advance simulation by `ms` milliseconds, returns number of frames stepped
+    /// If in a session, handles rollback/resimulation when late inputs arrive
     pub fn step(self: *Sim, ms: u32) u32 {
         self.accumulator += ms;
 
@@ -115,11 +196,87 @@ pub const Sim = struct {
                 before_frame(self.time.frame);
             }
 
-            self.tick();
+            // If in a session, handle rollback
+            if (self.rollback != null) {
+                self.sessionStep();
+            } else {
+                self.tick();
+            }
+
             step_count += 1;
             self.accumulator -= hz;
         }
         return step_count;
+    }
+
+    /// Session-aware step that handles rollback when late inputs arrive
+    fn sessionStep(self: *Sim) void {
+        var r = &self.rollback.?;
+
+        // The frame we're about to process (after this tick, match_frame will be this value)
+        const target_match_frame = r.getMatchFrame(self.time.frame) + 1;
+
+        // Calculate how many frames can be confirmed based on received inputs
+        const next_confirm = r.calculateNextConfirmFrame(target_match_frame);
+
+        if (next_confirm > r.confirmed_frame) {
+            // New confirmed frames available - need to rollback and resim
+            const rollback_depth = target_match_frame - 1 - r.confirmed_frame;
+            if (rollback_depth > 0) {
+                r.stats.last_rollback_depth = rollback_depth;
+                r.stats.total_rollbacks += 1;
+            }
+
+            // 1. Restore to confirmed state
+            if (r.confirmed_snapshot) |snap| {
+                self.restore(snap);
+            }
+
+            // 2. Resim confirmed frames with all peer inputs
+            var f = r.confirmed_frame + 1;
+            while (f <= next_confirm) : (f += 1) {
+                self.injectInputsForFrame(f);
+                self.tick();
+                if (f < target_match_frame) {
+                    r.stats.frames_resimulated += 1;
+                }
+            }
+
+            // 3. Update confirmed snapshot
+            if (r.confirmed_snapshot) |old_snap| {
+                old_snap.deinit(self.allocator);
+            }
+            r.confirmed_snapshot = self.take_snapshot(self.user_data_len) catch null;
+            r.confirmed_frame = next_confirm;
+
+            // 4. If we haven't reached target_match_frame yet, predict forward
+            if (next_confirm < target_match_frame) {
+                f = next_confirm + 1;
+                while (f <= target_match_frame) : (f += 1) {
+                    self.injectInputsForFrame(f);
+                    self.tick();
+                    if (f < target_match_frame) {
+                        r.stats.frames_resimulated += 1;
+                    }
+                }
+            }
+        } else {
+            // No rollback needed - just tick with current frame's inputs
+            self.injectInputsForFrame(target_match_frame);
+            self.tick();
+        }
+    }
+
+    /// Inject stored inputs for a specific match frame into the event buffer
+    fn injectInputsForFrame(self: *Sim, match_frame: u32) void {
+        const r = &self.rollback.?;
+        for (0..r.peer_count) |peer_idx| {
+            const peer: u8 = @intCast(peer_idx);
+            const events = r.getInputs(peer, match_frame);
+            for (events) |event| {
+                self.append_event(event);
+            }
+        }
     }
 
     /// Run a single simulation frame without accumulator management.
@@ -720,4 +877,102 @@ pub const Sim = struct {
         // At frame 2, key A should still be held
         try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Session/Rollback tests
+    // ─────────────────────────────────────────────────────────────
+
+    test "sessionInit creates rollback state" {
+        var sim = try Sim.init(std.testing.allocator, 0);
+        defer sim.deinit();
+
+        // Advance a few frames first
+        _ = sim.step(32); // 2 frames
+        try std.testing.expectEqual(@as(u32, 2), sim.time.frame);
+
+        // Initialize session with 2 peers
+        try sim.sessionInit(2, 0);
+
+        // Verify rollback state was created
+        try std.testing.expect(sim.rollback != null);
+        try std.testing.expectEqual(@as(u32, 2), sim.rollback.?.session_start_frame);
+        try std.testing.expectEqual(@as(u8, 2), sim.rollback.?.peer_count);
+        try std.testing.expectEqual(@as(u32, 0), sim.rollback.?.confirmed_frame);
+        try std.testing.expect(sim.rollback.?.confirmed_snapshot != null);
+    }
+
+    test "session step without rollback (inputs in sync)" {
+        var sim = try Sim.init(std.testing.allocator, 0);
+        defer sim.deinit();
+
+        try sim.sessionInit(2, 0);
+
+        // Emit inputs for both peers at match frame 1 (in sync)
+        const events0 = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+        const events1 = [_]Event{Event.keyDown(.KeyW, .LocalKeyboard)};
+        sim.sessionEmitInputs(0, 1, &events0);
+        sim.sessionEmitInputs(1, 1, &events1);
+
+        // Step once - should not trigger rollback
+        _ = sim.step(16);
+
+        try std.testing.expectEqual(@as(u32, 1), sim.getMatchFrame());
+        try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
+        try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
+        try std.testing.expectEqual(@as(u32, 0), sim.rollback.?.stats.total_rollbacks);
+    }
+
+    test "session step with rollback (late inputs)" {
+        var sim = try Sim.init(std.testing.allocator, 0);
+        defer sim.deinit();
+
+        try sim.sessionInit(2, 0);
+
+        // Peer 0 emits inputs at frames 1, 2, 3
+        sim.sessionEmitInputs(0, 1, &[_]Event{Event.keyDown(.KeyA, .LocalKeyboard)});
+        sim.sessionEmitInputs(0, 2, &[_]Event{});
+        sim.sessionEmitInputs(0, 3, &[_]Event{});
+
+        // Peer 1 only has inputs up to frame 1
+        sim.sessionEmitInputs(1, 1, &[_]Event{Event.keyDown(.KeyW, .LocalKeyboard)});
+
+        // Step 3 frames - peer 1 is lagging
+        _ = sim.step(16); // frame 1 - both have inputs, confirm to 1
+        _ = sim.step(16); // frame 2 - peer 1 lagging, predict
+        _ = sim.step(16); // frame 3 - peer 1 still lagging, predict
+
+        try std.testing.expectEqual(@as(u32, 3), sim.getMatchFrame());
+        try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
+        try std.testing.expectEqual(@as(u32, 2), sim.getRollbackDepth());
+
+        // Now peer 1 catches up with inputs for frames 2 and 3
+        sim.sessionEmitInputs(1, 2, &[_]Event{});
+        sim.sessionEmitInputs(1, 3, &[_]Event{});
+
+        // Step once more - should trigger rollback
+        sim.sessionEmitInputs(0, 4, &[_]Event{});
+        sim.sessionEmitInputs(1, 4, &[_]Event{});
+        _ = sim.step(16);
+
+        try std.testing.expectEqual(@as(u32, 4), sim.getMatchFrame());
+        try std.testing.expectEqual(@as(u32, 4), sim.getConfirmedFrame());
+        try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
+        try std.testing.expect(sim.rollback.?.stats.total_rollbacks > 0);
+    }
+
+    test "sessionEnd cleans up rollback state" {
+        var sim = try Sim.init(std.testing.allocator, 0);
+        defer sim.deinit();
+
+        try sim.sessionInit(2, 0);
+        try std.testing.expect(sim.rollback != null);
+
+        sim.sessionEnd();
+        try std.testing.expect(sim.rollback == null);
+    }
 };
+
+// Force test discovery for tests inside Sim struct
+comptime {
+    _ = Sim;
+}

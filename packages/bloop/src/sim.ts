@@ -356,4 +356,83 @@ export class Sim {
       this.wasm.emit_mousewheel(x, y, inputSourceToInputSourceCode(source));
     },
   };
+
+  // ─────────────────────────────────────────────────────────────
+  // Session / Rollback
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Initialize a multiplayer session with rollback support.
+   * Captures current frame as session start frame.
+   *
+   * @param peerCount Number of peers in the session
+   */
+  sessionInit(peerCount: number): void {
+    const serializer = this.#serialize ? this.#serialize() : null;
+    const size = serializer ? serializer.size : 0;
+    const result = this.wasm.session_init(peerCount, size);
+    assert(result === 0, `failed to initialize session, error code=${result}`);
+  }
+
+  /**
+   * End the current session and clean up rollback state.
+   */
+  sessionEnd(): void {
+    this.wasm.session_end();
+  }
+
+  /**
+   * Emit inputs for a peer at a given match frame.
+   * This is the unified API - works for any peer (local or remote).
+   *
+   * @param peer Peer ID (0-indexed)
+   * @param matchFrame Frame number relative to session start
+   * @param events Array of raw event bytes (12 bytes per event)
+   */
+  emitInputs(peer: number, matchFrame: number, events: Uint8Array): void {
+    if (events.length === 0) {
+      // Empty events array - still need to call to update peer confirmed frame
+      this.wasm.session_emit_inputs(peer, matchFrame, 0, 0);
+      return;
+    }
+
+    // Allocate memory for events and copy
+    const ptr = this.wasm.alloc(events.byteLength);
+    assert(
+      ptr > 0,
+      `failed to allocate ${events.byteLength} bytes for events`,
+    );
+
+    const memoryView = new Uint8Array(this.buffer, ptr, events.byteLength);
+    memoryView.set(events);
+
+    // Each event is 12 bytes (kind: u8, source: u8, padding: 2, payload: 8)
+    const eventCount = events.byteLength / 12;
+    this.wasm.session_emit_inputs(peer, matchFrame, ptr, eventCount);
+
+    // Free the allocated memory
+    this.wasm.free(ptr, events.byteLength);
+  }
+
+  /**
+   * Get session stats for introspection.
+   */
+  getSessionStats(): {
+    matchFrame: number;
+    confirmedFrame: number;
+    rollbackDepth: number;
+  } {
+    return {
+      matchFrame: this.wasm.get_match_frame(),
+      confirmedFrame: this.wasm.get_confirmed_frame(),
+      rollbackDepth: this.wasm.get_rollback_depth(),
+    };
+  }
+
+  /**
+   * Get the latest confirmed frame for a specific peer.
+   */
+  getPeerFrame(peer: number): number {
+    return this.wasm.get_peer_frame(peer);
+  }
 }

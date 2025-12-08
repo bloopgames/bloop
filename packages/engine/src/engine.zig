@@ -308,6 +308,54 @@ pub export fn get_events_ptr() wasmPointer {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Session / Rollback exports
+// ─────────────────────────────────────────────────────────────
+
+/// Initialize a multiplayer session with rollback support
+/// Captures current frame as session_start_frame
+pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
+    sim.?.sessionInit(peer_count, user_data_len) catch {
+        wasm_log("Failed to initialize session: Out of memory");
+        return 1;
+    };
+    return 0;
+}
+
+/// End the current session
+pub export fn session_end() void {
+    sim.?.sessionEnd();
+}
+
+/// Emit inputs for a peer at a given match frame
+/// events_ptr points to an array of Event structs
+/// events_len is the number of events (not bytes)
+pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPointer, events_len: u32) void {
+    const events: [*]const Events.Event = @ptrFromInt(events_ptr);
+    const events_slice = events[0..events_len];
+    sim.?.sessionEmitInputs(peer, match_frame, events_slice);
+}
+
+/// Get current match frame (0 if no session)
+pub export fn get_match_frame() u32 {
+    return sim.?.getMatchFrame();
+}
+
+/// Get confirmed frame (0 if no session)
+pub export fn get_confirmed_frame() u32 {
+    return sim.?.getConfirmedFrame();
+}
+
+/// Get confirmed frame for a specific peer
+pub export fn get_peer_frame(peer: u8) u32 {
+    return sim.?.getPeerFrame(peer);
+}
+
+/// Get rollback depth (match_frame - confirmed_frame)
+pub export fn get_rollback_depth() u32 {
+    return sim.?.getRollbackDepth();
+}
+
+// ─────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────
 
