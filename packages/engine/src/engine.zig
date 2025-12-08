@@ -364,6 +364,63 @@ pub export fn get_rollback_depth() u32 {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Network / Packet exports
+// ─────────────────────────────────────────────────────────────
+
+/// Set local peer ID for packet encoding
+pub export fn session_set_local_peer(peer_id: u8) void {
+    sim.?.setLocalPeer(peer_id);
+}
+
+/// Mark a peer as connected
+pub export fn session_peer_connect(peer_id: u8) void {
+    sim.?.connectPeer(peer_id);
+}
+
+/// Mark a peer as disconnected
+pub export fn session_peer_disconnect(peer_id: u8) void {
+    sim.?.disconnectPeer(peer_id);
+}
+
+/// Build an outbound packet for a target peer
+/// Call get_outbound_packet to get the pointer
+/// Call get_outbound_packet_len to get the length
+pub export fn build_outbound_packet(target_peer: u8) void {
+    sim.?.buildOutboundPacket(target_peer);
+}
+
+/// Get pointer to the outbound packet buffer
+pub export fn get_outbound_packet() wasmPointer {
+    return @intCast(sim.?.getOutboundPacketPtr());
+}
+
+/// Get length of the outbound packet
+pub export fn get_outbound_packet_len() u32 {
+    return sim.?.getOutboundPacketLen();
+}
+
+/// Process a received packet
+/// Returns 0 on success, error code otherwise
+pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
+    return sim.?.receivePacket(ptr, len);
+}
+
+/// Get seq for a peer (latest frame received from them)
+pub export fn get_peer_seq(peer: u8) u16 {
+    return sim.?.getPeerSeq(peer);
+}
+
+/// Get ack for a peer (latest frame they acked from us)
+pub export fn get_peer_ack(peer: u8) u16 {
+    return sim.?.getPeerAck(peer);
+}
+
+/// Get unacked count for a peer
+pub export fn get_unacked_count(peer: u8) u16 {
+    return sim.?.getUnackedCount(peer);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────
 

@@ -54,6 +54,17 @@ pub fn build(b: *std.Build) void {
         "get_confirmed_frame",
         "get_peer_frame",
         "get_rollback_depth",
+        // Network / Packets
+        "session_set_local_peer",
+        "session_peer_connect",
+        "session_peer_disconnect",
+        "build_outbound_packet",
+        "get_outbound_packet",
+        "get_outbound_packet_len",
+        "receive_packet",
+        "get_peer_seq",
+        "get_peer_ack",
+        "get_unacked_count",
     };
 
     // read memory from JS side
@@ -105,8 +116,18 @@ pub fn build(b: *std.Build) void {
     });
     const run_sim_tests = b.addRunArtifact(sim_tests);
 
+    const packets_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/packets.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_packets_tests = b.addRunArtifact(packets_tests);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_snapshot_tests.step);
     test_step.dependOn(&run_rollback_tests.step);
     test_step.dependOn(&run_sim_tests.step);
+    test_step.dependOn(&run_packets_tests.step);
 }

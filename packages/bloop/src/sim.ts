@@ -11,6 +11,7 @@ import {
   TimeContext,
   type WasmEngine,
 } from "@bloopjs/engine";
+import { Net } from "./net";
 import { assert } from "./util";
 
 const originalConsole = (globalThis as any).console;
@@ -89,6 +90,12 @@ export class Sim {
   #serialize?: SerializeFn;
   #isPaused: boolean = false;
 
+  /**
+   * Network API for packet management in multiplayer sessions.
+   * Use this to send/receive packets and query peer network state.
+   */
+  readonly net: Net;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
@@ -103,6 +110,7 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
+    this.net = new Net(wasm, memory);
   }
 
   step(ms?: number): number {

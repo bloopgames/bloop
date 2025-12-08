@@ -9,6 +9,7 @@ const InputCtx = Ctx.InputCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const RollbackState = Rollback.RollbackState;
+const NetState = Rollback.NetState;
 
 pub const hz = 1000 / 60;
 
@@ -38,8 +39,10 @@ pub const Sim = struct {
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
-    /// Rollback state (null if not in a session)
-    rollback: ?RollbackState = null,
+    /// Rollback state for multiplayer sessions (heap-allocated due to ~67KB size)
+    rollback: ?*RollbackState = null,
+    /// Network state for packet management (heap-allocated due to ~68KB size)
+    net: ?*NetState = null,
 
     /// Initialize a new simulation with allocated contexts
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
@@ -66,9 +69,15 @@ pub const Sim = struct {
 
     /// Free all simulation resources
     pub fn deinit(self: *Sim) void {
-        if (self.rollback) |*r| {
+        if (self.rollback) |r| {
             r.deinit();
+            self.allocator.destroy(r);
             self.rollback = null;
+        }
+        if (self.net) |n| {
+            n.deinit();
+            self.allocator.destroy(n);
+            self.net = null;
         }
         if (self.tape) |*t| {
             t.free(self.allocator);
@@ -87,11 +96,30 @@ pub const Sim = struct {
     /// Captures current frame as session_start_frame
     pub fn sessionInit(self: *Sim, peer_count: u8, user_data_len: u32) !void {
         // Clean up existing session if any
-        if (self.rollback) |*r| {
+        if (self.rollback) |r| {
             r.deinit();
+            self.allocator.destroy(r);
+            self.rollback = null;
+        }
+        if (self.net) |n| {
+            n.deinit();
+            self.allocator.destroy(n);
+            self.net = null;
         }
 
-        self.rollback = RollbackState.init(self.allocator, self.time.frame, peer_count);
+        // Allocate RollbackState on heap (~67KB, too large for stack)
+        const rollback = try self.allocator.create(RollbackState);
+        rollback.* = .{
+            .session_start_frame = self.time.frame,
+            .peer_count = peer_count,
+            .allocator = self.allocator,
+        };
+        self.rollback = rollback;
+
+        // Allocate NetState on heap (~68KB, too large for stack)
+        const net = try self.allocator.create(NetState);
+        net.* = .{ .allocator = self.allocator };
+        self.net = net;
 
         // Take initial confirmed snapshot
         // Use provided user_data_len for initial snapshot (from WASM this comes from user_data_len())
@@ -109,15 +137,21 @@ pub const Sim = struct {
 
     /// End the current session
     pub fn sessionEnd(self: *Sim) void {
-        if (self.rollback) |*r| {
+        if (self.rollback) |r| {
             r.deinit();
+            self.allocator.destroy(r);
             self.rollback = null;
+        }
+        if (self.net) |n| {
+            n.deinit();
+            self.allocator.destroy(n);
+            self.net = null;
         }
     }
 
     /// Emit inputs for a peer at a given match frame
     pub fn sessionEmitInputs(self: *Sim, peer: u8, match_frame: u32, events: []const Event) void {
-        if (self.rollback) |*r| {
+        if (self.rollback) |r| {
             r.emitInputs(peer, match_frame, events);
         }
     }
@@ -158,6 +192,116 @@ pub const Sim = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Network / Packets
+    // ─────────────────────────────────────────────────────────────
+
+    /// Set local peer ID for packet encoding
+    pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
+        if (self.net) |n| {
+            n.setLocalPeer(peer_id);
+        }
+    }
+
+    /// Connect a peer for packet management
+    pub fn connectPeer(self: *Sim, peer_id: u8) void {
+        if (self.net) |n| {
+            n.connectPeer(peer_id);
+        }
+    }
+
+    /// Disconnect a peer
+    pub fn disconnectPeer(self: *Sim, peer_id: u8) void {
+        if (self.net) |n| {
+            n.disconnectPeer(peer_id);
+        }
+    }
+
+    /// Record local inputs to unacked buffers for all connected peers
+    pub fn recordLocalInputs(self: *Sim, match_frame: u16, events: []const Event) void {
+        if (self.net) |n| {
+            n.recordLocalInputs(match_frame, events);
+        }
+    }
+
+    /// Build outbound packet for a target peer
+    pub fn buildOutboundPacket(self: *Sim, target_peer: u8) void {
+        if (self.net) |n| {
+            const match_frame: u16 = if (self.rollback) |r|
+                @intCast(r.getMatchFrame(self.time.frame))
+            else
+                @intCast(self.time.frame);
+            n.buildOutboundPacket(target_peer, match_frame) catch {
+                // Silently fail - caller can check outbound_len
+            };
+        }
+    }
+
+    /// Get pointer to outbound packet buffer
+    pub fn getOutboundPacketPtr(self: *const Sim) usize {
+        if (self.net) |n| {
+            if (n.outbound_buffer) |buf| {
+                return @intFromPtr(buf.ptr);
+            }
+        }
+        return 0;
+    }
+
+    /// Get length of outbound packet
+    pub fn getOutboundPacketLen(self: *const Sim) u32 {
+        if (self.net) |n| {
+            return n.outbound_len;
+        }
+        return 0;
+    }
+
+    /// Process a received packet
+    pub fn receivePacket(self: *Sim, ptr: usize, len: u32) u8 {
+        if (self.net == null or self.rollback == null) return 1;
+
+        const buf: [*]const u8 = @ptrFromInt(ptr);
+        const slice = buf[0..len];
+
+        self.net.?.receivePacket(slice, self.rollback.?) catch |e| {
+            switch (e) {
+                Rollback.Packets.DecodeError.BufferTooSmall => return 2,
+                Rollback.Packets.DecodeError.UnsupportedVersion => return 3,
+                Rollback.Packets.DecodeError.InvalidEventCount => return 4,
+            }
+        };
+        return 0;
+    }
+
+    /// Get seq for a peer (latest frame received from them)
+    pub fn getPeerSeq(self: *const Sim, peer: u8) u16 {
+        if (self.net) |n| {
+            if (peer < Rollback.MAX_PEERS) {
+                return n.peer_states[peer].remote_seq;
+            }
+        }
+        return 0;
+    }
+
+    /// Get ack for a peer (latest frame they acked from us)
+    pub fn getPeerAck(self: *const Sim, peer: u8) u16 {
+        if (self.net) |n| {
+            if (peer < Rollback.MAX_PEERS) {
+                return n.peer_states[peer].remote_ack;
+            }
+        }
+        return 0;
+    }
+
+    /// Get unacked count for a peer
+    pub fn getUnackedCount(self: *const Sim, peer: u8) u16 {
+        if (self.net) |n| {
+            if (peer < Rollback.MAX_PEERS) {
+                return n.peer_states[peer].unackedCount();
+            }
+        }
+        return 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Time stepping
     // ─────────────────────────────────────────────────────────────
 
@@ -188,7 +332,7 @@ pub const Sim = struct {
 
     /// Session-aware step that handles rollback when late inputs arrive
     fn sessionStep(self: *Sim) void {
-        var r = &self.rollback.?;
+        const r = self.rollback.?;
 
         // The frame we're about to process (after this tick, match_frame will be this value)
         const target_match_frame = r.getMatchFrame(self.time.frame) + 1;
@@ -246,7 +390,7 @@ pub const Sim = struct {
 
     /// Inject stored inputs for a specific match frame into the event buffer
     fn injectInputsForFrame(self: *Sim, match_frame: u32) void {
-        const r = &self.rollback.?;
+        const r = self.rollback.?;
         for (0..r.peer_count) |peer_idx| {
             const peer: u8 = @intCast(peer_idx);
             const events = r.getInputs(peer, match_frame);

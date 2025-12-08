@@ -117,4 +117,48 @@ export type WasmEngine = {
    * Get rollback depth (match_frame - confirmed_frame)
    */
   get_rollback_depth: () => number;
+
+  // Network / Packets
+  /**
+   * Set local peer ID for packet encoding
+   */
+  session_set_local_peer: (peer_id: number) => void;
+  /**
+   * Mark a peer as connected for packet management
+   */
+  session_peer_connect: (peer_id: number) => void;
+  /**
+   * Mark a peer as disconnected
+   */
+  session_peer_disconnect: (peer_id: number) => void;
+  /**
+   * Build an outbound packet for a target peer
+   * Call get_outbound_packet() and get_outbound_packet_len() to retrieve the packet
+   */
+  build_outbound_packet: (target_peer: number) => void;
+  /**
+   * Get pointer to the outbound packet buffer
+   */
+  get_outbound_packet: () => EnginePointer;
+  /**
+   * Get length of the outbound packet
+   */
+  get_outbound_packet_len: () => number;
+  /**
+   * Process a received packet
+   * @returns 0 on success, error code otherwise
+   */
+  receive_packet: (ptr: EnginePointer, len: number) => number;
+  /**
+   * Get seq for a peer (latest frame received from them)
+   */
+  get_peer_seq: (peer: number) => number;
+  /**
+   * Get ack for a peer (latest frame they acked from us)
+   */
+  get_peer_ack: (peer: number) => number;
+  /**
+   * Get unacked count for a peer (frames waiting for ack)
+   */
+  get_unacked_count: (peer: number) => number;
 };

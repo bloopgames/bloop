@@ -6,3 +6,4 @@ export { unwrap, assert } from "./util";
 export { mount, type MountOpts } from "./mount";
 export { Bloop } from "./bloop";
 export { Sim } from "./sim";
+export { Net } from "./net";
