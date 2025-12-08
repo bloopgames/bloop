@@ -2,8 +2,7 @@ const std = @import("std");
 const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
 const Log = @import("log.zig");
-const SimModule = @import("sim.zig");
-const Sim = SimModule.Sim;
+const Sim = @import("sim.zig").Sim;
 
 // ─────────────────────────────────────────────────────────────
 // WASM externs
@@ -13,7 +12,7 @@ const Sim = SimModule.Sim;
 extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 
 /// Callback into JS to run registered systems
-extern "env" fn __cb(fn_handle: u32, ptr: u32, dt: u32) void;
+extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 
 /// Callback into JS before each simulation step
 extern "env" fn __before_frame(frame: u32) void;
@@ -93,8 +92,7 @@ pub export fn initialize() wasmPointer {
 
     // Initialize the Sim
     sim = Sim.init(wasm_alloc, cb_ptr) catch {
-        wasm_log("Failed to initialize simulation");
-        return 0;
+        @panic("Failed to initialize simulation");
     };
 
     // Wire up the callback pointer with Sim's context pointers
@@ -120,7 +118,7 @@ fn wasm_before_frame(frame: u32) void {
 
 fn wasm_systems_callback(ctx_ptr: usize, dt: u32) void {
     _ = ctx_ptr;
-    __cb(global_cb_handle, cb_ptr, dt);
+    __systems(global_cb_handle, cb_ptr, dt);
 }
 
 fn wasm_user_serialize(ptr: usize, len: u32) void {
@@ -133,8 +131,7 @@ fn wasm_user_deserialize(ptr: usize, len: u32) void {
 
 pub export fn alloc(size: usize) wasmPointer {
     const slice = wasm_alloc.alloc(u8, size) catch {
-        wasm_log("Failed to allocate memory from engine");
-        return 0;
+        @panic("Failed to allocate memory from engine");
     };
 
     const ptr = @intFromPtr(slice.ptr);
@@ -192,18 +189,12 @@ pub export fn is_replaying() bool {
 }
 
 pub export fn get_tape_ptr() wasmPointer {
-    const buf = sim.?.get_tape_buffer() orelse {
-        wasm_log("No active tape");
-        return 0;
-    };
+    const buf = sim.?.get_tape_buffer() orelse @panic("No active tape");
     return @intFromPtr(buf.ptr);
 }
 
 pub export fn get_tape_len() u32 {
-    const buf = sim.?.get_tape_buffer() orelse {
-        wasm_log("No active tape");
-        return 0;
-    };
+    const buf = sim.?.get_tape_buffer() orelse @panic("No active tape");
     return @intCast(buf.len);
 }
 
@@ -250,11 +241,8 @@ pub export fn deinit() void {
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
-    const snap = sim.?.take_snapshot(user_data_len) catch |e| {
-        switch (e) {
-            error.OutOfMemory => wasm_log("Snapshot allocation failed: Out of memory"),
-        }
-        return 0;
+    const snap = sim.?.take_snapshot(user_data_len) catch {
+        @panic("Snapshot allocation failed: Out of memory");
     };
     return @intFromPtr(snap);
 }
