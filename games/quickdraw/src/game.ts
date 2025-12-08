@@ -109,9 +109,11 @@ game.system("update timer and block", {
 
 // Handle player inputs
 game.system("handle inputs", {
-  update({ bag, inputs }) {
-    const player1Input = inputs.mouse.left.down || inputs.keys.a.down;
-    const player2Input = inputs.keys.l.down;
+  update({ bag, players }) {
+    // Player 1 = local player (players[0])
+    // Player 2 = remote peer (players[1])
+    const player1Input = players[0]?.mouse.left.down ?? false;
+    const player2Input = players[1]?.mouse.left.down ?? false;
 
     if (bag.phase === "waiting") {
       // Clicking before buzzer = lose

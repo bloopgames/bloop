@@ -255,7 +255,9 @@ pub const NetState = struct {
                 return Packets.DecodeError.BufferTooSmall;
             }
             const wire_event = try Packets.WireEvent.decode(buf[offset .. offset + Packets.WIRE_EVENT_SIZE]);
-            const event = wire_event.toEvent();
+            var event = wire_event.toEvent();
+            // Set peer_id from packet header so events are routed to correct player
+            event.peer_id = header.peer_id;
 
             // Store in rollback state
             const slot = wire_event.frame % MAX_ROLLBACK_FRAMES;
@@ -412,8 +414,8 @@ test "RollbackState emitInputs and getInputs" {
 
     // Emit some inputs for peer 0 at frame 5
     const events = [_]Event{
-        Event.keyDown(.KeyA, .LocalKeyboard),
-        Event.keyDown(.KeyW, .LocalKeyboard),
+        Event.keyDown(.KeyA, 0, .LocalKeyboard),
+        Event.keyDown(.KeyW, 0, .LocalKeyboard),
     };
     state.emitInputs(0, 5, &events);
 
@@ -439,11 +441,11 @@ test "RollbackState ring buffer wraparound" {
     }
 
     // Emit at frame 0
-    const events0 = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
     state.emitInputs(0, 0, &events0);
 
     // Emit at frame 30 (should wrap to same slot)
-    const events30 = [_]Event{Event.keyDown(.KeyB, .LocalKeyboard)};
+    const events30 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
     state.emitInputs(0, 30, &events30);
 
     // Frame 0's slot should now have frame 30's data
@@ -511,8 +513,8 @@ test "InputFrame add and slice" {
 
     try std.testing.expectEqual(@as(u8, 0), frame.count);
 
-    frame.add(Event.keyDown(.KeyA, .LocalKeyboard));
-    frame.add(Event.keyDown(.KeyB, .LocalKeyboard));
+    frame.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
+    frame.add(Event.keyDown(.KeyB, 0, .LocalKeyboard));
 
     try std.testing.expectEqual(@as(u8, 2), frame.count);
 
@@ -524,8 +526,8 @@ test "InputFrame add and slice" {
 
 test "InputFrame clear" {
     var frame = InputFrame{};
-    frame.add(Event.keyDown(.KeyA, .LocalKeyboard));
-    frame.add(Event.keyDown(.KeyB, .LocalKeyboard));
+    frame.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
+    frame.add(Event.keyDown(.KeyB, 0, .LocalKeyboard));
 
     frame.clear();
     try std.testing.expectEqual(@as(u8, 0), frame.count);
@@ -537,12 +539,12 @@ test "InputFrame max capacity" {
 
     // Fill to capacity
     for (0..MAX_EVENTS_PER_FRAME) |_| {
-        frame.add(Event.keyDown(.KeyA, .LocalKeyboard));
+        frame.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
     }
     try std.testing.expectEqual(@as(u8, MAX_EVENTS_PER_FRAME), frame.count);
 
     // Try to add one more - should be ignored
-    frame.add(Event.keyDown(.KeyB, .LocalKeyboard));
+    frame.add(Event.keyDown(.KeyB, 0, .LocalKeyboard));
     try std.testing.expectEqual(@as(u8, MAX_EVENTS_PER_FRAME), frame.count);
 }
 
@@ -573,8 +575,8 @@ test "PeerNetState addUnacked and getUnackedFrame" {
     var peer = PeerNetState{};
 
     const events = [_]Event{
-        Event.keyDown(.KeyA, .LocalKeyboard),
-        Event.keyDown(.KeyW, .LocalKeyboard),
+        Event.keyDown(.KeyA, 0, .LocalKeyboard),
+        Event.keyDown(.KeyW, 0, .LocalKeyboard),
     };
 
     peer.addUnacked(5, &events);
@@ -593,7 +595,7 @@ test "PeerNetState unackedCount" {
 
     try std.testing.expectEqual(@as(u16, 0), peer.unackedCount());
 
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
     peer.addUnacked(0, &events);
     try std.testing.expectEqual(@as(u16, 1), peer.unackedCount());
@@ -605,7 +607,7 @@ test "PeerNetState unackedCount" {
 
 test "PeerNetState trimAcked" {
     var peer = PeerNetState{};
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
     // Add frames 0-4
     for (0..5) |i| {
@@ -627,7 +629,7 @@ test "PeerNetState trimAcked" {
 
 test "PeerNetState ring buffer wraparound" {
     var peer = PeerNetState{};
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
     // Add frames 0-29 (fills buffer)
     for (0..MAX_ROLLBACK_FRAMES) |i| {
@@ -640,7 +642,7 @@ test "PeerNetState ring buffer wraparound" {
     try std.testing.expectEqual(@as(u16, 5), peer.unackedCount());
 
     // Add frame 30 (wraps to slot 0)
-    const events30 = [_]Event{Event.keyDown(.KeyB, .LocalKeyboard)};
+    const events30 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
     peer.addUnacked(30, &events30);
 
     // Frame 30 should be accessible at slot 0
@@ -710,7 +712,7 @@ test "NetState recordLocalInputs" {
     net.connectPeer(2);
 
     // Add frames sequentially starting from 0
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
     net.recordLocalInputs(0, &events);
 
     // Should be recorded for peer 1 and 2, not peer 0 (self)
@@ -736,7 +738,7 @@ test "NetState buildOutboundPacket" {
     net.connectPeer(1);
 
     // Record some inputs
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
     net.recordLocalInputs(0, &events);
     net.recordLocalInputs(1, &events);
 
@@ -786,11 +788,11 @@ test "NetState receivePacket" {
     };
     header.encode(buf[0..Packets.HEADER_SIZE]);
 
-    const wire_event = Packets.WireEvent.fromEvent(Event.keyDown(.KeyW, .LocalKeyboard), 5);
+    const wire_event = Packets.WireEvent.fromEvent(Event.keyDown(.KeyW, 0, .LocalKeyboard), 5);
     wire_event.encode(buf[Packets.HEADER_SIZE..]);
 
     // Add some unacked frames to peer 1 that will be trimmed
-    const events = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
     net.peer_states[1].addUnacked(0, &events);
     net.peer_states[1].addUnacked(1, &events);
     net.peer_states[1].addUnacked(2, &events);

@@ -1,9 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Ctx = @import("context.zig");
-const Event = @import("events.zig").Event;
-const EventBuffer = @import("events.zig").EventBuffer;
-const MAX_EVENTS = @import("events.zig").MAX_EVENTS;
+const Events = @import("events.zig");
+const Event = Events.Event;
+const EventBuffer = Events.EventBuffer;
+const MAX_EVENTS = Events.MAX_EVENTS;
 const log = @import("log.zig").log;
 
 const EnginePointer = if (builtin.target.cpu.arch.isWasm()) u32 else usize;
@@ -307,7 +308,7 @@ test "snapshot engine data" {
     const input_ptr = @intFromPtr(&input_ctx);
     snapshot.write_inputs(input_ptr);
 
-    const empty_event = Event{ .kind = .None, .source = .None, .payload = .{ .key = .None } };
+    const empty_event = Event{ .kind = .None, .device = .None, .payload = .{ .key = .None } };
     const events_buffer = EventBuffer{ .count = 2, .events = [_]Event{empty_event} ** MAX_EVENTS };
     const events_ptr = @intFromPtr(&events_buffer);
     snapshot.write_events(events_ptr);
@@ -364,11 +365,11 @@ test "tape can index events by frame" {
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
-    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
-    try tape.append_event(Event.mouseMove(150.0, 250.0, .LocalKeyboard));
+    try tape.append_event(Event.keyDown(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
+    try tape.append_event(Event.mouseMove(150.0, 250.0, Events.LOCAL_PEER, .LocalMouse));
 
     try tape.start_frame();
-    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.keyUp(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
 
     try std.testing.expectEqual(5, tape.event_count());
 
@@ -434,8 +435,8 @@ test "tape header is updated with event count" {
     var tape = try Tape.init(std.testing.allocator, snapshot, 3);
     defer tape.free(std.testing.allocator);
 
-    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
-    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.keyDown(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
+    try tape.append_event(Event.keyUp(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
 
     const header_slice = tape.buf[0..@sizeOf(TapeHeader)];
     const header: *const TapeHeader = @ptrCast(@alignCast(header_slice.ptr));
@@ -451,10 +452,10 @@ test "tape can be serialized and deserialized" {
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
-    try tape.append_event(Event.keyDown(.KeyA, .LocalKeyboard));
-    try tape.append_event(Event.mouseMove(150.0, 250.0, .LocalKeyboard));
+    try tape.append_event(Event.keyDown(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
+    try tape.append_event(Event.mouseMove(150.0, 250.0, Events.LOCAL_PEER, .LocalMouse));
     try tape.start_frame();
-    try tape.append_event(Event.keyUp(.KeyA, .LocalKeyboard));
+    try tape.append_event(Event.keyUp(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
 
     // Simulate serialization by copying the tape buffer
     const len = tape.buf.len;

@@ -63,8 +63,11 @@ pub const PacketHeader = struct {
 /// Layout:
 ///   [0-1]  frame        - Match frame this event occurred (little-endian)
 ///   [2]    kind         - EventType enum
-///   [3]    source       - InputSource enum
+///   [3]    device       - InputSource enum (device that generated the input)
 ///   [4-8]  payload      - Compact payload (5 bytes)
+///
+/// Note: peer_id is not stored per event - it comes from the packet header.
+/// The receiver sets peer_id based on who sent the packet.
 ///
 /// Payload formats:
 ///   KeyDown/KeyUp:    [u8 key_code][4 unused]
@@ -74,14 +77,14 @@ pub const PacketHeader = struct {
 pub const WireEvent = struct {
     frame: u16,
     kind: EventType,
-    source: InputSource,
+    device: InputSource,
     payload: [5]u8,
 
     pub fn encode(self: WireEvent, buf: []u8) void {
         std.debug.assert(buf.len >= WIRE_EVENT_SIZE);
         std.mem.writeInt(u16, buf[0..2], self.frame, .little);
         buf[2] = @intFromEnum(self.kind);
-        buf[3] = @intFromEnum(self.source);
+        buf[3] = @intFromEnum(self.device);
         @memcpy(buf[4..9], &self.payload);
     }
 
@@ -90,7 +93,7 @@ pub const WireEvent = struct {
         return WireEvent{
             .frame = std.mem.readInt(u16, buf[0..2], .little),
             .kind = @enumFromInt(buf[2]),
-            .source = @enumFromInt(buf[3]),
+            .device = @enumFromInt(buf[3]),
             .payload = buf[4..9].*,
         };
     }
@@ -125,16 +128,16 @@ pub const WireEvent = struct {
         return WireEvent{
             .frame = frame,
             .kind = event.kind,
-            .source = event.source,
+            .device = event.device,
             .payload = payload,
         };
     }
 
-    /// Convert back to an engine Event
+    /// Convert back to an engine Event (peer_id will be LOCAL_PEER; caller should set it)
     pub fn toEvent(self: WireEvent) Event {
         var event = Event{
             .kind = self.kind,
-            .source = self.source,
+            .device = self.device,
             .payload = undefined,
         };
 
@@ -221,7 +224,7 @@ test "WireEvent encode/decode round-trip" {
     const wire_event = WireEvent{
         .frame = 12345,
         .kind = .KeyDown,
-        .source = .LocalKeyboard,
+        .device = .LocalKeyboard,
         .payload = .{ 42, 1, 2, 3, 4 },
     };
 
@@ -231,84 +234,84 @@ test "WireEvent encode/decode round-trip" {
     const decoded = try WireEvent.decode(&buf);
     try std.testing.expectEqual(wire_event.frame, decoded.frame);
     try std.testing.expectEqual(wire_event.kind, decoded.kind);
-    try std.testing.expectEqual(wire_event.source, decoded.source);
+    try std.testing.expectEqual(wire_event.device, decoded.device);
     try std.testing.expectEqualSlices(u8, &wire_event.payload, &decoded.payload);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: KeyDown" {
-    const event = Event.keyDown(.KeyA, .LocalKeyboard);
+    const event = Event.keyDown(.KeyA, 0, .LocalKeyboard);
     const wire = WireEvent.fromEvent(event, 100);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     try std.testing.expectEqual(event.payload.key, back.payload.key);
     try std.testing.expectEqual(@as(u16, 100), wire.frame);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: KeyUp" {
-    const event = Event.keyUp(.Space, .LocalKeyboard);
+    const event = Event.keyUp(.Space, 0, .LocalKeyboard);
     const wire = WireEvent.fromEvent(event, 200);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     try std.testing.expectEqual(event.payload.key, back.payload.key);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: MouseDown" {
-    const event = Event.mouseDown(.Left, .LocalMouse);
+    const event = Event.mouseDown(.Left, 0, .LocalMouse);
     const wire = WireEvent.fromEvent(event, 50);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     try std.testing.expectEqual(event.payload.mouse_button, back.payload.mouse_button);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: MouseUp" {
-    const event = Event.mouseUp(.Right, .LocalMouse);
+    const event = Event.mouseUp(.Right, 0, .LocalMouse);
     const wire = WireEvent.fromEvent(event, 75);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     try std.testing.expectEqual(event.payload.mouse_button, back.payload.mouse_button);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: MouseMove" {
-    const event = Event.mouseMove(123.0, -456.0, .LocalMouse);
+    const event = Event.mouseMove(123.0, -456.0, 0, .LocalMouse);
     const wire = WireEvent.fromEvent(event, 300);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     // f32 -> i16 -> f32 loses precision, but should be exact for integers
     try std.testing.expectEqual(@as(f32, 123.0), back.payload.mouse_move.x);
     try std.testing.expectEqual(@as(f32, -456.0), back.payload.mouse_move.y);
 }
 
 test "WireEvent fromEvent/toEvent round-trip: MouseWheel" {
-    const event = Event.mouseWheel(10.0, -20.0, .LocalMouse);
+    const event = Event.mouseWheel(10.0, -20.0, 0, .LocalMouse);
     const wire = WireEvent.fromEvent(event, 400);
     const back = wire.toEvent();
 
     try std.testing.expectEqual(event.kind, back.kind);
-    try std.testing.expectEqual(event.source, back.source);
+    try std.testing.expectEqual(event.device, back.device);
     try std.testing.expectEqual(@as(f32, 10.0), back.payload.delta.delta_x);
     try std.testing.expectEqual(@as(f32, -20.0), back.payload.delta.delta_y);
 }
 
 test "WireEvent MouseMove clamps extreme values" {
     // Test positive overflow
-    const event_big = Event.mouseMove(50000.0, 50000.0, .LocalMouse);
+    const event_big = Event.mouseMove(50000.0, 50000.0, 0, .LocalMouse);
     const wire_big = WireEvent.fromEvent(event_big, 0);
     const back_big = wire_big.toEvent();
     try std.testing.expectEqual(@as(f32, 32767.0), back_big.payload.mouse_move.x);
     try std.testing.expectEqual(@as(f32, 32767.0), back_big.payload.mouse_move.y);
 
     // Test negative overflow
-    const event_small = Event.mouseMove(-50000.0, -50000.0, .LocalMouse);
+    const event_small = Event.mouseMove(-50000.0, -50000.0, 0, .LocalMouse);
     const wire_small = WireEvent.fromEvent(event_small, 0);
     const back_small = wire_small.toEvent();
     try std.testing.expectEqual(@as(f32, -32768.0), back_small.payload.mouse_move.x);

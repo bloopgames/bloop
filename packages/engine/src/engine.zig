@@ -283,28 +283,28 @@ pub export fn tick() void {
     sim.?.tick();
 }
 
-pub export fn emit_keydown(key_code: Events.Key, source: Events.InputSource) void {
-    sim.?.emit_keydown(key_code, source);
+pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {
+    sim.?.emit_keydown(key_code, peer_id);
 }
 
-pub export fn emit_keyup(key_code: Events.Key, source: Events.InputSource) void {
-    sim.?.emit_keyup(key_code, source);
+pub export fn emit_keyup(key_code: Events.Key, peer_id: u8) void {
+    sim.?.emit_keyup(key_code, peer_id);
 }
 
-pub export fn emit_mousedown(button: Events.MouseButton, source: Events.InputSource) void {
-    sim.?.emit_mousedown(button, source);
+pub export fn emit_mousedown(button: Events.MouseButton, peer_id: u8) void {
+    sim.?.emit_mousedown(button, peer_id);
 }
 
-pub export fn emit_mouseup(button: Events.MouseButton, source: Events.InputSource) void {
-    sim.?.emit_mouseup(button, source);
+pub export fn emit_mouseup(button: Events.MouseButton, peer_id: u8) void {
+    sim.?.emit_mouseup(button, peer_id);
 }
 
-pub export fn emit_mousemove(x: f32, y: f32, source: Events.InputSource) void {
-    sim.?.emit_mousemove(x, y, source);
+pub export fn emit_mousemove(x: f32, y: f32, peer_id: u8) void {
+    sim.?.emit_mousemove(x, y, peer_id);
 }
 
-pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, source: Events.InputSource) void {
-    sim.?.emit_mousewheel(delta_x, delta_y, source);
+pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, peer_id: u8) void {
+    sim.?.emit_mousewheel(delta_x, delta_y, peer_id);
 }
 
 pub export fn get_time_ctx() wasmPointer {

@@ -28,3 +28,9 @@ Benefits:
 - Easier to test recording/playback in isolation
 - Sim becomes more focused on "what happens in a frame"
 - VCR becomes focused on "navigating through time"
+
+## Make RollbackState and NetState not optional
+
+## Address optional chaining on players[0], use a tuple?
+
+## Address peer_id 0

@@ -69,13 +69,26 @@ pub const InputCtx = extern struct {
     /// Per-player input state
     players: [MAX_PLAYERS]PlayerInputs,
 
-    /// Process an event and route it to the appropriate player based on source.
-    /// For now, all events go to player 0 (single player / local multiplayer via action mapping).
-    /// Future: use source_to_player mapping table.
+    /// Process an event and route it to the appropriate player based on peer_id.
+    ///
+    /// Mapping:
+    /// - peer_id 0-11 → players[peer_id]
+    /// - LOCAL_PEER (255) → player 0 (local input defaults to first player)
     pub fn process_event(self: *InputCtx, event: Events.Event) void {
-        // Route all events to player 0 for now
-        // TODO: implement source -> player mapping for multiplayer
-        self.players[0].process_event(event);
+        const player_index = peerIdToPlayerIndex(event.peer_id);
+        if (player_index < MAX_PLAYERS) {
+            self.players[player_index].process_event(event);
+        }
+    }
+
+    /// Map a peer_id to a player index.
+    /// peer_id 0-11 maps directly to player 0-11.
+    /// LOCAL_PEER (255) maps to player 0 (local input without session).
+    pub fn peerIdToPlayerIndex(peer_id: u8) u8 {
+        if (peer_id == Events.LOCAL_PEER) {
+            return 0;
+        }
+        return peer_id;
     }
 
     pub fn age_all_states(self: *InputCtx) void {
@@ -85,3 +98,15 @@ pub const InputCtx = extern struct {
         }
     }
 };
+
+const std = @import("std");
+
+test "peerIdToPlayerIndex maps peer IDs directly" {
+    try std.testing.expectEqual(@as(u8, 0), InputCtx.peerIdToPlayerIndex(0));
+    try std.testing.expectEqual(@as(u8, 1), InputCtx.peerIdToPlayerIndex(1));
+    try std.testing.expectEqual(@as(u8, 11), InputCtx.peerIdToPlayerIndex(11));
+}
+
+test "peerIdToPlayerIndex maps LOCAL_PEER to player 0" {
+    try std.testing.expectEqual(@as(u8, 0), InputCtx.peerIdToPlayerIndex(Events.LOCAL_PEER));
+}

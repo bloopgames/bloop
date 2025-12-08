@@ -388,14 +388,15 @@ pub const Sim = struct {
         }
     }
 
-    /// Inject stored inputs for a specific match frame into the event buffer
+    /// Inject stored inputs for a specific match frame into the event buffer.
+    /// Uses inject_event (not append_event) since these are replayed events.
     fn injectInputsForFrame(self: *Sim, match_frame: u32) void {
         const r = self.rollback.?;
         for (0..r.peer_count) |peer_idx| {
             const peer: u8 = @intCast(peer_idx);
             const events = r.getInputs(peer, match_frame);
             for (events) |event| {
-                self.append_event(event);
+                self.inject_event(event);
             }
         }
     }
@@ -473,30 +474,32 @@ pub const Sim = struct {
         self.append_event(event);
     }
 
-    pub fn emit_keydown(self: *Sim, key: Events.Key, source: Events.InputSource) void {
-        self.append_event(Event.keyDown(key, source));
+    pub fn emit_keydown(self: *Sim, key: Events.Key, peer_id: u8) void {
+        self.append_event(Event.keyDown(key, peer_id, .LocalKeyboard));
     }
 
-    pub fn emit_keyup(self: *Sim, key: Events.Key, source: Events.InputSource) void {
-        self.append_event(Event.keyUp(key, source));
+    pub fn emit_keyup(self: *Sim, key: Events.Key, peer_id: u8) void {
+        self.append_event(Event.keyUp(key, peer_id, .LocalKeyboard));
     }
 
-    pub fn emit_mousedown(self: *Sim, button: Events.MouseButton, source: Events.InputSource) void {
-        self.append_event(Event.mouseDown(button, source));
+    pub fn emit_mousedown(self: *Sim, button: Events.MouseButton, peer_id: u8) void {
+        self.append_event(Event.mouseDown(button, peer_id, .LocalMouse));
     }
 
-    pub fn emit_mouseup(self: *Sim, button: Events.MouseButton, source: Events.InputSource) void {
-        self.append_event(Event.mouseUp(button, source));
+    pub fn emit_mouseup(self: *Sim, button: Events.MouseButton, peer_id: u8) void {
+        self.append_event(Event.mouseUp(button, peer_id, .LocalMouse));
     }
 
-    pub fn emit_mousemove(self: *Sim, x: f32, y: f32, source: Events.InputSource) void {
-        self.append_event(Event.mouseMove(x, y, source));
+    pub fn emit_mousemove(self: *Sim, x: f32, y: f32, peer_id: u8) void {
+        self.append_event(Event.mouseMove(x, y, peer_id, .LocalMouse));
     }
 
-    pub fn emit_mousewheel(self: *Sim, delta_x: f32, delta_y: f32, source: Events.InputSource) void {
-        self.append_event(Event.mouseWheel(delta_x, delta_y, source));
+    pub fn emit_mousewheel(self: *Sim, delta_x: f32, delta_y: f32, peer_id: u8) void {
+        self.append_event(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
     }
 
+    /// Append a fresh local event. Records to tape, netstate, and rollback, then adds to buffer.
+    /// Use this for events from live user input (emit_* functions).
     fn append_event(self: *Sim, event: Event) void {
         // Record to tape if recording
         if (self.is_recording) {
@@ -505,7 +508,24 @@ pub const Sim = struct {
             }
         }
 
-        // Add to event buffer
+        // If in a session, record to both NetState (for packet sending) and RollbackState (for local replay)
+        if (self.net != null and self.rollback != null) {
+            const match_frame = self.rollback.?.getMatchFrame(self.time.frame) + 1; // +1 because this event is for the next tick
+            const match_frame_u16: u16 = @intCast(match_frame);
+
+            // Record to NetState for packet sending to peers
+            self.net.?.recordLocalInputs(match_frame_u16, &[_]Event{event});
+
+            // Also store in RollbackState for the local peer so it can be replayed during rollback
+            self.rollback.?.emitInputs(self.net.?.local_peer_id, match_frame, &[_]Event{event});
+        }
+
+        self.inject_event(event);
+    }
+
+    /// Inject an event into the buffer without recording.
+    /// Use this for replayed events (from tape or remote peers during rollback).
+    fn inject_event(self: *Sim, event: Event) void {
         const idx = self.events.count;
         if (idx < Events.MAX_EVENTS) {
             self.events.count += 1;
@@ -701,8 +721,8 @@ test "session step without rollback (inputs in sync)" {
     try sim.sessionInit(2, 0);
 
     // Emit inputs for both peers at match frame 1 (in sync)
-    const events0 = [_]Event{Event.keyDown(.KeyA, .LocalKeyboard)};
-    const events1 = [_]Event{Event.keyDown(.KeyW, .LocalKeyboard)};
+    const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
+    const events1 = [_]Event{Event.keyDown(.KeyW, 0, .LocalKeyboard)};
     sim.sessionEmitInputs(0, 1, &events0);
     sim.sessionEmitInputs(1, 1, &events1);
 
@@ -826,7 +846,7 @@ test "tick processes events and updates input state" {
     try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)]);
 
     // Emit keydown and tick
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     sim.tick();
 
     // Key should now be down (bit 0 set)
@@ -841,7 +861,7 @@ test "tick ages input states" {
     defer sim.deinit();
 
     // Press key and tick
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     sim.tick();
 
     // Key state should be 0b1 (just pressed this frame)
@@ -856,7 +876,7 @@ test "tick ages input states" {
     try std.testing.expectEqual(0b11, state2);
 
     // Release key and tick
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
+    sim.emit_keyup(.KeyA, 0);
     sim.tick();
 
     // Key state should be 0b110 (was held for 2 frames, now released)
@@ -907,16 +927,16 @@ test "snapshot preserves input state" {
     defer sim.deinit();
 
     // Set up some input state
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
-    sim.emit_mousemove(100.0, 200.0, .LocalMouse);
+    sim.emit_keydown(.KeyA, 0);
+    sim.emit_mousemove(100.0, 200.0, 0);
     sim.tick();
 
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Modify input state
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
-    sim.emit_mousemove(999.0, 999.0, .LocalMouse);
+    sim.emit_keyup(.KeyA, 0);
+    sim.emit_mousemove(999.0, 999.0, 0);
     sim.tick();
 
     // Verify state changed
@@ -938,12 +958,12 @@ test "session step with rollback (late inputs)" {
     try sim.sessionInit(2, 0);
 
     // Peer 0 emits inputs at frames 1, 2, 3
-    sim.sessionEmitInputs(0, 1, &[_]Event{Event.keyDown(.KeyA, .LocalKeyboard)});
+    sim.sessionEmitInputs(0, 1, &[_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)});
     sim.sessionEmitInputs(0, 2, &[_]Event{});
     sim.sessionEmitInputs(0, 3, &[_]Event{});
 
     // Peer 1 only has inputs up to frame 1
-    sim.sessionEmitInputs(1, 1, &[_]Event{Event.keyDown(.KeyW, .LocalKeyboard)});
+    sim.sessionEmitInputs(1, 1, &[_]Event{Event.keyDown(.KeyW, 0, .LocalKeyboard)});
 
     // Step 3 frames - peer 1 is lagging
     _ = sim.step(16); // frame 1 - both have inputs, confirm to 1
@@ -986,13 +1006,13 @@ test "emit_keydown adds event to buffer" {
 
     try std.testing.expectEqual(0, sim.events.count);
 
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     try std.testing.expectEqual(1, sim.events.count);
     try std.testing.expectEqual(.KeyDown, sim.events.events[0].kind);
     try std.testing.expectEqual(.KeyA, sim.events.events[0].payload.key);
-    try std.testing.expectEqual(.LocalKeyboard, sim.events.events[0].source);
+    try std.testing.expectEqual(.LocalKeyboard, sim.events.events[0].device);
 
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
+    sim.emit_keyup(.KeyA, 0);
     try std.testing.expectEqual(2, sim.events.count);
     try std.testing.expectEqual(.KeyUp, sim.events.events[1].kind);
 }
@@ -1001,7 +1021,7 @@ test "emit_mousemove adds event to buffer" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    sim.emit_mousemove(100.5, 200.5, .LocalMouse);
+    sim.emit_mousemove(100.5, 200.5, 0);
     try std.testing.expectEqual(1, sim.events.count);
     try std.testing.expectEqual(.MouseMove, sim.events.events[0].kind);
     try std.testing.expectEqual(100.5, sim.events.events[0].payload.mouse_move.x);
@@ -1107,10 +1127,10 @@ test "recording captures events" {
 
     try sim.start_recording(0, 1024);
 
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     sim.tick();
 
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
+    sim.emit_keyup(.KeyA, 0);
     sim.tick();
 
     // Tape should have recorded the events
@@ -1134,10 +1154,10 @@ test "Sim.seek restores to target frame" {
     try sim.start_recording(0, 1024);
 
     // Advance a few frames with input
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     sim.tick(); // frame 1
     sim.tick(); // frame 2
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
+    sim.emit_keyup(.KeyA, 0);
     sim.tick(); // frame 3
     sim.tick(); // frame 4
     sim.tick(); // frame 5
@@ -1159,14 +1179,14 @@ test "Sim.seek replays events correctly" {
     try sim.start_recording(0, 1024);
 
     // Frame 0->1: press A
-    sim.emit_keydown(.KeyA, .LocalKeyboard);
+    sim.emit_keydown(.KeyA, 0);
     sim.tick();
 
     // Frame 1->2: hold A
     sim.tick();
 
     // Frame 2->3: release A
-    sim.emit_keyup(.KeyA, .LocalKeyboard);
+    sim.emit_keyup(.KeyA, 0);
     sim.tick();
 
     // At frame 3, key A should be released

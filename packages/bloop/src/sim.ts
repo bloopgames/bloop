@@ -319,49 +319,23 @@ export class Sim {
   }
 
   emit = {
-    keydown: (key: Key, source: InputSource = "LocalKeyboard"): void => {
-      this.wasm.emit_keydown(
-        keyToKeyCode(key),
-        inputSourceToInputSourceCode(source),
-      );
+    keydown: (key: Key, peerId: number = 0): void => {
+      this.wasm.emit_keydown(keyToKeyCode(key), peerId);
     },
-    keyup: (key: Key, source: InputSource = "LocalKeyboard"): void => {
-      this.wasm.emit_keyup(
-        keyToKeyCode(key),
-        inputSourceToInputSourceCode(source),
-      );
+    keyup: (key: Key, peerId: number = 0): void => {
+      this.wasm.emit_keyup(keyToKeyCode(key), peerId);
     },
-    mousemove: (
-      x: number,
-      y: number,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousemove(x, y, inputSourceToInputSourceCode(source));
+    mousemove: (x: number, y: number, peerId: number = 0): void => {
+      this.wasm.emit_mousemove(x, y, peerId);
     },
-    mousedown: (
-      button: MouseButton,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousedown(
-        mouseButtonToMouseButtonCode(button),
-        inputSourceToInputSourceCode(source),
-      );
+    mousedown: (button: MouseButton, peerId: number = 0): void => {
+      this.wasm.emit_mousedown(mouseButtonToMouseButtonCode(button), peerId);
     },
-    mouseup: (
-      button: MouseButton,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mouseup(
-        mouseButtonToMouseButtonCode(button),
-        inputSourceToInputSourceCode(source),
-      );
+    mouseup: (button: MouseButton, peerId: number = 0): void => {
+      this.wasm.emit_mouseup(mouseButtonToMouseButtonCode(button), peerId);
     },
-    mousewheel: (
-      x: number,
-      y: number,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousewheel(x, y, inputSourceToInputSourceCode(source));
+    mousewheel: (x: number, y: number, peerId: number = 0): void => {
+      this.wasm.emit_mousewheel(x, y, peerId);
     },
   };
 
