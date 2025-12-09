@@ -1,10 +1,65 @@
+import { assert } from "@bloopjs/bloop";
 import type { WebSocket } from "partysocket";
 import { logger } from "./logs.ts";
 import type { BrokerMessage, PeerMessage } from "./protocol.ts";
 
-const iceServers: RTCConfiguration["iceServers"] = [
-  { urls: "stun:stun.cloudflare.com:3478" },
-];
+// Cached TURN credentials
+let cachedIceServers: RTCConfiguration["iceServers"] | null = null;
+let cacheExpiry = 0;
+
+// TURN credentials endpoint - use absolute URL so it works in local dev too
+const TURN_CREDENTIALS_URL =
+  "https://webrtc-divine-glade-8064.fly.dev/turn-credentials";
+
+const DEFAULT_ICE_TIMEOUT = 60000; // 60s
+
+/**
+ * Fetch TURN credentials from the server.
+ * Results are cached for 1 hour.
+ */
+export async function getIceServers(): Promise<RTCConfiguration["iceServers"]> {
+  const now = Date.now();
+  if (cachedIceServers && now < cacheExpiry) {
+    return cachedIceServers;
+  }
+
+  const res = await fetch(TURN_CREDENTIALS_URL);
+  if (!res.ok) {
+    throw new Error(`TURN credentials fetch failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+  if (!data.iceServers) {
+    throw new Error("No iceServers in TURN response");
+  }
+
+  // Filter out port 53 URLs - they're blocked by browsers and cause long timeouts
+  // See: https://developers.cloudflare.com/realtime/turn/generate-credentials/
+  cachedIceServers = data.iceServers.map((server: RTCIceServer) => {
+    if (Array.isArray(server.urls)) {
+      return {
+        ...server,
+        urls: server.urls.filter((url: string) => !url.includes(":53")),
+      };
+    }
+    return server;
+  });
+
+  assert(
+    cachedIceServers && cachedIceServers.length > 0,
+    "No valid iceServers after filtering",
+  );
+
+  cacheExpiry = now + 60 * 60 * 1000; // 1 hour
+  logger.log({
+    source: "webrtc",
+    label: `Got TURN credentials`,
+    json: {
+      iceServers: cachedIceServers,
+    },
+  });
+  return cachedIceServers;
+}
 
 export type WebRtcPipe = {
   peerConnection: RTCPeerConnection;
@@ -17,8 +72,9 @@ export async function connect(
   ws: WebSocket,
   peerId: string,
   /** defaults to 10s */
-  timeoutMs: number = 10000,
+  timeoutMs: number = DEFAULT_ICE_TIMEOUT,
 ): Promise<WebRtcPipe> {
+  const iceServers = await getIceServers();
   const pc = new RTCPeerConnection({ iceServers });
   const reliable = pc.createDataChannel("reliable", {});
   const unreliable = pc.createDataChannel("unreliable", {
@@ -105,10 +161,7 @@ export async function gatherIce(
   timeoutMs: number,
 ): Promise<boolean | Error> {
   return new Promise<boolean | Error>((yes, no) => {
-    setTimeout(
-      () => no(new Error("Timed out waiting for completion")),
-      timeoutMs,
-    );
+    setTimeout(() => no(new Error("Ice Gathering Timeout")), timeoutMs);
 
     pc.onicegatheringstatechange = () => {
       logger.log({
@@ -169,6 +222,7 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
     }
     logger.log({ source: "webrtc", label: "received offer" });
     const offer = JSON.parse(atob(msg.payload));
+    const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
 
     await pc.setRemoteDescription(offer);
@@ -184,7 +238,7 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
       label: "set local description",
       json: pc.localDescription,
     });
-    await gatherIce(pc, 10000);
+    await gatherIce(pc, DEFAULT_ICE_TIMEOUT);
 
     const channels = {
       reliable: null as RTCDataChannel | null,

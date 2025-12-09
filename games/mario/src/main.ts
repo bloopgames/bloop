@@ -1,15 +1,18 @@
 import "./style.css";
-import { Toodle } from "@bloopjs/toodle";
+import { Toodle } from "@bloop.gg/toodle";
 import { start } from "@bloopjs/web";
 import { createDrawState, draw } from "./draw";
 import { game } from "./game";
 
-const monorepoWasmUrl = new URL("/bloop-wasm/bloop.wasm", window.location.href);
+// In dev, vite serves wasm from /bloop-wasm/. In prod, it's bundled at ./bloop.wasm
+const wasmUrl = import.meta.env.DEV
+  ? new URL("/bloop-wasm/bloop.wasm", window.location.href)
+  : new URL("./bloop.wasm", import.meta.url);
 
 async function main() {
   const app = await start({
     game,
-    engineWasmUrl: monorepoWasmUrl,
+    engineWasmUrl: wasmUrl,
     startRecording: false,
   });
 
@@ -41,7 +44,7 @@ async function main() {
   if (import.meta.hot) {
     import.meta.hot.accept("./game", async (newModule) => {
       if (newModule?.game) {
-        await app.acceptHmr(newModule.game, { wasmUrl: monorepoWasmUrl });
+        await app.acceptHmr(newModule.game, { wasmUrl });
       }
     });
   }

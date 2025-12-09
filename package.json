@@ -12,10 +12,12 @@
     "ci:build": "bun run --filter './packages/*' build",
     "ci:tsc": "bun run --filter '*' ci:tsc",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
-    "publish": "bun bin/publish.ts"
+    "publish": "bun bin/publish.ts",
+    "deploy-games": "bun bin/deploy-games.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "jsr": "^0.13.5"
   },
   "peerDependencies": {
     "typescript": "^5"

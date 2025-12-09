@@ -1,5 +1,5 @@
-import type { Quad, Scene, SceneNode, Text, Toodle } from "@bloopjs/toodle";
-import { Colors } from "@bloopjs/toodle";
+import type { QuadNode, SceneNode, Text, Toodle } from "@bloop.gg/toodle";
+import { Colors } from "@bloop.gg/toodle";
 import {
   BLOCK_SIZE,
   BLOCK_Y,
@@ -22,7 +22,7 @@ export interface DrawState {
   ground: SceneNode;
   block: SceneNode;
   coin: SceneNode;
-  p1: Quad.QuadNode;
+  p1: QuadNode;
   p2: SceneNode;
   p1Score: Text.TextNode;
   p2Score: Text.TextNode;
