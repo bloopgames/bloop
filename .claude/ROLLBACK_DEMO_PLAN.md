@@ -83,14 +83,21 @@ Port/clean up from quickdraw to `packages/web`:
 - Integrate websocket server repo
 - `context.net.peers` API surface
 
-**Status**: Not started
+**Status**: Completed (Dec 9)
+- `packages/web/src/netcode/transport.ts` - WebRTC connection with TURN
+- `packages/web/src/netcode/broker.ts` - WebSocket room management
+- Deployed to fly.io with buzzer and mario games
 
 ### 7. Web: Cloudflare TURN (~0.5 day)
 Fix connectivity for cross-region play:
 - Add Cloudflare TURN server credentials
 - Test with someone remote
 
-**Status**: Not started
+**Status**: Completed (Dec 9)
+- TURN credentials endpoint at `infra/turn.ts`
+- Cloudflare TURN API integration with 1-hour caching
+- Port 53 URLs filtered (blocked by browsers)
+- ICE timeout increased to 60s
 
 ### 8. Debug UI (~0.5 day)
 Reuse/port from quickdraw:
@@ -120,14 +127,23 @@ The "maximum wow factor":
 | P0 | Engine: per-player inputs | ✅ Done | Required for netcode |
 | P0 | Engine: rollback core | ✅ Done | The main feature |
 | P0 | Engine: packet format | ✅ Done | Wire protocol |
-| P1 | Web: network transport | 🔲 Next | Connect it all |
-| P1 | Debug UI | 🔲 | Show the internals |
-| P2 | Cloudflare TURN | 🔲 | Cross-region connectivity |
+| P1 | Web: network transport | ✅ Done | Deployed to fly.io |
+| P1 | Debug UI | 🔲 Next | Show the internals |
+| P2 | Cloudflare TURN | ✅ Done | Cross-region connectivity |
 | P3 | Tape packets + rollback dissection | 🔲 | Maximum wow factor |
 
 ---
 
 ## Session Log
+
+### Dec 9
+- Deployed buzzer and mario games to trybloop.gg/neil/buzzer and trybloop.gg/neil/mario
+- Created `bin/deploy-games.ts` build/deploy script
+- Added Cloudflare TURN credentials endpoint (`infra/turn.ts`)
+- Fixed WASM loading for production (import.meta.url resolution)
+- Filtered port 53 TURN URLs (blocked by browsers, was causing 40s ICE timeouts)
+- Fixed debug UI autoscroll in Logs.vue
+- Added debug toggle button to App.vue
 
 ### Dec 8
 - Fixed netcode bugs (wrong player routing, ring buffer stale events, ack not updating, rollback depth unbounded)
