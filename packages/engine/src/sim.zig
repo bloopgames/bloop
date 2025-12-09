@@ -40,9 +40,11 @@ pub const Sim = struct {
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
     /// Rollback state for multiplayer sessions (heap-allocated due to ~67KB size)
-    rollback: ?*RollbackState = null,
+    rollback: *RollbackState,
     /// Network state for packet management (heap-allocated due to ~68KB size)
-    net: ?*NetState = null,
+    net: *NetState,
+    /// Whether a multiplayer session is active
+    in_session: bool = false,
 
     /// Initialize a new simulation with allocated contexts
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
@@ -58,10 +60,20 @@ pub const Sim = struct {
         const events = try allocator.create(EventBuffer);
         @memset(std.mem.asBytes(events), 0);
 
+        // Allocate RollbackState on heap (~67KB, too large for stack)
+        const rollback = try allocator.create(RollbackState);
+        rollback.* = .{ .allocator = allocator };
+
+        // Allocate NetState on heap (~68KB, too large for stack)
+        const net = try allocator.create(NetState);
+        net.* = .{ .allocator = allocator };
+
         return Sim{
             .time = time,
             .inputs = inputs,
             .events = events,
+            .rollback = rollback,
+            .net = net,
             .allocator = allocator,
             .ctx_ptr = ctx_ptr,
         };
@@ -69,16 +81,10 @@ pub const Sim = struct {
 
     /// Free all simulation resources
     pub fn deinit(self: *Sim) void {
-        if (self.rollback) |r| {
-            r.deinit();
-            self.allocator.destroy(r);
-            self.rollback = null;
-        }
-        if (self.net) |n| {
-            n.deinit();
-            self.allocator.destroy(n);
-            self.net = null;
-        }
+        self.rollback.deinit();
+        self.allocator.destroy(self.rollback);
+        self.net.deinit();
+        self.allocator.destroy(self.net);
         if (self.tape) |*t| {
             t.free(self.allocator);
             self.tape = null;
@@ -95,36 +101,25 @@ pub const Sim = struct {
     /// Initialize a multiplayer session with rollback support
     /// Captures current frame as session_start_frame
     pub fn sessionInit(self: *Sim, peer_count: u8, user_data_len: u32) !void {
-        // Clean up existing session if any
-        if (self.rollback) |r| {
-            r.deinit();
-            self.allocator.destroy(r);
-            self.rollback = null;
-        }
-        if (self.net) |n| {
-            n.deinit();
-            self.allocator.destroy(n);
-            self.net = null;
-        }
+        // Reset existing state
+        self.rollback.deinit();
+        self.net.deinit();
 
-        // Allocate RollbackState on heap (~67KB, too large for stack)
-        const rollback = try self.allocator.create(RollbackState);
-        rollback.* = .{
+        // Reinitialize rollback state
+        self.rollback.* = .{
             .session_start_frame = self.time.frame,
             .peer_count = peer_count,
             .allocator = self.allocator,
         };
-        self.rollback = rollback;
 
-        // Allocate NetState on heap (~68KB, too large for stack)
-        const net = try self.allocator.create(NetState);
-        net.* = .{ .allocator = self.allocator };
-        self.net = net;
+        // Reinitialize net state
+        self.net.* = .{ .allocator = self.allocator };
 
         // Take initial confirmed snapshot
-        // Use provided user_data_len for initial snapshot (from WASM this comes from user_data_len())
         const snap = try self.take_snapshot(user_data_len);
-        self.rollback.?.confirmed_snapshot = snap;
+        self.rollback.confirmed_snapshot = snap;
+
+        self.in_session = true;
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
@@ -137,58 +132,44 @@ pub const Sim = struct {
 
     /// End the current session
     pub fn sessionEnd(self: *Sim) void {
-        if (self.rollback) |r| {
-            r.deinit();
-            self.allocator.destroy(r);
-            self.rollback = null;
-        }
-        if (self.net) |n| {
-            n.deinit();
-            self.allocator.destroy(n);
-            self.net = null;
-        }
+        self.rollback.deinit();
+        self.rollback.* = .{ .allocator = self.allocator };
+        self.net.deinit();
+        self.net.* = .{ .allocator = self.allocator };
+        self.in_session = false;
     }
 
     /// Emit inputs for a peer at a given match frame
     pub fn sessionEmitInputs(self: *Sim, peer: u8, match_frame: u32, events: []const Event) void {
-        if (self.rollback) |r| {
-            r.emitInputs(peer, match_frame, events);
-        }
+        self.rollback.emitInputs(peer, match_frame, events);
     }
 
     /// Get current match frame (0 if no session)
     pub fn getMatchFrame(self: *const Sim) u32 {
-        if (self.rollback) |r| {
-            return r.getMatchFrame(self.time.frame);
-        }
-        return 0;
+        if (!self.in_session) return 0;
+        return self.rollback.getMatchFrame(self.time.frame);
     }
 
     /// Get confirmed frame (0 if no session)
     pub fn getConfirmedFrame(self: *const Sim) u32 {
-        if (self.rollback) |r| {
-            return r.confirmed_frame;
-        }
-        return 0;
+        if (!self.in_session) return 0;
+        return self.rollback.confirmed_frame;
     }
 
     /// Get confirmed frame for a specific peer
     pub fn getPeerFrame(self: *const Sim, peer: u8) u32 {
-        if (self.rollback) |r| {
-            if (peer < r.peer_count) {
-                return r.peer_confirmed_frame[peer];
-            }
+        if (!self.in_session) return 0;
+        if (peer < self.rollback.peer_count) {
+            return self.rollback.peer_confirmed_frame[peer];
         }
         return 0;
     }
 
     /// Get rollback depth (match_frame - confirmed_frame)
     pub fn getRollbackDepth(self: *const Sim) u32 {
-        if (self.rollback) |r| {
-            const match_frame = r.getMatchFrame(self.time.frame);
-            return match_frame - r.confirmed_frame;
-        }
-        return 0;
+        if (!self.in_session) return 0;
+        const match_frame = self.rollback.getMatchFrame(self.time.frame);
+        return match_frame - self.rollback.confirmed_frame;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -197,71 +178,56 @@ pub const Sim = struct {
 
     /// Set local peer ID for packet encoding
     pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
-        if (self.net) |n| {
-            n.setLocalPeer(peer_id);
-        }
+        self.net.setLocalPeer(peer_id);
     }
 
     /// Connect a peer for packet management
     pub fn connectPeer(self: *Sim, peer_id: u8) void {
-        if (self.net) |n| {
-            n.connectPeer(peer_id);
-        }
+        self.net.connectPeer(peer_id);
     }
 
     /// Disconnect a peer
     pub fn disconnectPeer(self: *Sim, peer_id: u8) void {
-        if (self.net) |n| {
-            n.disconnectPeer(peer_id);
-        }
+        self.net.disconnectPeer(peer_id);
     }
 
     /// Record local inputs to unacked buffers for all connected peers
     pub fn recordLocalInputs(self: *Sim, match_frame: u16, events: []const Event) void {
-        if (self.net) |n| {
-            n.recordLocalInputs(match_frame, events);
-        }
+        self.net.recordLocalInputs(match_frame, events);
     }
 
     /// Build outbound packet for a target peer
     pub fn buildOutboundPacket(self: *Sim, target_peer: u8) void {
-        if (self.net) |n| {
-            const match_frame: u16 = if (self.rollback) |r|
-                @intCast(r.getMatchFrame(self.time.frame))
-            else
-                @intCast(self.time.frame);
-            n.buildOutboundPacket(target_peer, match_frame) catch {
-                // Silently fail - caller can check outbound_len
-            };
-        }
+        const match_frame: u16 = if (self.in_session)
+            @intCast(self.rollback.getMatchFrame(self.time.frame))
+        else
+            @intCast(self.time.frame);
+        self.net.buildOutboundPacket(target_peer, match_frame) catch {
+            // Silently fail - caller can check outbound_len
+        };
     }
 
     /// Get pointer to outbound packet buffer
     pub fn getOutboundPacketPtr(self: *const Sim) usize {
-        if (self.net) |n| {
-            if (n.outbound_buffer) |buf| {
-                return @intFromPtr(buf.ptr);
-            }
+        if (self.net.outbound_buffer) |buf| {
+            return @intFromPtr(buf.ptr);
         }
         return 0;
     }
 
     /// Get length of outbound packet
     pub fn getOutboundPacketLen(self: *const Sim) u32 {
-        if (self.net) |n| {
-            return n.outbound_len;
-        }
-        return 0;
+        return self.net.outbound_len;
     }
 
     /// Process a received packet
     pub fn receivePacket(self: *Sim, ptr: usize, len: u32) u8 {
-        if (self.net == null or self.rollback == null) return 1;
+        if (!self.in_session) return 1;
 
         const buf: [*]const u8 = @ptrFromInt(ptr);
         const slice = buf[0..len];
 
-        self.net.?.receivePacket(slice, self.rollback.?) catch |e| {
+        self.net.receivePacket(slice, self.rollback) catch |e| {
             switch (e) {
                 Rollback.Packets.DecodeError.BufferTooSmall => return 2,
                 Rollback.Packets.DecodeError.UnsupportedVersion => return 3,
@@ -273,30 +239,24 @@ pub const Sim = struct {
 
     /// Get seq for a peer (latest frame received from them)
     pub fn getPeerSeq(self: *const Sim, peer: u8) u16 {
-        if (self.net) |n| {
-            if (peer < Rollback.MAX_PEERS) {
-                return n.peer_states[peer].remote_seq;
-            }
+        if (peer < Rollback.MAX_PEERS) {
+            return self.net.peer_states[peer].remote_seq;
         }
         return 0;
     }
 
     /// Get ack for a peer (latest frame they acked from us)
     pub fn getPeerAck(self: *const Sim, peer: u8) u16 {
-        if (self.net) |n| {
-            if (peer < Rollback.MAX_PEERS) {
-                return n.peer_states[peer].remote_ack;
-            }
+        if (peer < Rollback.MAX_PEERS) {
+            return self.net.peer_states[peer].remote_ack;
         }
         return 0;
     }
 
     /// Get unacked count for a peer
     pub fn getUnackedCount(self: *const Sim, peer: u8) u16 {
-        if (self.net) |n| {
-            if (peer < Rollback.MAX_PEERS) {
-                return n.peer_states[peer].unackedCount();
-            }
+        if (peer < Rollback.MAX_PEERS) {
+            return self.net.peer_states[peer].unackedCount();
         }
         return 0;
     }
@@ -318,7 +278,7 @@ pub const Sim = struct {
             }
 
             // If in a session, handle rollback
-            if (self.rollback != null) {
+            if (self.in_session) {
                 self.sessionStep();
             } else {
                 self.tick();
@@ -332,7 +292,7 @@ pub const Sim = struct {
 
     /// Session-aware step that handles rollback when late inputs arrive
     fn sessionStep(self: *Sim) void {
-        const r = self.rollback.?;
+        const r = self.rollback;
 
         // The frame we're about to process (after this tick, match_frame will be this value)
         const target_match_frame = r.getMatchFrame(self.time.frame) + 1;
@@ -393,17 +353,15 @@ pub const Sim = struct {
         // Always advance local peer's confirmed frame, even if there's no input.
         // Without this, confirmed_frame can't advance if the local player is idle,
         // causing rollback depth to grow unbounded.
-        if (self.net) |n| {
-            if (target_match_frame > r.peer_confirmed_frame[n.local_peer_id]) {
-                r.peer_confirmed_frame[n.local_peer_id] = target_match_frame;
-            }
+        if (target_match_frame > r.peer_confirmed_frame[self.net.local_peer_id]) {
+            r.peer_confirmed_frame[self.net.local_peer_id] = target_match_frame;
         }
     }
 
     /// Inject stored inputs for a specific match frame into the event buffer.
     /// Uses inject_event (not append_event) since these are replayed events.
     fn injectInputsForFrame(self: *Sim, match_frame: u32) void {
-        const r = self.rollback.?;
+        const r = self.rollback;
         for (0..r.peer_count) |peer_idx| {
             const peer: u8 = @intCast(peer_idx);
             const events = r.getInputs(peer, match_frame);
@@ -521,19 +479,19 @@ pub const Sim = struct {
         }
 
         // If in a session, record to both NetState (for packet sending) and RollbackState (for local replay)
-        if (self.net != null and self.rollback != null) {
-            const match_frame = self.rollback.?.getMatchFrame(self.time.frame) + 1; // +1 because this event is for the next tick
+        if (self.in_session) {
+            const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1; // +1 because this event is for the next tick
             const match_frame_u16: u16 = @intCast(match_frame);
 
             // Tag the event with the correct local peer ID for proper player routing
             var local_event = event;
-            local_event.peer_id = self.net.?.local_peer_id;
+            local_event.peer_id = self.net.local_peer_id;
 
             // Record to NetState for packet sending to peers
-            self.net.?.recordLocalInputs(match_frame_u16, &[_]Event{local_event});
+            self.net.recordLocalInputs(match_frame_u16, &[_]Event{local_event});
 
             // Also store in RollbackState for the local peer so it can be replayed during rollback
-            self.rollback.?.emitInputs(self.net.?.local_peer_id, match_frame, &[_]Event{local_event});
+            self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});
 
             // Inject with correct peer_id so it routes to the right player
             self.inject_event(local_event);
@@ -725,12 +683,12 @@ test "sessionInit creates rollback state" {
     // Initialize session with 2 peers
     try sim.sessionInit(2, 0);
 
-    // Verify rollback state was created
-    try std.testing.expect(sim.rollback != null);
-    try std.testing.expectEqual(@as(u32, 2), sim.rollback.?.session_start_frame);
-    try std.testing.expectEqual(@as(u8, 2), sim.rollback.?.peer_count);
-    try std.testing.expectEqual(@as(u32, 0), sim.rollback.?.confirmed_frame);
-    try std.testing.expect(sim.rollback.?.confirmed_snapshot != null);
+    // Verify session is active and rollback state was initialized
+    try std.testing.expect(sim.in_session);
+    try std.testing.expectEqual(@as(u32, 2), sim.rollback.session_start_frame);
+    try std.testing.expectEqual(@as(u8, 2), sim.rollback.peer_count);
+    try std.testing.expectEqual(@as(u32, 0), sim.rollback.confirmed_frame);
+    try std.testing.expect(sim.rollback.confirmed_snapshot != null);
 }
 
 test "session step without rollback (inputs in sync)" {
@@ -751,7 +709,7 @@ test "session step without rollback (inputs in sync)" {
     try std.testing.expectEqual(@as(u32, 1), sim.getMatchFrame());
     try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
     try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expectEqual(@as(u32, 0), sim.rollback.?.stats.total_rollbacks);
+    try std.testing.expectEqual(@as(u32, 0), sim.rollback.stats.total_rollbacks);
 }
 
 test "step advances frames based on accumulator" {
@@ -1005,7 +963,7 @@ test "session step with rollback (late inputs)" {
     try std.testing.expectEqual(@as(u32, 4), sim.getMatchFrame());
     try std.testing.expectEqual(@as(u32, 4), sim.getConfirmedFrame());
     try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expect(sim.rollback.?.stats.total_rollbacks > 0);
+    try std.testing.expect(sim.rollback.stats.total_rollbacks > 0);
 }
 
 test "sessionEnd cleans up rollback state" {
@@ -1013,10 +971,10 @@ test "sessionEnd cleans up rollback state" {
     defer sim.deinit();
 
     try sim.sessionInit(2, 0);
-    try std.testing.expect(sim.rollback != null);
+    try std.testing.expect(sim.in_session);
 
     sim.sessionEnd();
-    try std.testing.expect(sim.rollback == null);
+    try std.testing.expect(!sim.in_session);
 }
 
 test "emit_keydown adds event to buffer" {
@@ -1079,7 +1037,7 @@ test "session uses dynamic user_data_len for snapshots" {
     try sim.sessionInit(2, TestState.getUserDataLen());
 
     // Initial snapshot should have size 8
-    try std.testing.expectEqual(@as(u32, 8), sim.rollback.?.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 8), sim.rollback.confirmed_snapshot.?.user_data_len);
 
     // Emit inputs for frame 1
     sim.sessionEmitInputs(0, 1, &[_]Event{});
@@ -1092,7 +1050,7 @@ test "session uses dynamic user_data_len for snapshots" {
     _ = sim.step(16);
 
     // The new confirmed snapshot should have the new size
-    try std.testing.expectEqual(@as(u32, 16), sim.rollback.?.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 16), sim.rollback.confirmed_snapshot.?.user_data_len);
 
     // Change size to 32
     TestState.current_size = 32;
@@ -1103,7 +1061,7 @@ test "session uses dynamic user_data_len for snapshots" {
     _ = sim.step(16);
 
     // Snapshot should now have size 32
-    try std.testing.expectEqual(@as(u32, 32), sim.rollback.?.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 32), sim.rollback.confirmed_snapshot.?.user_data_len);
 }
 
 test "start_recording enables recording" {

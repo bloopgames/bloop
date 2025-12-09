@@ -368,7 +368,7 @@ pub const RollbackState = struct {
         if (input_frame.frame != match_frame) {
             return &[_]Event{};
         }
-        return input_frame.slice(match_frame);
+        return input_frame.slice();
     }
 
     /// Calculate the next confirmable frame (minimum across all peers)
