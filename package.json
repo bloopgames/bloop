@@ -16,7 +16,8 @@
     "deploy-games": "bun bin/deploy-games.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "jsr": "^0.13.5"
   },
   "peerDependencies": {
     "typescript": "^5"
