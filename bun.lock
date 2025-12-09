@@ -11,33 +11,7 @@
         "typescript": "^5",
       },
     },
-    "games/hello": {
-      "name": "hello",
-      "version": "0.0.0",
-      "dependencies": {
-        "@bloopjs/bloop": "workspace:*",
-        "@bloopjs/toodle": "^0.0.100",
-        "@bloopjs/web": "workspace:*",
-      },
-      "devDependencies": {
-        "typescript": "~5.9.3",
-        "vite": "^7.2.2",
-      },
-    },
-    "games/mario-rollback": {
-      "name": "mario-rollback",
-      "version": "0.0.0",
-      "dependencies": {
-        "@bloopjs/bloop": "workspace:*",
-        "@bloopjs/toodle": "^0.0.100",
-        "@bloopjs/web": "workspace:*",
-      },
-      "devDependencies": {
-        "typescript": "~5.9.3",
-        "vite": "^7.2.2",
-      },
-    },
-    "games/quickdraw": {
+    "games/buzzer": {
       "name": "quickdraw",
       "version": "0.0.0",
       "dependencies": {
@@ -58,6 +32,33 @@
         "vite": "^7.1.11",
         "vite-plugin-vue-devtools": "^8.0.3",
         "vue-tsc": "^3.1.1",
+      },
+    },
+    "games/hello": {
+      "name": "hello",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/toodle": "^0.0.100",
+        "@bloopjs/web": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "~5.9.3",
+        "vite": "^7.2.2",
+      },
+    },
+    "games/mario": {
+      "name": "mario-rollback",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bloop.gg/toodle": "^0.0.100",
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/web": "workspace:*",
+      },
+      "devDependencies": {
+        "@webgpu/types": "^0.1.67",
+        "typescript": "~5.9.3",
+        "vite": "^7.2.2",
       },
     },
     "packages/bloop": {
@@ -159,6 +160,8 @@
     "@babel/traverse": ["@babel/traverse@7.28.5", "", { "dependencies": { "@babel/code-frame": "^7.27.1", "@babel/generator": "^7.28.5", "@babel/helper-globals": "^7.28.0", "@babel/parser": "^7.28.5", "@babel/template": "^7.27.2", "@babel/types": "^7.28.5", "debug": "^4.3.1" } }, "sha512-TCCj4t55U90khlYkVV/0TfkJkAkUg3jZFA3Neb7unZT8CPok7iiRfaX0F+WnqWqt7OxhOn0uBKXCw4lbL8W0aQ=="],
 
     "@babel/types": ["@babel/types@7.28.5", "", { "dependencies": { "@babel/helper-string-parser": "^7.27.1", "@babel/helper-validator-identifier": "^7.28.5" } }, "sha512-qQ5m48eI/MFLQ5PxQj4PFaprjyCTLI37ElWMmNs0K8Lk3dVeOdNpB3ks8jc7yM5CDmVC73eMVk/trk3fgmrUpA=="],
+
+    "@bloop.gg/toodle": ["@bloop.gg/toodle@0.0.100", "", { "dependencies": { "fflate": "^0.8.2", "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-VXYxX+vBKVVb2P8EawQZggNkOnVr0vwbWpB3umfdKmz43Lt4stOB5cC+He4iaqejlD8xoL31jAOCqE9AjyRtBA=="],
 
     "@bloopjs/bloop": ["@bloopjs/bloop@workspace:packages/bloop"],
 
@@ -330,6 +333,8 @@
 
     "@vue/tsconfig": ["@vue/tsconfig@0.8.1", "", { "peerDependencies": { "typescript": "5.x", "vue": "^3.4.0" }, "optionalPeers": ["typescript", "vue"] }, "sha512-aK7feIWPXFSUhsCP9PFqPyFOcz4ENkb8hZ2pneL6m2UjCkccvaOhC/5KCKluuBufvp2KzkbdA2W2pk20vLzu3g=="],
 
+    "@webgpu/types": ["@webgpu/types@0.1.67", "", {}, "sha512-uk53+2ECGUkWoDFez/hymwpRfdgdIn6y1ref70fEecGMe5607f4sozNFgBk0oxlr7j2CRGWBEc3IBYMmFdGGTQ=="],
+
     "alien-signals": ["alien-signals@3.1.1", "", {}, "sha512-ogkIWbVrLwKtHY6oOAXaYkAxP+cTH7V5FZ5+Tm4NZFd8VDZ6uNMDrfzqctTZ42eTMCSR3ne3otpcxmqSnFfPYA=="],
 
     "ansi-styles": ["ansi-styles@6.2.3", "", {}, "sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg=="],
@@ -414,7 +419,7 @@
 
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
-    "mario-rollback": ["mario-rollback@workspace:games/mario-rollback"],
+    "mario-rollback": ["mario-rollback@workspace:games/mario"],
 
     "memorystream": ["memorystream@0.3.1", "", {}, "sha512-S3UwM3yj5mtUSEfP41UZmt/0SCoVYUcU1rkXv+BQ5Ig8ndL4sPoJNBUJERafdPb5jjHJGuMgytgKvKIf58XNBw=="],
 
@@ -456,7 +461,7 @@
 
     "postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
-    "quickdraw": ["quickdraw@workspace:games/quickdraw"],
+    "quickdraw": ["quickdraw@workspace:games/buzzer"],
 
     "read-package-json-fast": ["read-package-json-fast@4.0.0", "", { "dependencies": { "json-parse-even-better-errors": "^4.0.0", "npm-normalize-package-bin": "^4.0.0" } }, "sha512-qpt8EwugBWDw2cgE2W+/3oxC+KTez2uSVR8JU9Q36TXPAGCaozfQUs59v4j4GFpWTaw0i6hAZSvOmu1J0uOEUg=="],
 

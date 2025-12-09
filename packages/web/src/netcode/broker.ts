@@ -18,17 +18,13 @@ export type RoomEvents = {
   onDataChannelOpen: (
     peerId: string,
     reliable: boolean,
-    channel: RTCDataChannel
+    channel: RTCDataChannel,
   ) => void;
   onMessage: (peerId: string, data: Uint8Array, reliable: boolean) => void;
   onDataChannelClose: (peerId: string, reliable: boolean) => void;
 };
 
-export function joinRoom(
-  brokerUrl: string,
-  _roomId: string,
-  cbs: RoomEvents
-) {
+export function joinRoom(brokerUrl: string, _roomId: string, cbs: RoomEvents) {
   const broker = new WebSocket(brokerUrl);
 
   broker.addEventListener("open", () => {
@@ -97,7 +93,7 @@ export function joinRoom(
     } catch (e) {
       logger.error({
         source: "ws",
-        label: "Failed to parse json",
+        label: "Failure in message handler",
         json: {
           data: event.data,
           error: e,

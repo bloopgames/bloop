@@ -1,3 +1,5 @@
+import { getTurnCredentials } from "./turn";
+
 console.log("Listening on port 3000...");
 
 const peerIds = new Map<Bun.ServerWebSocket<undefined>, string>();
@@ -15,10 +17,30 @@ Bun.serve({
       return new Response("Upgrade failed", { status: 500 });
     }
 
-    const path = url.pathname === "/" ? "/index.html" : url.pathname;
-    const filePath = `./dist${path}`;
-    const file = Bun.file(filePath);
-    const exists = await file.exists();
+    if (url.pathname === "/turn-credentials") {
+      return getTurnCredentials();
+    }
+
+    const path = url.pathname;
+
+    // Try the exact path first, then index.html for directories
+    let filePath = `./dist${path}`;
+    let file = Bun.file(filePath);
+    let exists = await file.exists();
+
+    // If path ends with / or doesn't exist, try index.html
+    if (!exists || path.endsWith("/")) {
+      const indexPath = path.endsWith("/")
+        ? `${path}index.html`
+        : `${path}/index.html`;
+      const indexFile = Bun.file(`./dist${indexPath}`);
+      if (await indexFile.exists()) {
+        file = indexFile;
+        filePath = `./dist${indexPath}`;
+        exists = true;
+      }
+    }
+
     if (!exists) {
       return new Response(`Not found: ${filePath}`, { status: 404 });
     }

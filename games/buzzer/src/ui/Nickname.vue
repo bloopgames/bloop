@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Peer } from '@/game';
+import type { Peer } from '@/ui';
 
 const props = defineProps<{
   peer: Peer

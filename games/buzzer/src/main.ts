@@ -15,10 +15,14 @@ if (artificialLag > 0) {
   console.log(`[netcode] Artificial lag enabled: ${artificialLag}ms`);
 }
 
-const monorepoWasmUrl = new URL("/bloop-wasm/bloop.wasm", window.location.href);
+// In dev, vite serves wasm from /bloop-wasm/. In prod, it's bundled at ./bloop.wasm
+const wasmUrl = import.meta.env.DEV
+  ? new URL("/bloop-wasm/bloop.wasm", window.location.href)
+  : new URL("./bloop.wasm", import.meta.url);
+
 const app = await start({
   game,
-  engineWasmUrl: monorepoWasmUrl,
+  engineWasmUrl: wasmUrl,
   startRecording: false,
 });
 

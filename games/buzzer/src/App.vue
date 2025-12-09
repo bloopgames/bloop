@@ -40,6 +40,9 @@ onUnmounted(() => {
   <main v-else class="fullscreen">
     <Game />
   </main>
+  <button class="debug-toggle" @click.stop="debug = !debug" @mousedown.stop @mouseup.stop :title="debug ? 'Hide debug (Esc)' : 'Show debug (Esc)'">
+    {{ debug ? '✕' : '⚙' }}
+  </button>
 </template>
 
 <style scoped>
@@ -89,5 +92,28 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+.debug-toggle {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: white;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.debug-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.7);
 }
 </style>

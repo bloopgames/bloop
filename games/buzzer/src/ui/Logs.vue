@@ -14,7 +14,7 @@ function formatTimestamp(ms: number): string {
   return `${hours}:${minutes}:${seconds}.${millis}`;
 }
 
-const { onContentUpdated } = useAutoScroll(80);
+const { container, onContentUpdated } = useAutoScroll(80);
 
 watch(() => logs.value.length, () => {
   onContentUpdated();
