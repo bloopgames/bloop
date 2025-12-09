@@ -85,31 +85,70 @@ rollback.peer_inputs[header.peer_id][slot].add(event);
 - Packets encode/decode correctly
 - Remote events route to correct player index
 
-## Remaining Browser Issues to Debug
+## Issues Fixed (December 8, 2024)
 
-### Issue 1: Events routing to wrong player
+### Issue 1: Events routing to wrong player ✓ FIXED
 When peer 0 clicks, peer 1 receives it but it increments player 1's score instead of player 0's.
 
-**Possible causes:**
-- `header.peer_id` might not be set correctly in outbound packet
-- The quickdraw game logic might be using wrong indices
-- There might be a mismatch between how quickdraw assigns peer IDs vs how engine expects them
+**Root cause:** In `sim.zig:append_event`, local events were created with `peer_id=0` (browser default) instead of the actual `local_peer_id`. When peer 1 emits an event, it should have `peer_id=1` so it routes to `players[1]`.
 
-### Issue 2: Events firing multiple times
-Events seem to stay in the ring buffer and fire repeatedly.
+**Fix in `sim.zig:516-527`:**
+```zig
+// Tag the event with the correct local peer ID for proper player routing
+var local_event = event;
+local_event.peer_id = self.net.?.local_peer_id;
+// ... record to NetState and RollbackState with local_event ...
+self.inject_event(local_event);
+```
 
-**Possible causes:**
-- `InputFrame.clear()` not being called at right time
-- Ring buffer slot collision (same slot reused without clearing)
-- `injectInputsForFrame` might be injecting same events multiple times during rollback
+### Issue 2: Events firing multiple times ✓ FIXED
+Events fire every 30 frames (ring buffer wrap interval).
 
-### Issue 3: Ack stays at 0
+**Root cause:** Ring buffer slots didn't track which frame they were written for. When frame 882 reads from slot 12 (882 % 30), it gets stale data from frame 852 (852 % 30 = 12).
+
+**Fix:** Added `frame` field to `InputFrame` struct to track which frame each slot belongs to:
+```zig
+pub const InputFrame = struct {
+    events: [MAX_EVENTS_PER_FRAME]Event = undefined,
+    count: u8 = 0,
+    frame: u32 = 0,  // NEW: tracks which frame this slot was written for
+
+    pub fn sliceIfFrame(self: *const InputFrame, match_frame: u32) []const Event {
+        if (self.frame != match_frame) return &[_]Event{};
+        return self.events[0..self.count];
+    }
+};
+```
+
+Updated `emitInputs` and `receivePacket` to call `setFrame()` when writing, and `getInputs` to use `sliceIfFrame()` when reading.
+
+### Issue 4: Rollback depth growing unbounded ✓ FIXED
+`confirmed_frame` couldn't advance when local player was idle.
+
+**Root cause:** `peer_confirmed_frame[local_peer_id]` only advanced when there was actual input (via `emitInputs`). If the local player didn't click for 30+ frames, `confirmed_frame` stayed stuck and rollback depth exceeded MAX_ROLLBACK_FRAMES.
+
+**Fix in `sim.zig:sessionStep`:**
+```zig
+// Always advance local peer's confirmed frame, even if there's no input
+if (self.net) |n| {
+    if (target_match_frame > r.peer_confirmed_frame[n.local_peer_id]) {
+        r.peer_confirmed_frame[n.local_peer_id] = target_match_frame;
+    }
+}
+```
+
+### Issue 3: Ack stays at 0 ✓ FIXED
 `remote_ack` never updates even though packets are being received.
 
-**Possible causes:**
-- Outbound packet's `frame_ack` field not being set correctly
-- `trimAcked` not being called
-- The ack value in packet header might be stale
+**Root cause:** In `rollback.zig:receivePacket`, `peer.remote_ack` was never set from the incoming packet's `frame_ack`.
+
+**Fix in `rollback.zig:249-252`:**
+```zig
+// Update remote_ack - what frame they've received from us
+if (header.frame_ack > peer.remote_ack) {
+    peer.remote_ack = header.frame_ack;
+}
+```
 
 ## Key Files to Investigate
 

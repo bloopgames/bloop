@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { peers } from "../ui.ts"
+import { peers, ourPeerId, remotePeerId } from "../ui.ts"
 import { computed } from 'vue';
 
 const peer = computed(() => peers.value[0] || null);
@@ -9,6 +9,14 @@ const peer = computed(() => peers.value[0] || null);
   <div v-if="peer" class="stats-panel">
     <h3>Network Stats - {{ peer.nickname }}</h3>
     <table>
+      <tr>
+        <td>Our Peer ID</td>
+        <td>{{ ourPeerId }}</td>
+      </tr>
+      <tr>
+        <td>Remote Peer ID</td>
+        <td>{{ remotePeerId }}</td>
+      </tr>
       <tr>
         <td>Current Seq</td>
         <td>{{ peer.stats.currentSeq }}</td>

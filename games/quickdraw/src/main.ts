@@ -7,7 +7,7 @@ import { joinRoom } from "./netcode/broker";
 import type { Logger, LogOpts } from "./netcode/logs";
 import type { PeerId } from "./netcode/protocol";
 import { netcode } from "./netcode/transport";
-import { logs } from "./ui";
+import { logs, remotePeerId as opponentPeerId, ourPeerId } from "./ui";
 
 const vueApp = createApp(App);
 vueApp.mount("#app");
@@ -40,11 +40,6 @@ let remotePeerId: number | null = null;
 let localStringPeerId: PeerId | null = null;
 let remoteStringPeerId: PeerId | null = null;
 
-/**
- * Determine numeric peer IDs based on string ID comparison.
- * Lexicographically smaller string = peer 0, larger = peer 1.
- * This ensures both clients agree on who is peer 0 vs peer 1.
- */
 function assignPeerIds(
   localId: PeerId,
   remoteId: PeerId,
@@ -92,6 +87,24 @@ const logger: Logger = {
   },
 };
 
+game.system("netcode logger", {
+  update({ players }) {
+    if (players[0]!.mouse.left.down) {
+      logger.log({
+        source: "local",
+        label: "[PlayerID=0] Mouse Click",
+      });
+    }
+
+    if (players[1]!.mouse.left.down) {
+      logger.log({
+        source: "local",
+        label: "[PlayerID=1] Mouse Click",
+      });
+    }
+  },
+});
+
 netcode.logRtc = (...args: unknown[]) => {
   logger.log({
     source: "webrtc",
@@ -137,8 +150,10 @@ joinRoom("nope", logger, {
       // Assign numeric IDs based on string comparison for consistency
       const ids = assignPeerIds(localStringPeerId, peerId);
       localPeerId = ids.local;
+      ourPeerId.value = localPeerId;
       remotePeerId = ids.remote;
       remoteStringPeerId = peerId;
+      opponentPeerId.value = ids.remote;
       console.log(
         `[netcode] Local peer: ${localStringPeerId} -> ${localPeerId}`,
       );
@@ -151,6 +166,9 @@ joinRoom("nope", logger, {
       // Set up local and remote peers in net state
       app.sim.net.setLocalPeer(localPeerId);
       app.sim.net.connectPeer(remotePeerId);
+
+      sessionActive = true;
+      console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
 
       sessionActive = true;
       console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
@@ -258,15 +276,29 @@ function sendPacket() {
     return;
   }
 
+  if (udp.readyState !== "open") {
+    console.warn(
+      "[netcode] Data channel not open, cannot send packet. readyState=",
+      udp.readyState,
+    );
+    return;
+  }
+
   // Get the outbound packet from the engine
   // This includes all unacked events in the engine's wire format
   const packet = app.sim.net.getOutboundPacket(remotePeerId);
 
-  if (packet && packet.length > 0) {
-    if (artificialLag > 0) {
-      setTimeout(() => udp?.send(packet), artificialLag);
-    } else {
-      udp.send(packet);
-    }
+  if (!packet) {
+    return;
+  }
+
+  if (artificialLag > 0) {
+    // Simulate artificial lag by delaying the send
+    setTimeout(() => {
+      udp!.send(packet);
+    }, artificialLag);
+  } else {
+    // Send immediately
+    udp.send(packet);
   }
 }

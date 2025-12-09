@@ -343,6 +343,9 @@ pub const Sim = struct {
         if (next_confirm > r.confirmed_frame) {
             // New confirmed frames available - need to rollback and resim
             const rollback_depth = target_match_frame - 1 - r.confirmed_frame;
+            if (rollback_depth > Rollback.MAX_ROLLBACK_FRAMES) {
+                @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
+            }
             if (rollback_depth > 0) {
                 r.stats.last_rollback_depth = rollback_depth;
                 r.stats.total_rollbacks += 1;
@@ -385,6 +388,15 @@ pub const Sim = struct {
             // No rollback needed - just tick with current frame's inputs
             self.injectInputsForFrame(target_match_frame);
             self.tick();
+        }
+
+        // Always advance local peer's confirmed frame, even if there's no input.
+        // Without this, confirmed_frame can't advance if the local player is idle,
+        // causing rollback depth to grow unbounded.
+        if (self.net) |n| {
+            if (target_match_frame > r.peer_confirmed_frame[n.local_peer_id]) {
+                r.peer_confirmed_frame[n.local_peer_id] = target_match_frame;
+            }
         }
     }
 
@@ -513,14 +525,21 @@ pub const Sim = struct {
             const match_frame = self.rollback.?.getMatchFrame(self.time.frame) + 1; // +1 because this event is for the next tick
             const match_frame_u16: u16 = @intCast(match_frame);
 
+            // Tag the event with the correct local peer ID for proper player routing
+            var local_event = event;
+            local_event.peer_id = self.net.?.local_peer_id;
+
             // Record to NetState for packet sending to peers
-            self.net.?.recordLocalInputs(match_frame_u16, &[_]Event{event});
+            self.net.?.recordLocalInputs(match_frame_u16, &[_]Event{local_event});
 
             // Also store in RollbackState for the local peer so it can be replayed during rollback
-            self.rollback.?.emitInputs(self.net.?.local_peer_id, match_frame, &[_]Event{event});
-        }
+            self.rollback.?.emitInputs(self.net.?.local_peer_id, match_frame, &[_]Event{local_event});
 
-        self.inject_event(event);
+            // Inject with correct peer_id so it routes to the right player
+            self.inject_event(local_event);
+        } else {
+            self.inject_event(event);
+        }
     }
 
     /// Inject an event into the buffer without recording.

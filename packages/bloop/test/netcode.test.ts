@@ -90,6 +90,7 @@ describe("netcode integration", () => {
 
     // Get packet from sim1 to send to sim0
     const packet1 = sim1.net.getOutboundPacket(0);
+    assert(packet1, "Packet from sim1 to sim0 should not be null");
     expect(packet1.length).toBeGreaterThan(0);
 
     // sim0 receives the packet

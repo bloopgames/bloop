@@ -5,6 +5,9 @@ import type { Log } from "./netcode/logs";
 export const peers = ref<Peer[]>([]);
 export const logs = ref<Log[]>([]);
 
+export const ourPeerId = ref<number | null>(null);
+export const remotePeerId = ref<number | null>(null);
+
 // Buzzer game UI state
 export const buzzer = ref({
   blockX: 0,

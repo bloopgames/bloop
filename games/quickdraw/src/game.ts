@@ -1,5 +1,6 @@
-import { Bloop } from "@bloopjs/bloop";
-import { buzzer } from "./ui";
+import { Bloop, unwrap } from "@bloopjs/bloop";
+// Update UI state from bag every frame
+import { buzzer, peers } from "./ui";
 
 export type GamePhase = "waiting" | "active" | "won" | "lost";
 
@@ -137,10 +138,6 @@ game.system("handle inputs", {
     }
   },
 });
-
-import { unwrap } from "@bloopjs/bloop";
-// Update UI state from bag every frame
-import { peers } from "./ui";
 
 game.system("update ui", {
   update({ bag }) {

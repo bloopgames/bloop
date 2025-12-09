@@ -54,7 +54,7 @@ export class Net {
    * @param targetPeer - Peer ID to send the packet to
    * @returns Packet data to send, or null if no packet available
    */
-  getOutboundPacket(targetPeer: number): Uint8Array | null {
+  getOutboundPacket(targetPeer: number): Uint8Array<ArrayBuffer> | null {
     // Build the packet in engine memory
     this.#wasm.build_outbound_packet(targetPeer);
 
@@ -93,7 +93,11 @@ export class Net {
       `Failed to allocate ${data.byteLength} bytes for received packet`,
     );
 
-    const memoryView = new Uint8Array(this.#memory.buffer, ptr, data.byteLength);
+    const memoryView = new Uint8Array(
+      this.#memory.buffer,
+      ptr,
+      data.byteLength,
+    );
     memoryView.set(data);
 
     // Process the packet

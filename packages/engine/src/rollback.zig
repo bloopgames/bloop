@@ -8,10 +8,13 @@ pub const MAX_ROLLBACK_FRAMES = 30;
 pub const MAX_PEERS = 12;
 pub const MAX_EVENTS_PER_FRAME = 16;
 
-/// Stores events for a single frame from a single peer
+/// Stores events for a single frame from a single peer.
+/// Tracks which frame the data belongs to, preventing stale reads when the ring buffer wraps.
 pub const InputFrame = struct {
     events: [MAX_EVENTS_PER_FRAME]Event = undefined,
     count: u8 = 0,
+    /// The match frame this slot was written for. Used to detect stale data.
+    frame: u32 = 0,
 
     pub fn add(self: *InputFrame, event: Event) void {
         if (self.count < MAX_EVENTS_PER_FRAME) {
@@ -22,6 +25,10 @@ pub const InputFrame = struct {
 
     pub fn clear(self: *InputFrame) void {
         self.count = 0;
+    }
+
+    pub fn setFrame(self: *InputFrame, match_frame: u32) void {
+        self.frame = match_frame;
     }
 
     pub fn slice(self: *const InputFrame) []const Event {
@@ -238,13 +245,20 @@ pub const NetState = struct {
         if (header.peer_id >= MAX_PEERS) return;
         const peer = &self.peer_states[header.peer_id];
 
+        // Capture old remote_seq before updating to filter duplicate events
+        const old_remote_seq = peer.remote_seq;
+
         // Update seq/ack tracking
         if (header.frame_seq > peer.remote_seq) {
             peer.remote_seq = header.frame_seq;
         }
 
-        // The packet's frame_ack tells us what frame they've received from us
-        // Trim our unacked buffer up to that frame
+        // Update remote_ack - what frame they've received from us
+        if (header.frame_ack > peer.remote_ack) {
+            peer.remote_ack = header.frame_ack;
+        }
+
+        // Trim our unacked buffer up to the acked frame
         peer.trimAcked(header.frame_ack);
 
         // Decode and store events
@@ -259,9 +273,20 @@ pub const NetState = struct {
             // Set peer_id from packet header so events are routed to correct player
             event.peer_id = header.peer_id;
 
-            // Store in rollback state
-            const slot = wire_event.frame % MAX_ROLLBACK_FRAMES;
-            rollback.peer_inputs[header.peer_id][slot].add(event);
+            // Only add events for frames we haven't received yet.
+            // Each packet retransmits all unacked events, so we filter duplicates
+            // by only accepting events for frames > our last received frame.
+            if (wire_event.frame > old_remote_seq) {
+                const slot = wire_event.frame % MAX_ROLLBACK_FRAMES;
+                var input_frame = &rollback.peer_inputs[header.peer_id][slot];
+
+                // If this slot was for a different frame, clear it first
+                if (input_frame.frame != wire_event.frame) {
+                    input_frame.clear();
+                    input_frame.setFrame(wire_event.frame);
+                }
+                input_frame.add(event);
+            }
 
             offset += Packets.WIRE_EVENT_SIZE;
         }
@@ -317,12 +342,13 @@ pub const RollbackState = struct {
         if (peer >= self.peer_count) return;
 
         const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        var frame = &self.peer_inputs[peer][slot];
+        var input_frame = &self.peer_inputs[peer][slot];
 
-        // Clear and add new events
-        frame.clear();
+        // Clear, set frame, and add new events
+        input_frame.clear();
+        input_frame.setFrame(match_frame);
         for (events) |event| {
-            frame.add(event);
+            input_frame.add(event);
         }
 
         // Update confirmed frame for this peer
@@ -331,12 +357,18 @@ pub const RollbackState = struct {
         }
     }
 
-    /// Get inputs for a peer at a given match frame
+    /// Get inputs for a peer at a given match frame.
+    /// Returns empty if the slot doesn't contain data for the requested frame.
     pub fn getInputs(self: *const RollbackState, peer: u8, match_frame: u32) []const Event {
         if (peer >= self.peer_count) return &[_]Event{};
 
         const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        return self.peer_inputs[peer][slot].slice();
+
+        const input_frame = &self.peer_inputs[peer][slot];
+        if (input_frame.frame != match_frame) {
+            return &[_]Event{};
+        }
+        return input_frame.slice(match_frame);
     }
 
     /// Calculate the next confirmable frame (minimum across all peers)
@@ -452,6 +484,35 @@ test "RollbackState ring buffer wraparound" {
     const retrieved = state.getInputs(0, 30);
     try std.testing.expectEqual(@as(usize, 1), retrieved.len);
     try std.testing.expectEqual(Events.Key.KeyB, retrieved[0].payload.key);
+}
+
+test "RollbackState getInputs returns empty for frames without events" {
+    const state = try std.testing.allocator.create(RollbackState);
+    state.* = .{
+        .peer_count = 2,
+        .allocator = std.testing.allocator,
+    };
+    defer {
+        state.deinit();
+        std.testing.allocator.destroy(state);
+    }
+
+    // Emit event for peer 1 at frame 109
+    const events = [_]Event{Event.mouseDown(.Left, 1, .LocalMouse)};
+    state.emitInputs(1, 109, &events);
+
+    // Should get the event for frame 109
+    const retrieved109 = state.getInputs(1, 109);
+    try std.testing.expectEqual(@as(usize, 1), retrieved109.len);
+
+    // Frame 139 maps to same slot (139 % 30 = 19 = 109 % 30)
+    // But we never emitted events for frame 139, so should get empty
+    const retrieved139 = state.getInputs(1, 139);
+    try std.testing.expectEqual(@as(usize, 0), retrieved139.len);
+
+    // Frame 110 also has no events
+    const retrieved110 = state.getInputs(1, 110);
+    try std.testing.expectEqual(@as(usize, 0), retrieved110.len);
 }
 
 test "RollbackState calculateNextConfirmFrame" {
