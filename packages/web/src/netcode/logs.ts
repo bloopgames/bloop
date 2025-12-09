@@ -32,7 +32,18 @@ export type LogSeverity = "debug" | "log" | "warn" | "error";
 
 export type OnLogCallback = (log: Log) => void;
 
-export const logger = {
+export type Logger = {
+  onLog: OnLogCallback | null;
+
+  matchFrame: number;
+  frameNumber: number;
+
+  log(opts: LogOpts): void;
+  warn(opts: LogOpts): void;
+  error(opts: LogOpts): void;
+}
+
+export const logger: Logger = {
   onLog: null as OnLogCallback | null,
 
   matchFrame: -1,
