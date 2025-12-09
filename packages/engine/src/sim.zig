@@ -3,13 +3,14 @@ const Ctx = @import("context.zig");
 const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
 const Rollback = @import("rollback.zig");
+const Net = @import("net.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const RollbackState = Rollback.RollbackState;
-const NetState = Rollback.NetState;
+const NetState = Net.NetState;
 
 pub const hz = 1000 / 60;
 
@@ -229,9 +230,9 @@ pub const Sim = struct {
 
         self.net.receivePacket(slice, self.rollback) catch |e| {
             switch (e) {
-                Rollback.Packets.DecodeError.BufferTooSmall => return 2,
-                Rollback.Packets.DecodeError.UnsupportedVersion => return 3,
-                Rollback.Packets.DecodeError.InvalidEventCount => return 4,
+                Net.Packets.DecodeError.BufferTooSmall => return 2,
+                Net.Packets.DecodeError.UnsupportedVersion => return 3,
+                Net.Packets.DecodeError.InvalidEventCount => return 4,
             }
         };
         return 0;
@@ -239,7 +240,7 @@ pub const Sim = struct {
 
     /// Get seq for a peer (latest frame received from them)
     pub fn getPeerSeq(self: *const Sim, peer: u8) u16 {
-        if (peer < Rollback.MAX_PEERS) {
+        if (peer < Net.MAX_PEERS) {
             return self.net.peer_states[peer].remote_seq;
         }
         return 0;
@@ -247,7 +248,7 @@ pub const Sim = struct {
 
     /// Get ack for a peer (latest frame they acked from us)
     pub fn getPeerAck(self: *const Sim, peer: u8) u16 {
-        if (peer < Rollback.MAX_PEERS) {
+        if (peer < Net.MAX_PEERS) {
             return self.net.peer_states[peer].remote_ack;
         }
         return 0;
@@ -255,7 +256,7 @@ pub const Sim = struct {
 
     /// Get unacked count for a peer
     pub fn getUnackedCount(self: *const Sim, peer: u8) u16 {
-        if (peer < Rollback.MAX_PEERS) {
+        if (peer < Net.MAX_PEERS) {
             return self.net.peer_states[peer].unackedCount();
         }
         return 0;
@@ -303,7 +304,7 @@ pub const Sim = struct {
         if (next_confirm > r.confirmed_frame) {
             // New confirmed frames available - need to rollback and resim
             const rollback_depth = target_match_frame - 1 - r.confirmed_frame;
-            if (rollback_depth > Rollback.MAX_ROLLBACK_FRAMES) {
+            if (rollback_depth > Net.MAX_ROLLBACK_FRAMES) {
                 @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
             }
             if (rollback_depth > 0) {

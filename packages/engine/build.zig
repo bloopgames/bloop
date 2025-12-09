@@ -121,9 +121,19 @@ pub fn build(b: *std.Build) void {
     });
     const run_packets_tests = b.addRunArtifact(packets_tests);
 
+    const net_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/net.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }),
+    });
+    const run_net_tests = b.addRunArtifact(net_tests);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_snapshot_tests.step);
     test_step.dependOn(&run_rollback_tests.step);
     test_step.dependOn(&run_sim_tests.step);
     test_step.dependOn(&run_packets_tests.step);
+    test_step.dependOn(&run_net_tests.step);
 }
