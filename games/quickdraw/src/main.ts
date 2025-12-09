@@ -1,12 +1,8 @@
 import "./style.css";
-import { start } from "@bloopjs/web";
+import { logger, type PeerId, start } from "@bloopjs/web";
 import { createApp } from "vue";
 import App from "./App.vue";
 import { connectedPeers, game, makePeer, peerStats } from "./game";
-import { joinRoom } from "./netcode/broker";
-import type { Logger, LogOpts } from "./netcode/logs";
-import type { PeerId } from "./netcode/protocol";
-import { netcode } from "./netcode/transport";
 import { logs, remotePeerId as opponentPeerId, ourPeerId } from "./ui";
 
 const vueApp = createApp(App);
@@ -51,40 +47,17 @@ function assignPeerIds(
   }
 }
 
-const logger: Logger = {
-  log: (log: LogOpts) => {
-    const frame = app.sim.time.frame;
-    const matchFrame = app.sim.wasm.get_match_frame();
-    logs.value.push({
-      ...log,
-      timestamp: Date.now(),
-      frame_number: frame,
-      match_frame: sessionActive ? matchFrame : null,
-      severity: "log",
-    });
-  },
-  warn: (log: LogOpts) => {
-    const frame = app.sim.time.frame;
-    const matchFrame = app.sim.wasm.get_match_frame();
-    logs.value.push({
-      ...log,
-      timestamp: Date.now(),
-      frame_number: frame,
-      match_frame: sessionActive ? matchFrame : null,
-      severity: "warn",
-    });
-  },
-  error: (log: LogOpts) => {
-    const frame = app.sim.time.frame;
-    const matchFrame = app.sim.wasm.get_match_frame();
-    logs.value.push({
-      ...log,
-      timestamp: Date.now(),
-      frame_number: frame,
-      match_frame: sessionActive ? matchFrame : null,
-      severity: "error",
-    });
-  },
+logger.onLog = (severity, log) => {
+  const frame = app.sim.time.frame;
+  const matchFrame = app.sim.wasm.get_match_frame();
+  console.log('got log', log.json);
+  logs.value.push({
+    ...log,
+    timestamp: Date.now(),
+    frame_number: frame,
+    match_frame: sessionActive ? matchFrame : null,
+    severity,
+  });
 };
 
 game.system("netcode logger", {
@@ -105,23 +78,10 @@ game.system("netcode logger", {
   },
 });
 
-netcode.logRtc = (...args: unknown[]) => {
-  logger.log({
-    source: "webrtc",
-    json: args,
-  });
-};
-netcode.logWs = (...args: unknown[]) => {
-  logger.log({
-    source: "ws",
-    json: args,
-  });
-};
-
 // Buffer incoming packets until we process them in beforeFrame
 const incomingPackets: Uint8Array[] = [];
 
-joinRoom("nope", logger, {
+app.joinRoom("nope", {
   onPeerIdAssign: (peerId) => {
     console.log(`Assigned peer ID: ${peerId}`);
     localStringPeerId = peerId;

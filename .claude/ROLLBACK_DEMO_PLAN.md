@@ -48,7 +48,12 @@ Formalize rollback logic in Zig (currently in TS in quickdraw):
 - Configurable local input delay (3 frames)
 - Unit tests for rollback scenarios
 
-**Status**: Not started
+**Status**: Completed (Dec 8)
+- `RollbackState` in `packages/engine/src/rollback.zig`
+- `NetState` and `PeerNetState` in `packages/engine/src/net.zig`
+- Ring buffer with frame tracking to prevent stale reads
+- `peer_confirmed_frame` tracking per peer
+- Integration tests in `packages/bloop/test/netcode.test.ts`
 
 ### 4. Engine: Packet Format (~0.5 day)
 Binary packet encode/decode in Zig (port from quickdraw's `inputs.ts`):
@@ -57,7 +62,11 @@ Binary packet encode/decode in Zig (port from quickdraw's `inputs.ts`):
 - Include unacked events for retransmission
 - Unit tests
 
-**Status**: Not started
+**Status**: Completed (Dec 8)
+- `PacketHeader` and `WireEvent` in `packages/engine/src/packets.zig`
+- Compact 9-byte wire events
+- Unacked buffer with retransmission support in `PeerNetState`
+- TypeScript `Net` class in `packages/bloop/src/net.ts` wraps WASM exports
 
 ### 5. Tape Format: Add Packets (~0.25 day)
 Extend tape format to record network packets:
@@ -105,20 +114,27 @@ The "maximum wow factor":
 
 ## Priority Order
 
-| Priority | Item | Notes |
-|----------|------|-------|
-| P0 | Mario game (local multiplayer) | Foundation for demo |
-| P0 | Engine: per-player inputs | Required for netcode |
-| P0 | Engine: rollback core | The main feature |
-| P0 | Engine: packet format | Wire protocol |
-| P1 | Web: network transport | Connect it all |
-| P1 | Debug UI | Show the internals |
-| P2 | Cloudflare TURN | Cross-region connectivity |
-| P3 | Tape packets + rollback dissection | Maximum wow factor |
+| Priority | Item | Status | Notes |
+|----------|------|--------|-------|
+| P0 | Mario game (local multiplayer) | ✅ Done | Foundation for demo |
+| P0 | Engine: per-player inputs | ✅ Done | Required for netcode |
+| P0 | Engine: rollback core | ✅ Done | The main feature |
+| P0 | Engine: packet format | ✅ Done | Wire protocol |
+| P1 | Web: network transport | 🔲 Next | Connect it all |
+| P1 | Debug UI | 🔲 | Show the internals |
+| P2 | Cloudflare TURN | 🔲 | Cross-region connectivity |
+| P3 | Tape packets + rollback dissection | 🔲 | Maximum wow factor |
 
 ---
 
 ## Session Log
+
+### Dec 8
+- Fixed netcode bugs (wrong player routing, ring buffer stale events, ack not updating, rollback depth unbounded)
+- Separated `NetState`/`PeerNetState` into `net.zig` for cleaner architecture
+- Removed unused WASM exports (`get_confirmed_frame`, `get_peer_frame`, `get_rollback_depth`, `get_unacked_count`)
+- All integration tests passing
+- Updated context doc: `.claude/context/netcode-debug-2024-12-08.md`
 
 ### Dec 5 (2.5 hours)
 - Created this plan

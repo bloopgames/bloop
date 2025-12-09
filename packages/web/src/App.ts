@@ -1,6 +1,10 @@
 import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton } from "@bloopjs/engine";
+import {
+  joinRoom as joinRoomInternal,
+  type RoomEvents,
+} from "./netcode/mod.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -13,6 +17,8 @@ export type StartOptions = {
   startPaused?: boolean;
   /** Whether the sim should be recording to tape from initialization, defaults to true */
   startRecording?: boolean;
+  /** URL for the WebRTC signaling broker (e.g. "wss://broker.example.com/ws") */
+  brokerUrl?: string;
 };
 
 /** Start a bloop game on the web */
@@ -26,21 +32,28 @@ export async function start(opts: StartOptions): Promise<App> {
     opts.sim = sim;
   }
 
-  const app = new App(opts.sim, opts.game);
+  const app = new App(
+    opts.sim,
+    opts.game,
+    opts.brokerUrl ?? "wss://webrtc-divine-glade-8064.fly.dev/ws",
+  );
   return app;
 }
 
 export class App {
   #sim: Sim;
   game: Bloop<any>;
+  /** URL for the WebRTC signaling broker */
+  readonly brokerUrl?: string;
   /** RequestAnimationFrame handle for cancelling */
   #rafHandle: number | null = null;
   #unsubscribe: UnsubscribeFn | null = null;
   #now: number = performance.now();
 
-  constructor(sim: Sim, game: Bloop<any>) {
+  constructor(sim: Sim, game: Bloop<any>, brokerUrl?: string) {
     this.#sim = sim;
     this.game = game;
+    this.brokerUrl = brokerUrl;
 
     this.game.hooks.beforeFrame = (frame: number) => {
       this.beforeFrame.notify(frame);
@@ -55,6 +68,14 @@ export class App {
 
   set sim(sim: Sim) {
     this.#sim = sim;
+  }
+
+  /** Join a multiplayer room via the broker */
+  joinRoom(roomId: string, callbacks: RoomEvents): void {
+    if (!this.brokerUrl) {
+      throw new Error("brokerUrl not configured in start()");
+    }
+    joinRoomInternal(this.brokerUrl, roomId, callbacks);
   }
 
   beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
@@ -180,7 +201,7 @@ export class App {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
-        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`
+        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`,
       );
     }
 

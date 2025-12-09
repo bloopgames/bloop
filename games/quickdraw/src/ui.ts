@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import type { GamePhase, Peer } from "./game";
-import type { Log } from "./netcode/logs";
+import type { Log } from "@bloopjs/web";
 
 export const peers = ref<Peer[]>([]);
 export const logs = ref<Log[]>([]);
