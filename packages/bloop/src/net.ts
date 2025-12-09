@@ -124,17 +124,15 @@ export class Net {
    * Get network state for a specific peer.
    *
    * @param peer - Peer ID to query
-   * @returns Object with seq, ack, and unackedCount
+   * @returns Object with seq and ack
    */
   getPeerState(peer: number): {
     seq: number;
     ack: number;
-    unackedCount: number;
   } {
     return {
       seq: this.#wasm.get_peer_seq(peer),
       ack: this.#wasm.get_peer_ack(peer),
-      unackedCount: this.#wasm.get_unacked_count(peer),
     };
   }
 }

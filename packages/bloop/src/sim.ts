@@ -396,25 +396,4 @@ export class Sim {
     this.wasm.free(ptr, events.byteLength);
   }
 
-  /**
-   * Get session stats for introspection.
-   */
-  getSessionStats(): {
-    matchFrame: number;
-    confirmedFrame: number;
-    rollbackDepth: number;
-  } {
-    return {
-      matchFrame: this.wasm.get_match_frame(),
-      confirmedFrame: this.wasm.get_confirmed_frame(),
-      rollbackDepth: this.wasm.get_rollback_depth(),
-    };
-  }
-
-  /**
-   * Get the latest confirmed frame for a specific peer.
-   */
-  getPeerFrame(peer: number): number {
-    return this.wasm.get_peer_frame(peer);
-  }
 }

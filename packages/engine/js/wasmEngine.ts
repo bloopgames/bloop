@@ -105,18 +105,6 @@ export type WasmEngine = {
    * Get current match frame (frames since session start)
    */
   get_match_frame: () => number;
-  /**
-   * Get confirmed frame (latest frame where all peers have sent inputs)
-   */
-  get_confirmed_frame: () => number;
-  /**
-   * Get the latest confirmed frame for a specific peer
-   */
-  get_peer_frame: (peer: number) => number;
-  /**
-   * Get rollback depth (match_frame - confirmed_frame)
-   */
-  get_rollback_depth: () => number;
 
   // Network / Packets
   /**
@@ -157,8 +145,4 @@ export type WasmEngine = {
    * Get ack for a peer (latest frame they acked from us)
    */
   get_peer_ack: (peer: number) => number;
-  /**
-   * Get unacked count for a peer (frames waiting for ack)
-   */
-  get_unacked_count: (peer: number) => number;
 };

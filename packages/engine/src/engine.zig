@@ -348,21 +348,6 @@ pub export fn get_match_frame() u32 {
     return sim.?.getMatchFrame();
 }
 
-/// Get confirmed frame (0 if no session)
-pub export fn get_confirmed_frame() u32 {
-    return sim.?.getConfirmedFrame();
-}
-
-/// Get confirmed frame for a specific peer
-pub export fn get_peer_frame(peer: u8) u32 {
-    return sim.?.getPeerFrame(peer);
-}
-
-/// Get rollback depth (match_frame - confirmed_frame)
-pub export fn get_rollback_depth() u32 {
-    return sim.?.getRollbackDepth();
-}
-
 // ─────────────────────────────────────────────────────────────
 // Network / Packet exports
 // ─────────────────────────────────────────────────────────────
@@ -413,11 +398,6 @@ pub export fn get_peer_seq(peer: u8) u16 {
 /// Get ack for a peer (latest frame they acked from us)
 pub export fn get_peer_ack(peer: u8) u16 {
     return sim.?.getPeerAck(peer);
-}
-
-/// Get unacked count for a peer
-pub export fn get_unacked_count(peer: u8) u16 {
-    return sim.?.getUnackedCount(peer);
 }
 
 // ─────────────────────────────────────────────────────────────

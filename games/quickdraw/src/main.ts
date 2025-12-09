@@ -54,34 +54,34 @@ function assignPeerIds(
 const logger: Logger = {
   log: (log: LogOpts) => {
     const frame = app.sim.time.frame;
-    const stats = app.sim.getSessionStats();
+    const matchFrame = app.sim.wasm.get_match_frame();
     logs.value.push({
       ...log,
       timestamp: Date.now(),
       frame_number: frame,
-      match_frame: sessionActive ? stats.matchFrame : null,
+      match_frame: sessionActive ? matchFrame : null,
       severity: "log",
     });
   },
   warn: (log: LogOpts) => {
     const frame = app.sim.time.frame;
-    const stats = app.sim.getSessionStats();
+    const matchFrame = app.sim.wasm.get_match_frame();
     logs.value.push({
       ...log,
       timestamp: Date.now(),
       frame_number: frame,
-      match_frame: sessionActive ? stats.matchFrame : null,
+      match_frame: sessionActive ? matchFrame : null,
       severity: "warn",
     });
   },
   error: (log: LogOpts) => {
     const frame = app.sim.time.frame;
-    const stats = app.sim.getSessionStats();
+    const matchFrame = app.sim.wasm.get_match_frame();
     logs.value.push({
       ...log,
       timestamp: Date.now(),
       frame_number: frame,
-      match_frame: sessionActive ? stats.matchFrame : null,
+      match_frame: sessionActive ? matchFrame : null,
       severity: "error",
     });
   },
