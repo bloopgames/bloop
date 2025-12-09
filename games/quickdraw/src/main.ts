@@ -47,16 +47,8 @@ function assignPeerIds(
   }
 }
 
-logger.onLog = (severity, log) => {
-  const frame = app.sim.time.frame;
-  const matchFrame = app.sim.wasm.get_match_frame();
-  logs.value.push({
-    ...log,
-    timestamp: Date.now(),
-    frame_number: frame,
-    match_frame: sessionActive ? matchFrame : null,
-    severity,
-  });
+logger.onLog = (log) => {
+  logs.value.push(log);
 };
 
 game.system("netcode logger", {

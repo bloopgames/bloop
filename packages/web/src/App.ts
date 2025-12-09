@@ -5,6 +5,7 @@ import {
   joinRoom as joinRoomInternal,
   type RoomEvents,
 } from "./netcode/broker";
+import { logger } from "./netcode/logs.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -65,6 +66,8 @@ export class App {
     this.brokerUrl = brokerUrl;
 
     this.game.hooks.beforeFrame = (frame: number) => {
+      logger.frameNumber = this.#sim.time.frame;
+      logger.matchFrame = this.#sim.wasm.get_match_frame();
       this.beforeFrame.notify(frame);
     };
 

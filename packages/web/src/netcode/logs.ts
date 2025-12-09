@@ -6,6 +6,7 @@ export type Log = {
   frame_number: number;
   /** relative frame number since the start of the current session */
   match_frame: number | null;
+  /** unix timestamp */
   timestamp: number;
   severity: LogSeverity;
   label?: string;
@@ -22,27 +23,48 @@ export type Log = {
 };
 
 export type LogOpts = Partial<Log> & {
-  source: "webrtc" | "ws" | "local" | "rollback";
+  source: Log["source"];
 };
 
 export type LogDirection = "inbound" | "outbound";
 
 export type LogSeverity = "debug" | "log" | "warn" | "error";
 
-export type OnLogCallback = (severity: LogSeverity, log: LogOpts) => void;
+export type OnLogCallback = (log: Log) => void;
 
 export const logger = {
   onLog: null as OnLogCallback | null,
 
+  matchFrame: -1,
+  frameNumber: -1,
+
   log(opts: LogOpts) {
-    this.onLog?.("log", opts);
+    this.onLog?.({
+      ...opts,
+      frame_number: this.frameNumber,
+      match_frame: this.matchFrame >= 0 ? this.matchFrame : null,
+      timestamp: Date.now(),
+      severity: "log",
+    });
   },
 
   warn(opts: LogOpts) {
-    this.onLog?.("warn", opts);
+    this.onLog?.({
+      ...opts,
+      frame_number: this.frameNumber,
+      match_frame: this.matchFrame >= 0 ? this.matchFrame : null,
+      timestamp: Date.now(),
+      severity: "warn",
+    });
   },
 
   error(opts: LogOpts) {
-    this.onLog?.("error", opts);
+    this.onLog?.({
+      ...opts,
+      frame_number: this.frameNumber,
+      match_frame: this.matchFrame >= 0 ? this.matchFrame : null,
+      timestamp: Date.now(),
+      severity: "error",
+    });
   },
 };
