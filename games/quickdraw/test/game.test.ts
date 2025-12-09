@@ -52,8 +52,8 @@ describe("buzzer game", () => {
 
     expect(game.bag.phase).toEqual("waiting");
 
-    // Player 1 clicks too early
-    sim.emit.keydown("KeyA");
+    // Player 1 clicks too early (mouse click, source = LocalMouse -> players[0])
+    sim.emit.mousedown("Left");
     sim.step();
 
     expect(game.bag.phase).toEqual("lost");
@@ -68,8 +68,8 @@ describe("buzzer game", () => {
     sim.step(3100);
     expect(game.bag.phase).toEqual("active");
 
-    // Player 1 clicks
-    sim.emit.keydown("KeyA");
+    // Player 1 clicks (LocalMouse -> players[0])
+    sim.emit.mousedown("Left");
     sim.step();
 
     expect(game.bag.phase).toEqual("won");
@@ -86,7 +86,7 @@ describe("buzzer game", () => {
     expect(game.bag.phase).toEqual("active");
 
     // Player 2 clicks
-    sim.emit.keydown("KeyL");
+    sim.emit.mousedown("Left", 1);
     sim.step();
 
     expect(game.bag.phase).toEqual("won");
@@ -100,7 +100,7 @@ describe("buzzer game", () => {
 
     // Get to active phase and win
     sim.step(3100);
-    sim.emit.keydown("KeyA");
+    sim.emit.mousedown("Left");
     sim.step();
 
     expect(game.bag.phase).toEqual("won");

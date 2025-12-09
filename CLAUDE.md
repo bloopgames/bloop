@@ -28,32 +28,32 @@ bun run ci:tsc
 # Run ts tests
 bun test
 
+# Run all ci checks
+bun run ci
+
 # Run engine tests
-cd packages/engine && zig build test
+(cd packages/engine && zig build test)
 
 # Run a single test file
 bun test packages/bloop/test/bloop.test.ts
 
 # Build engine WASM (requires zig)
-cd packages/engine && bun run build:wasm
+(cd packages/engine && bun run build:wasm)
 
 # Watch engine WASM during development
-cd packages/engine && bun dev
+(cd packages/engine && bun dev)
 
 # Run a specific game dev server
 cd games/quickdraw && bun run dev
-
-# Run all ci checks
-bun run ci
 ```
 
 ## Monorepo Structure
 
 **Packages (publishable libraries):**
 
-- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording. Performance is the north star, and we should have high unit test coverage here. Also we should prefer having one explicit way to do things instead more ergonomic apis. Exported wasm functions must be listed explicitly in build.zig
+- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording.
 
-- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games. Ergonomics and expressiveness are the north star here. Tests are integration tests, integrating with the `Bloop` and `Sim` objects the way the developer would. We want code that changes often to have as little friction as possible to provide a great DX. While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
+- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games.
 
 - `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR, translating browser APIs into bloop calls. Tests should be end-to-end tests using a real browser environment (e.g. Playwright).
 
@@ -93,7 +93,22 @@ The engine in `packages/engine/src/*.zig` manages:
 - Tape recording/playback
 - Snapshot/restore
 
+Performance is the north star, and we should have high unit test coverage here. We should prefer having one explicit way to do things instead more ergonomic apis. Exported wasm functions must be listed explicitly in build.zig
+
 TypeScript interacts with WASM through `WasmEngine` interface. The `mount()` function instantiates WASM and wires up callbacks.
+
+Each WASM page is 64KB. When adding new static allocations to the engine, run wasm-objdump -j Import -x zig-out/wasm/bloop.wasm to check the required initial pages and update mount.ts if needed.
+
+WASM extern callbacks use double-underscore prefix (__systems, __before_frame,
+  __user_data_len) to avoid shadowing parameter names in exported functions.
+
+### Bloop (TypeScript user-facing apis)
+
+Ergonomics and expressiveness are the north star here. Tests are integration tests, integrating with the `Bloop` and `Sim` objects the way the developer would. The target audience is game designers who can code, so the library needs to be expressive enough to design games live, but must also pass the "sniff test" of a seasoned developer in terms of performance.
+
+If a gamedev is using an api multiple times a day during prototyping / development, we want that api to have as little friction as possible to provide a great DX. We want it to feel like a shorthand of their creative process.
+
+While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
 
 ## Testing Pattern
 

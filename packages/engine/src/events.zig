@@ -6,56 +6,68 @@ pub const EventBuffer = extern struct {
     events: [MAX_EVENTS]Event,
 };
 
+/// Peer ID 255 indicates local input (not yet assigned to a session peer)
+pub const LOCAL_PEER: u8 = 255;
+
 pub const Event = extern struct {
     kind: EventType,
-    source: InputSource = .None,
-    _padding: [2]u8 = .{ 0, 0 },
+    /// Device that generated this input (keyboard, mouse, gamepad, etc.)
+    device: InputSource = .None,
+    /// Peer ID in the session (0-11), or LOCAL_PEER (255) for local unassigned input
+    peer_id: u8 = LOCAL_PEER,
+    _padding: [1]u8 = .{0},
     payload: EventPayload,
 
-    pub inline fn keyDown(key: Key, source: InputSource) Event {
+    pub inline fn keyDown(key: Key, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .KeyDown,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .key = key },
         };
     }
 
-    pub inline fn keyUp(key: Key, source: InputSource) Event {
+    pub inline fn keyUp(key: Key, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .KeyUp,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .key = key },
         };
     }
 
-    pub inline fn mouseDown(button: MouseButton, source: InputSource) Event {
+    pub inline fn mouseDown(button: MouseButton, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .MouseDown,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .mouse_button = button },
         };
     }
 
-    pub inline fn mouseUp(button: MouseButton, source: InputSource) Event {
+    pub inline fn mouseUp(button: MouseButton, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .MouseUp,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .mouse_button = button },
         };
     }
 
-    pub inline fn mouseMove(x: f32, y: f32, source: InputSource) Event {
+    pub inline fn mouseMove(x: f32, y: f32, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .MouseMove,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .mouse_move = .{ .x = x, .y = y } },
         };
     }
 
-    pub inline fn mouseWheel(delta_x: f32, delta_y: f32, source: InputSource) Event {
+    pub inline fn mouseWheel(delta_x: f32, delta_y: f32, peer_id: u8, device: InputSource) Event {
         return Event{
             .kind = .MouseWheel,
-            .source = source,
+            .device = device,
+            .peer_id = peer_id,
             .payload = .{ .delta = .{ .delta_x = delta_x, .delta_y = delta_y } },
         };
     }
@@ -63,7 +75,7 @@ pub const Event = extern struct {
     pub inline fn frameStart(frame_number: u32) Event {
         return Event{
             .kind = .FrameStart,
-            .source = .None,
+            .device = .None,
             .payload = .{ .frame_number = frame_number },
         };
     }

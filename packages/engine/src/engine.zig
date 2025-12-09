@@ -283,28 +283,28 @@ pub export fn tick() void {
     sim.?.tick();
 }
 
-pub export fn emit_keydown(key_code: Events.Key, source: Events.InputSource) void {
-    sim.?.emit_keydown(key_code, source);
+pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {
+    sim.?.emit_keydown(key_code, peer_id);
 }
 
-pub export fn emit_keyup(key_code: Events.Key, source: Events.InputSource) void {
-    sim.?.emit_keyup(key_code, source);
+pub export fn emit_keyup(key_code: Events.Key, peer_id: u8) void {
+    sim.?.emit_keyup(key_code, peer_id);
 }
 
-pub export fn emit_mousedown(button: Events.MouseButton, source: Events.InputSource) void {
-    sim.?.emit_mousedown(button, source);
+pub export fn emit_mousedown(button: Events.MouseButton, peer_id: u8) void {
+    sim.?.emit_mousedown(button, peer_id);
 }
 
-pub export fn emit_mouseup(button: Events.MouseButton, source: Events.InputSource) void {
-    sim.?.emit_mouseup(button, source);
+pub export fn emit_mouseup(button: Events.MouseButton, peer_id: u8) void {
+    sim.?.emit_mouseup(button, peer_id);
 }
 
-pub export fn emit_mousemove(x: f32, y: f32, source: Events.InputSource) void {
-    sim.?.emit_mousemove(x, y, source);
+pub export fn emit_mousemove(x: f32, y: f32, peer_id: u8) void {
+    sim.?.emit_mousemove(x, y, peer_id);
 }
 
-pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, source: Events.InputSource) void {
-    sim.?.emit_mousewheel(delta_x, delta_y, source);
+pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, peer_id: u8) void {
+    sim.?.emit_mousewheel(delta_x, delta_y, peer_id);
 }
 
 pub export fn get_time_ctx() wasmPointer {
@@ -348,19 +348,56 @@ pub export fn get_match_frame() u32 {
     return sim.?.getMatchFrame();
 }
 
-/// Get confirmed frame (0 if no session)
-pub export fn get_confirmed_frame() u32 {
-    return sim.?.getConfirmedFrame();
+// ─────────────────────────────────────────────────────────────
+// Network / Packet exports
+// ─────────────────────────────────────────────────────────────
+
+/// Set local peer ID for packet encoding
+pub export fn session_set_local_peer(peer_id: u8) void {
+    sim.?.setLocalPeer(peer_id);
 }
 
-/// Get confirmed frame for a specific peer
-pub export fn get_peer_frame(peer: u8) u32 {
-    return sim.?.getPeerFrame(peer);
+/// Mark a peer as connected
+pub export fn session_peer_connect(peer_id: u8) void {
+    sim.?.connectPeer(peer_id);
 }
 
-/// Get rollback depth (match_frame - confirmed_frame)
-pub export fn get_rollback_depth() u32 {
-    return sim.?.getRollbackDepth();
+/// Mark a peer as disconnected
+pub export fn session_peer_disconnect(peer_id: u8) void {
+    sim.?.disconnectPeer(peer_id);
+}
+
+/// Build an outbound packet for a target peer
+/// Call get_outbound_packet to get the pointer
+/// Call get_outbound_packet_len to get the length
+pub export fn build_outbound_packet(target_peer: u8) void {
+    sim.?.buildOutboundPacket(target_peer);
+}
+
+/// Get pointer to the outbound packet buffer
+pub export fn get_outbound_packet() wasmPointer {
+    return @intCast(sim.?.getOutboundPacketPtr());
+}
+
+/// Get length of the outbound packet
+pub export fn get_outbound_packet_len() u32 {
+    return sim.?.getOutboundPacketLen();
+}
+
+/// Process a received packet
+/// Returns 0 on success, error code otherwise
+pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
+    return sim.?.receivePacket(ptr, len);
+}
+
+/// Get seq for a peer (latest frame received from them)
+pub export fn get_peer_seq(peer: u8) u16 {
+    return sim.?.getPeerSeq(peer);
+}
+
+/// Get ack for a peer (latest frame they acked from us)
+pub export fn get_peer_ack(peer: u8) u16 {
+    return sim.?.getPeerAck(peer);
 }
 
 // ─────────────────────────────────────────────────────────────

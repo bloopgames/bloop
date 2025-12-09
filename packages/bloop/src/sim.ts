@@ -11,6 +11,7 @@ import {
   TimeContext,
   type WasmEngine,
 } from "@bloopjs/engine";
+import { Net } from "./net";
 import { assert } from "./util";
 
 const originalConsole = (globalThis as any).console;
@@ -89,6 +90,12 @@ export class Sim {
   #serialize?: SerializeFn;
   #isPaused: boolean = false;
 
+  /**
+   * Network API for packet management in multiplayer sessions.
+   * Use this to send/receive packets and query peer network state.
+   */
+  readonly net: Net;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
@@ -103,6 +110,7 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
+    this.net = new Net(wasm, memory);
   }
 
   step(ms?: number): number {
@@ -311,49 +319,23 @@ export class Sim {
   }
 
   emit = {
-    keydown: (key: Key, source: InputSource = "LocalKeyboard"): void => {
-      this.wasm.emit_keydown(
-        keyToKeyCode(key),
-        inputSourceToInputSourceCode(source),
-      );
+    keydown: (key: Key, peerId: number = 0): void => {
+      this.wasm.emit_keydown(keyToKeyCode(key), peerId);
     },
-    keyup: (key: Key, source: InputSource = "LocalKeyboard"): void => {
-      this.wasm.emit_keyup(
-        keyToKeyCode(key),
-        inputSourceToInputSourceCode(source),
-      );
+    keyup: (key: Key, peerId: number = 0): void => {
+      this.wasm.emit_keyup(keyToKeyCode(key), peerId);
     },
-    mousemove: (
-      x: number,
-      y: number,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousemove(x, y, inputSourceToInputSourceCode(source));
+    mousemove: (x: number, y: number, peerId: number = 0): void => {
+      this.wasm.emit_mousemove(x, y, peerId);
     },
-    mousedown: (
-      button: MouseButton,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousedown(
-        mouseButtonToMouseButtonCode(button),
-        inputSourceToInputSourceCode(source),
-      );
+    mousedown: (button: MouseButton, peerId: number = 0): void => {
+      this.wasm.emit_mousedown(mouseButtonToMouseButtonCode(button), peerId);
     },
-    mouseup: (
-      button: MouseButton,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mouseup(
-        mouseButtonToMouseButtonCode(button),
-        inputSourceToInputSourceCode(source),
-      );
+    mouseup: (button: MouseButton, peerId: number = 0): void => {
+      this.wasm.emit_mouseup(mouseButtonToMouseButtonCode(button), peerId);
     },
-    mousewheel: (
-      x: number,
-      y: number,
-      source: InputSource = "LocalMouse",
-    ): void => {
-      this.wasm.emit_mousewheel(x, y, inputSourceToInputSourceCode(source));
+    mousewheel: (x: number, y: number, peerId: number = 0): void => {
+      this.wasm.emit_mousewheel(x, y, peerId);
     },
   };
 
@@ -414,25 +396,4 @@ export class Sim {
     this.wasm.free(ptr, events.byteLength);
   }
 
-  /**
-   * Get session stats for introspection.
-   */
-  getSessionStats(): {
-    matchFrame: number;
-    confirmedFrame: number;
-    rollbackDepth: number;
-  } {
-    return {
-      matchFrame: this.wasm.get_match_frame(),
-      confirmedFrame: this.wasm.get_confirmed_frame(),
-      rollbackDepth: this.wasm.get_rollback_depth(),
-    };
-  }
-
-  /**
-   * Get the latest confirmed frame for a specific peer.
-   */
-  getPeerFrame(peer: number): number {
-    return this.wasm.get_peer_frame(peer);
-  }
 }
