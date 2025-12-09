@@ -1,50 +1,12 @@
-import { Bloop, unwrap } from "@bloopjs/bloop";
-// Update UI state from bag every frame
-import { buzzer, peers } from "./ui";
+import { Bloop } from "@bloopjs/bloop";
+import { buzzer } from "./ui";
 
 export type GamePhase = "waiting" | "active" | "won" | "lost";
-
-export type Peer = {
-  id: PeerId;
-  nickname: string;
-  inAck: FrameNumber;
-  outAck: FrameNumber;
-};
-
-// Peers and stats live outside the bag so they don't get rolled back
-export const connectedPeers: Peer[] = [];
-export const peerStats = new Map<PeerId, PeerStats>();
-
-export type FrameNumber = number;
-export type PeerId = string;
 
 export type Packet = {
   from: string;
   to: string;
-  data: Uint8Array;
-};
-
-export type PeerStats = {
-  /** Latest seq we received from this peer */
-  currentSeq: number;
-  /** Latest ack we received from this peer */
-  currentAck: number;
-  /** Time since last packet received (ms) */
-  timeSinceLastPacket: number;
-  /** Packets received per second */
-  packetsPerSecond: number;
-  /** Average delta between packets over last minute (ms) */
-  averagePacketDelta: number;
-  /** Timestamp of last packet received */
   lastPacketTime: number;
-  /** Packet timestamps for rate calculation */
-  packetTimestamps: number[];
-};
-
-export type Stat = {
-  history: number[];
-  average: number;
-  last: number;
 };
 
 export const game = Bloop.create({
@@ -150,33 +112,5 @@ game.system("update ui", {
     buzzer.value.screenHeight = bag.screenHeight;
     buzzer.value.remoteCursorX = bag.remoteCursorX;
     buzzer.value.remoteCursorY = bag.remoteCursorY;
-
-    // Deep copy peers with stats from external map to trigger reactivity
-    peers.value = connectedPeers.map((p) => ({
-      ...p,
-      stats: {
-        ...unwrap(peerStats.get(p.id), `Missing stats for peer ${p.id}`),
-      },
-    }));
   },
 });
-
-export function makePeer(id: PeerId): Peer {
-  // Create stats in external map (won't be rolled back)
-  peerStats.set(id, {
-    currentSeq: 0,
-    currentAck: 0,
-    timeSinceLastPacket: 0,
-    packetsPerSecond: 0,
-    averagePacketDelta: 0,
-    lastPacketTime: 0,
-    packetTimestamps: [],
-  });
-
-  return {
-    id,
-    nickname: id.substring(0, 6),
-    inAck: -1,
-    outAck: -1,
-  };
-}

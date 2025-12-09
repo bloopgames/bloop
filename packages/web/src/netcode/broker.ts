@@ -1,16 +1,13 @@
 import { WebSocket } from "partysocket";
-import type { Logger } from "./logs";
-import type { BrokerMessage } from "./protocol";
+import { logger } from "./logs.ts";
+import type { BrokerMessage } from "./protocol.ts";
 import {
   connect,
   listenForOffers,
   logErrors,
   logPeerConnection,
   type WebRtcPipe,
-} from "./transport";
-
-const remoteWsUrl = "wss://webrtc-divine-glade-8064.fly.dev/ws";
-const localWsUrl = "ws://localhost:3000";
+} from "./transport.ts";
 
 export type RoomEvents = {
   onBrokerMessage: (message: BrokerMessage) => void;
@@ -27,18 +24,22 @@ export type RoomEvents = {
   onDataChannelClose: (peerId: string, reliable: boolean) => void;
 };
 
-export function joinRoom(_roomId: string, console: Logger, cbs: RoomEvents) {
-  const broker = new WebSocket(remoteWsUrl);
+export function joinRoom(
+  brokerUrl: string,
+  _roomId: string,
+  cbs: RoomEvents
+) {
+  const broker = new WebSocket(brokerUrl);
 
   broker.addEventListener("open", () => {
-    console.log({
+    logger.log({
       source: "ws",
       label: "Connection opened",
     });
   });
 
   broker.addEventListener("close", (event) => {
-    console.warn({
+    logger.warn({
       source: "ws",
       label: "Connection closed",
       json: event,
@@ -46,7 +47,7 @@ export function joinRoom(_roomId: string, console: Logger, cbs: RoomEvents) {
   });
 
   broker.addEventListener("error", (event) => {
-    console.error({
+    logger.error({
       source: "ws",
       label: "Connection error",
       json: event,
@@ -60,7 +61,7 @@ export function joinRoom(_roomId: string, console: Logger, cbs: RoomEvents) {
   broker.addEventListener("message", async (event) => {
     try {
       const envelope = JSON.parse(event.data) as BrokerMessage;
-      console.log({
+      logger.log({
         source: "ws",
         direction: "inbound",
         json: envelope,
@@ -87,14 +88,14 @@ export function joinRoom(_roomId: string, console: Logger, cbs: RoomEvents) {
           cbs.onPeerDisconnected(envelope.peerId);
           break;
         default:
-          console.warn({
+          logger.warn({
             source: "ws",
             label: `Unknown message type: ${envelope.type}`,
             json: envelope,
           });
       }
     } catch (e) {
-      console.error({
+      logger.error({
         source: "ws",
         label: "Failed to parse json",
         json: {

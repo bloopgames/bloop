@@ -29,13 +29,7 @@ Benefits:
 - Sim becomes more focused on "what happens in a frame"
 - VCR becomes focused on "navigating through time"
 
-## Make RollbackState and NetState not optional
-
-* In `Sim`, `rollback_state` and `net_state` are optional, leading to a lot of `if let` and optional chaining. We should make them required
-
 ## Address typing and optional chaining on players, use a tuple?
-
-in bloop games,
 
 ```ts
 game.system('fack', {

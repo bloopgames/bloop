@@ -1,23 +1,10 @@
 import type { WebSocket } from "partysocket";
-import type { BrokerMessage, PeerMessage } from "./protocol";
-
-export const netcode = {
-  logWs(...args: any[]) {
-    console.log("[ws]", ...args);
-  },
-  logRtc(...args: any[]) {
-    console.log("[rtc]", ...args);
-  },
-};
+import { logger } from "./logs.ts";
+import type { BrokerMessage, PeerMessage } from "./protocol.ts";
 
 const iceServers: RTCConfiguration["iceServers"] = [
   { urls: "stun:stun.cloudflare.com:3478" },
 ];
-
-// const remoteWsUrl = "wss://webrtc-divine-glade-8064.fly.dev/ws";
-// const localWsUrl = "ws://localhost:3000";
-
-// const ws = new WebSocket(remoteWsUrl);
 
 export type WebRtcPipe = {
   peerConnection: RTCPeerConnection;
@@ -30,7 +17,7 @@ export async function connect(
   ws: WebSocket,
   peerId: string,
   /** defaults to 10s */
-  timeoutMs: number = 10000
+  timeoutMs: number = 10000,
 ): Promise<WebRtcPipe> {
   const pc = new RTCPeerConnection({ iceServers });
   const reliable = pc.createDataChannel("reliable", {});
@@ -41,9 +28,16 @@ export async function connect(
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  netcode.logRtc("set local description with offer");
+  logger.log({ source: "webrtc", label: "set offer", json: offer });
   await gatherIce(pc, timeoutMs);
-  netcode.logRtc("gathered ICE candidates");
+  logger.log({ source: "webrtc", label: "gathered ICE candidates" });
+
+  logger.log({
+    source: "ws",
+    label: "sending local description",
+    json: pc.localDescription,
+    to: peerId,
+  });
   send(ws, {
     type: "offer",
     payload: btoa(JSON.stringify(pc.localDescription)),
@@ -60,42 +54,67 @@ export async function connect(
 }
 
 export async function logErrors(dc: RTCDataChannel) {
-  // TODO: handle errors and disconnects in example game
   dc.onerror = (event) => {
-    netcode.logRtc(`[${dc.label}] ${JSON.stringify(event)}`);
+    logger.error({
+      source: "webrtc",
+      label: `error on ${dc.label} channel`,
+      json: event.error,
+    });
   };
 
-  dc.onclosing = (event) => {
-    netcode.logRtc(`[${dc.label}] closing: ${JSON.stringify(event)}`);
+  dc.onclosing = (_event) => {
+    logger.log({
+      source: "webrtc",
+      label: `closing ${dc.label} channel`,
+    });
   };
 
-  dc.onopen = (event) => {
-    netcode.logRtc(`[${dc.label}] opened: ${JSON.stringify(event)}`);
+  dc.onopen = (_event) => {
+    logger.log({
+      source: "webrtc",
+      label: `opened ${dc.label} channel`,
+    });
   };
 
-  dc.onclose = (event) => {
-    netcode.logRtc(`[${dc.label}] closed: ${JSON.stringify(event)}`);
+  dc.onclose = (_event) => {
+    logger.log({
+      source: "webrtc",
+      label: `closed ${dc.label} channel`,
+    });
   };
 }
 
 export async function logPeerConnection(pc: RTCPeerConnection, peerId: string) {
   pc.onconnectionstatechange = () => {
-    netcode.logRtc(`[pc ${peerId}] connectionState = ${pc.connectionState}`);
+    logger.log({
+      source: "webrtc",
+      label: `[${peerId.substring(0, 6)}] connectionState = ${pc.connectionState}`,
+    });
+  };
+
+  pc.onsignalingstatechange = () => {
+    logger.log({
+      source: "webrtc",
+      label: `[${peerId.substring(0, 6)}] signalingState = ${pc.signalingState}`,
+    });
   };
 }
 
 export async function gatherIce(
   pc: RTCPeerConnection,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<boolean | Error> {
   return new Promise<boolean | Error>((yes, no) => {
     setTimeout(
       () => no(new Error("Timed out waiting for completion")),
-      timeoutMs
+      timeoutMs,
     );
 
     pc.onicegatheringstatechange = () => {
-      netcode.logRtc(`icegatheringstatechange: ${pc.iceGatheringState}`);
+      logger.log({
+        source: "webrtc",
+        label: `icegatheringstatechange: ${pc.iceGatheringState}`,
+      });
 
       if (pc.iceGatheringState === "complete") {
         yes(true);
@@ -107,7 +126,7 @@ export async function gatherIce(
 export async function waitForAnswer(
   ws: WebSocket,
   pc: RTCPeerConnection,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<void> {
   return new Promise<void>((yes, no) => {
     const timeoutId = setTimeout(no, timeoutMs);
@@ -120,10 +139,17 @@ export async function waitForAnswer(
       if (peerMsg.type !== "answer") {
         return;
       }
-      netcode.logRtc("received answer from peer");
       const answerDesc = JSON.parse(atob(peerMsg.payload));
+      logger.log({
+        source: "webrtc",
+        label: "received answer",
+        json: answerDesc,
+      });
       await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
-      netcode.logRtc("set remote description with answer");
+      logger.log({
+        source: "webrtc",
+        label: "set remote description with answer",
+      });
       clearTimeout(timeoutId);
       yes();
     };
@@ -141,18 +167,24 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
     if (msg.type !== "offer") {
       return;
     }
-    netcode.logRtc("received offer");
+    logger.log({ source: "webrtc", label: "received offer" });
     const offer = JSON.parse(atob(msg.payload));
     const pc = new RTCPeerConnection({ iceServers });
 
-    const gatherIcePromise = gatherIce(pc, 10000);
-
     await pc.setRemoteDescription(offer);
-    netcode.logRtc("set remote description");
+    logger.log({
+      source: "webrtc",
+      label: "set remote description",
+      json: { offer, remoteDescription: pc.remoteDescription },
+    });
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    netcode.logRtc("set local description");
-    await gatherIcePromise;
+    logger.log({
+      source: "webrtc",
+      label: "set local description",
+      json: pc.localDescription,
+    });
+    await gatherIce(pc, 10000);
 
     const channels = {
       reliable: null as RTCDataChannel | null,
@@ -160,7 +192,10 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
     };
 
     pc.ondatachannel = (event) => {
-      netcode.logRtc(`[rtc.pc] received datachannel ${event.channel.label}`);
+      logger.log({
+        source: "webrtc",
+        label: `received datachannel ${event.channel.label}`,
+      });
       switch (event.channel.label) {
         case "reliable":
           channels.reliable = event.channel;
@@ -180,9 +215,15 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
       }
     };
 
+    logger.log({
+      source: "webrtc",
+      label: "sending answer",
+      json: pc.localDescription,
+    });
+
     send(ws, {
       type: "answer",
-      payload: btoa(JSON.stringify(answer)),
+      payload: btoa(JSON.stringify(pc.localDescription)),
       target: envelope.peerId,
     });
   };
@@ -192,5 +233,5 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
 
 function send(ws: WebSocket, msg: PeerMessage) {
   ws.send(JSON.stringify(msg));
-  console.log("[ws out]", msg);
+  logger.log({ source: "ws", direction: "outbound", json: msg });
 }

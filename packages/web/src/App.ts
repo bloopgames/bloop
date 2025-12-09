@@ -1,6 +1,11 @@
 import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton } from "@bloopjs/engine";
+import {
+  joinRoom as joinRoomInternal,
+  type RoomEvents,
+} from "./netcode/broker";
+import { logger } from "./netcode/logs.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -13,7 +18,11 @@ export type StartOptions = {
   startPaused?: boolean;
   /** Whether the sim should be recording to tape from initialization, defaults to true */
   startRecording?: boolean;
+  /** URL for the WebRTC signaling broker (e.g. "wss://broker.example.com/ws") */
+  brokerUrl?: string;
 };
+
+const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
 
 /** Start a bloop game on the web */
 export async function start(opts: StartOptions): Promise<App> {
@@ -26,29 +35,46 @@ export async function start(opts: StartOptions): Promise<App> {
     opts.sim = sim;
   }
 
-  const app = new App(opts.sim, opts.game);
+  const app = new App(
+    opts.sim,
+    opts.game,
+    opts.brokerUrl ?? DEFAULT_BROKER_URL,
+  );
   return app;
 }
 
+/**
+ * The main application class for running a bloop game in the browser
+ *
+ * This class handles translating browser events and APIs to bloopjs and the wasm engine.
+ *
+ * Usually instantiated with the start() function
+ */
 export class App {
   #sim: Sim;
   game: Bloop<any>;
+  /** URL for the WebRTC signaling broker */
+  readonly brokerUrl: string;
   /** RequestAnimationFrame handle for cancelling */
   #rafHandle: number | null = null;
   #unsubscribe: UnsubscribeFn | null = null;
   #now: number = performance.now();
 
-  constructor(sim: Sim, game: Bloop<any>) {
+  constructor(sim: Sim, game: Bloop<any>, brokerUrl: string) {
     this.#sim = sim;
     this.game = game;
+    this.brokerUrl = brokerUrl;
 
     this.game.hooks.beforeFrame = (frame: number) => {
+      logger.frameNumber = this.#sim.time.frame;
+      logger.matchFrame = this.#sim.wasm.get_match_frame();
       this.beforeFrame.notify(frame);
     };
 
     this.subscribe();
   }
 
+  /** The simulation instance associated with this app */
   get sim(): Sim {
     return this.#sim;
   }
@@ -57,7 +83,14 @@ export class App {
     this.#sim = sim;
   }
 
+  /** Join a multiplayer room via the broker */
+  joinRoom(roomId: string, callbacks: RoomEvents): void {
+    joinRoomInternal(this.brokerUrl, roomId, callbacks);
+  }
+
+  /** Event listeners for before a frame is processed */
   beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
+  /** Event listeners for after a frame is processed */
   afterFrame: ReturnType<typeof createListener> = createListener<[number]>();
 
   /** Subscribe to the browser events and start the render loop */
@@ -176,11 +209,23 @@ export class App {
     this.afterFrame.unsubscribeAll();
   }
 
+  /**
+   * Accept Hot Module Replacement when running in a vite dev server
+   *
+   * @example
+   *
+   * ```ts
+   * import.meta.hot?.accept("./game", async (newModule) => {
+   *   await app.acceptHmr(newModule?.game, {
+   *   wasmUrl: monorepoWasmUrl,
+   * });
+   * ```
+   */
   async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
-        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`
+        `HMR: missing game.hooks export on module: ${JSON.stringify(module)}`,
       );
     }
 
