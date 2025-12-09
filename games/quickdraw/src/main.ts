@@ -50,7 +50,6 @@ function assignPeerIds(
 logger.onLog = (severity, log) => {
   const frame = app.sim.time.frame;
   const matchFrame = app.sim.wasm.get_match_frame();
-  console.log('got log', log.json);
   logs.value.push({
     ...log,
     timestamp: Date.now(),
@@ -126,9 +125,6 @@ app.joinRoom("nope", {
       // Set up local and remote peers in net state
       app.sim.net.setLocalPeer(localPeerId);
       app.sim.net.connectPeer(remotePeerId);
-
-      sessionActive = true;
-      console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
 
       sessionActive = true;
       console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);

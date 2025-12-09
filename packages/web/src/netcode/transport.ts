@@ -28,9 +28,16 @@ export async function connect(
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  logger.log({ source: "webrtc", label: "set local description with offer" });
+  logger.log({ source: "webrtc", label: "set offer", json: offer });
   await gatherIce(pc, timeoutMs);
   logger.log({ source: "webrtc", label: "gathered ICE candidates" });
+
+  logger.log({
+    source: "ws",
+    label: "sending local description",
+    json: pc.localDescription,
+    to: peerId,
+  });
   send(ws, {
     type: "offer",
     payload: btoa(JSON.stringify(pc.localDescription)),
@@ -47,36 +54,32 @@ export async function connect(
 }
 
 export async function logErrors(dc: RTCDataChannel) {
-  // TODO: handle errors and disconnects in example game
   dc.onerror = (event) => {
     logger.error({
       source: "webrtc",
-      label: `[${dc.label}] error`,
-      json: event,
+      label: `error on ${dc.label} channel`,
+      json: event.error,
     });
   };
 
-  dc.onclosing = (event) => {
+  dc.onclosing = (_event) => {
     logger.log({
       source: "webrtc",
-      label: `[${dc.label}] closing`,
-      json: event,
+      label: `closing ${dc.label} channel`,
     });
   };
 
-  dc.onopen = (event) => {
+  dc.onopen = (_event) => {
     logger.log({
       source: "webrtc",
-      label: `[${dc.label}] opened`,
-      json: event,
+      label: `opened ${dc.label} channel`,
     });
   };
 
-  dc.onclose = (event) => {
+  dc.onclose = (_event) => {
     logger.log({
       source: "webrtc",
-      label: `[${dc.label}] closed`,
-      json: event,
+      label: `closed ${dc.label} channel`,
     });
   };
 }
@@ -85,7 +88,14 @@ export async function logPeerConnection(pc: RTCPeerConnection, peerId: string) {
   pc.onconnectionstatechange = () => {
     logger.log({
       source: "webrtc",
-      label: `[pc ${peerId}}] connectionState = ${pc.connectionState}`,
+      label: `[${peerId.substring(0, 6)}] connectionState = ${pc.connectionState}`,
+    });
+  };
+
+  pc.onsignalingstatechange = () => {
+    logger.log({
+      source: "webrtc",
+      label: `[${peerId.substring(0, 6)}] signalingState = ${pc.signalingState}`,
     });
   };
 }
@@ -129,8 +139,12 @@ export async function waitForAnswer(
       if (peerMsg.type !== "answer") {
         return;
       }
-      logger.log({ source: "webrtc", label: "received answer from peer" });
       const answerDesc = JSON.parse(atob(peerMsg.payload));
+      logger.log({
+        source: "webrtc",
+        label: "received answer",
+        json: answerDesc,
+      });
       await pc.setRemoteDescription(new RTCSessionDescription(answerDesc));
       logger.log({
         source: "webrtc",
@@ -157,14 +171,20 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
     const offer = JSON.parse(atob(msg.payload));
     const pc = new RTCPeerConnection({ iceServers });
 
-    const gatherIcePromise = gatherIce(pc, 10000);
-
     await pc.setRemoteDescription(offer);
-    logger.log({ source: "webrtc", label: "set remote description" });
+    logger.log({
+      source: "webrtc",
+      label: "set remote description",
+      json: { offer, remoteDescription: pc.remoteDescription },
+    });
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    logger.log({ source: "webrtc", label: "set local description" });
-    await gatherIcePromise;
+    logger.log({
+      source: "webrtc",
+      label: "set local description",
+      json: pc.localDescription,
+    });
+    await gatherIce(pc, 10000);
 
     const channels = {
       reliable: null as RTCDataChannel | null,
@@ -195,9 +215,15 @@ export function listenForOffers(ws: WebSocket, cb: (pipe: WebRtcPipe) => void) {
       }
     };
 
+    logger.log({
+      source: "webrtc",
+      label: "sending answer",
+      json: pc.localDescription,
+    });
+
     send(ws, {
       type: "answer",
-      payload: btoa(JSON.stringify(answer)),
+      payload: btoa(JSON.stringify(pc.localDescription)),
       target: envelope.peerId,
     });
   };

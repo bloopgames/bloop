@@ -4,7 +4,7 @@ import { mouseButtonCodeToMouseButton } from "@bloopjs/engine";
 import {
   joinRoom as joinRoomInternal,
   type RoomEvents,
-} from "./netcode/mod.ts";
+} from "./netcode/broker";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -21,6 +21,8 @@ export type StartOptions = {
   brokerUrl?: string;
 };
 
+const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
+
 /** Start a bloop game on the web */
 export async function start(opts: StartOptions): Promise<App> {
   if (!opts.sim) {
@@ -35,22 +37,29 @@ export async function start(opts: StartOptions): Promise<App> {
   const app = new App(
     opts.sim,
     opts.game,
-    opts.brokerUrl ?? "wss://webrtc-divine-glade-8064.fly.dev/ws",
+    opts.brokerUrl ?? DEFAULT_BROKER_URL,
   );
   return app;
 }
 
+/**
+ * The main application class for running a bloop game in the browser
+ *
+ * This class handles translating browser events and APIs to bloopjs and the wasm engine.
+ *
+ * Usually instantiated with the start() function
+ */
 export class App {
   #sim: Sim;
   game: Bloop<any>;
   /** URL for the WebRTC signaling broker */
-  readonly brokerUrl?: string;
+  readonly brokerUrl: string;
   /** RequestAnimationFrame handle for cancelling */
   #rafHandle: number | null = null;
   #unsubscribe: UnsubscribeFn | null = null;
   #now: number = performance.now();
 
-  constructor(sim: Sim, game: Bloop<any>, brokerUrl?: string) {
+  constructor(sim: Sim, game: Bloop<any>, brokerUrl: string) {
     this.#sim = sim;
     this.game = game;
     this.brokerUrl = brokerUrl;
@@ -62,6 +71,7 @@ export class App {
     this.subscribe();
   }
 
+  /** The simulation instance associated with this app */
   get sim(): Sim {
     return this.#sim;
   }
@@ -72,13 +82,12 @@ export class App {
 
   /** Join a multiplayer room via the broker */
   joinRoom(roomId: string, callbacks: RoomEvents): void {
-    if (!this.brokerUrl) {
-      throw new Error("brokerUrl not configured in start()");
-    }
     joinRoomInternal(this.brokerUrl, roomId, callbacks);
   }
 
+  /** Event listeners for before a frame is processed */
   beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
+  /** Event listeners for after a frame is processed */
   afterFrame: ReturnType<typeof createListener> = createListener<[number]>();
 
   /** Subscribe to the browser events and start the render loop */
@@ -197,6 +206,18 @@ export class App {
     this.afterFrame.unsubscribeAll();
   }
 
+  /**
+   * Accept Hot Module Replacement when running in a vite dev server
+   *
+   * @example
+   *
+   * ```ts
+   * import.meta.hot?.accept("./game", async (newModule) => {
+   *   await app.acceptHmr(newModule?.game, {
+   *   wasmUrl: monorepoWasmUrl,
+   * });
+   * ```
+   */
   async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
