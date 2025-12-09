@@ -31,6 +31,42 @@ Benefits:
 
 ## Make RollbackState and NetState not optional
 
-## Address optional chaining on players[0], use a tuple?
+* In `Sim`, `rollback_state` and `net_state` are optional, leading to a lot of `if let` and optional chaining. We should make them required
+
+## Address typing and optional chaining on players, use a tuple?
+
+in bloop games,
+
+```ts
+game.system('fack', {
+  update({ players }) {
+    // no type hints, player is Player | undefined
+    // this is not ergonomic. we should use a strongly typed tuple with MAX_PLAYERS
+    players[0]?.mouse.left.down
+    players[1]?.mouse.left.down
+  }
+});
+```
 
 ## Address peer_id 0
+
+There is some confusion around peer_id 0 representing "local peer" vs the first connected peer. We should clarify this in the netcode design
+
+## Define system outside of game.system?
+
+the AI wanted to do
+
+```ts
+const fack = {
+  update() { ... }
+}
+
+game0.system('fack', fack);
+game1.system('fack', fack);
+```
+
+we should make this possible with something like
+
+```ts
+const fack: System<typeof game0> = { ... }
+```
