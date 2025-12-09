@@ -1,12 +1,33 @@
-import { ref } from "vue";
-import type { GamePhase, Peer } from "./game";
 import type { Log } from "@bloopjs/web";
+import { ref } from "vue";
+import type { GamePhase } from "./game";
 
-export const peers = ref<Peer[]>([]);
+export type FrameNumber = number;
+export type PeerId = string;
+
+export type Peer = {
+  id: PeerId;
+  nickname: string;
+  ack: FrameNumber;
+  seq: FrameNumber;
+  lastPacketTime: number;
+};
+
+export type NetStatus = {
+  ourId: number | null;
+  remoteId: number | null;
+  rtt: number | null;
+  peers: Peer[];
+};
+
+export const netStatus = ref<NetStatus>({
+  ourId: null,
+  remoteId: null,
+  rtt: null,
+  peers: [],
+});
+
 export const logs = ref<Log[]>([]);
-
-export const ourPeerId = ref<number | null>(null);
-export const remotePeerId = ref<number | null>(null);
 
 // Buzzer game UI state
 export const buzzer = ref({

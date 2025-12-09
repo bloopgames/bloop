@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { peers, ourPeerId, remotePeerId } from "../ui.ts"
+import { netStatus } from "../ui.ts"
 import { computed } from 'vue';
 
-const peer = computed(() => peers.value[0] || null);
+const peer = computed(() => netStatus.value.peers[0] || null);
+
+const lastPacketTime = computed(() => {
+  if (peer.value) {
+    return (performance.now() - peer.value.lastPacketTime).toFixed(0);
+  }
+  return null;
+});
 </script>
 
 <template>
@@ -11,31 +18,27 @@ const peer = computed(() => peers.value[0] || null);
     <table>
       <tr>
         <td>Our Peer ID</td>
-        <td>{{ ourPeerId }}</td>
+        <td>{{ netStatus.ourId }}</td>
       </tr>
       <tr>
         <td>Remote Peer ID</td>
-        <td>{{ remotePeerId }}</td>
+        <td>{{ netStatus.remoteId }}</td>
+      </tr>
+      <tr>
+        <td>Advantage</td>
+        <td>{{ (peer.seq - peer.ack) }}</td>
       </tr>
       <tr>
         <td>Current Seq</td>
-        <td>{{ peer.stats.currentSeq }}</td>
+        <td>{{ peer.seq}}</td>
       </tr>
       <tr>
         <td>Current Ack</td>
-        <td>{{ peer.stats.currentAck }}</td>
+        <td>{{ peer.ack }}</td>
       </tr>
       <tr>
-        <td>Time Since Last Packet</td>
-        <td>{{ peer.stats.timeSinceLastPacket.toFixed(0) }}ms</td>
-      </tr>
-      <tr>
-        <td>Packets/Second</td>
-        <td>{{ peer.stats.packetsPerSecond.toFixed(1) }}</td>
-      </tr>
-      <tr>
-        <td>Avg Packet Delta</td>
-        <td>{{ peer.stats.averagePacketDelta.toFixed(1) }}ms</td>
+        <td>Time since last packet</td>
+        <td>{{ lastPacketTime }}ms</td>
       </tr>
     </table>
   </div>

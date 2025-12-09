@@ -2,8 +2,8 @@ import "./style.css";
 import { logger, type PeerId, start } from "@bloopjs/web";
 import { createApp } from "vue";
 import App from "./App.vue";
-import { connectedPeers, game, makePeer, peerStats } from "./game";
-import { logs, remotePeerId as opponentPeerId, ourPeerId } from "./ui";
+import { game } from "./game";
+import { logs, netStatus } from "./ui";
 
 const vueApp = createApp(App);
 vueApp.mount("#app");
@@ -101,14 +101,10 @@ app.joinRoom("nope", {
       // Assign numeric IDs based on string comparison for consistency
       const ids = assignPeerIds(localStringPeerId, peerId);
       localPeerId = ids.local;
-      ourPeerId.value = localPeerId;
+      netStatus.value.ourId = localPeerId;
       remotePeerId = ids.remote;
       remoteStringPeerId = peerId;
-      opponentPeerId.value = ids.remote;
-      console.log(
-        `[netcode] Local peer: ${localStringPeerId} -> ${localPeerId}`,
-      );
-      console.log(`[netcode] Remote peer: ${peerId} -> ${remotePeerId}`);
+      netStatus.value.remoteId = remotePeerId;
 
       // Initialize the session in the engine
       // peer_count = 2 for a 2-player game
@@ -123,16 +119,23 @@ app.joinRoom("nope", {
     }
   },
   onPeerConnected(peerId) {
-    console.log(`[netcode] Peer connected: ${peerId}`);
-    connectedPeers.push(makePeer(peerId));
-    console.log(`[netcode] Total peers: ${connectedPeers.length}`);
+    netStatus.value.peers.push({
+      id: peerId,
+      nickname: peerId.substring(0, 6),
+      ack: -1,
+      seq: -1,
+      lastPacketTime: performance.now(),
+    });
+    console.log(
+      `[netcode] Peer connected: ${peerId}. Total peers: ${netStatus.value.peers.length}`,
+    );
   },
   onPeerDisconnected(peerId) {
-    const idx = connectedPeers.findIndex((p) => p.id === peerId);
+    const idx = netStatus.value.peers.findIndex((p) => p.id === peerId);
     if (idx !== -1) {
-      connectedPeers.splice(idx, 1);
+      netStatus.value.peers.splice(idx, 1);
     }
-    if (remotePeerId !== null) {
+    if (remotePeerId !== null && peerId === remoteStringPeerId) {
       app.sim.net.disconnectPeer(remotePeerId);
     }
   },
@@ -157,63 +160,26 @@ app.beforeFrame.subscribe((_frame) => {
 
 /** Process incoming packets via engine */
 function receivePackets() {
-  const now = Date.now();
-
-  // Update time since last packet for all peers
-  for (const peer of connectedPeers) {
-    const stats = peerStats.get(peer.id);
-    if (stats && stats.lastPacketTime > 0) {
-      stats.timeSinceLastPacket = now - stats.lastPacketTime;
-    }
-  }
-
   // Process buffered packets
   for (const packetData of incomingPackets) {
-    try {
-      // Let the engine decode and process the packet
-      // This updates seq/ack, stores events in RollbackState, etc.
-      app.sim.net.receivePacket(packetData);
+    // Let the engine decode and process the packet
+    // This updates seq/ack, stores events in RollbackState, etc.
+    app.sim.net.receivePacket(packetData);
 
-      // Update peer stats (we can get seq/ack from engine now)
-      if (remotePeerId !== null && remoteStringPeerId !== null) {
-        const peerState = app.sim.net.getPeerState(remotePeerId);
-        const stats = peerStats.get(remoteStringPeerId);
-        if (stats) {
-          stats.currentSeq = peerState.seq;
-          stats.currentAck = peerState.ack;
-
-          // Track packet timestamps for rate calculation
-          const cutoff = now - 60000;
-          stats.packetTimestamps = stats.packetTimestamps.filter(
-            (t) => t > cutoff,
-          );
-          stats.packetTimestamps.push(now);
-          stats.packetsPerSecond = stats.packetTimestamps.length / 60;
-
-          // Calculate average delta
-          if (stats.packetTimestamps.length > 1) {
-            const deltas: number[] = [];
-            const timestamps = stats.packetTimestamps;
-            for (let i = 1; i < timestamps.length; i++) {
-              const current = timestamps[i];
-              const previous = timestamps[i - 1];
-              if (current !== undefined && previous !== undefined) {
-                deltas.push(current - previous);
-              }
-            }
-            if (deltas.length > 0) {
-              stats.averagePacketDelta =
-                deltas.reduce((a, b) => a + b, 0) / deltas.length;
-            }
-          }
-
-          stats.lastPacketTime = now;
-          stats.timeSinceLastPacket = 0;
-        }
-      }
-    } catch (e) {
-      console.warn(`[netcode] Failed to process packet:`, e);
+    if (remotePeerId == null) {
+      return;
     }
+
+    // Update peer stats (we can get seq/ack from engine now)
+    const peerState = app.sim.net.getPeerState(remotePeerId);
+    const peer = netStatus.value.peers.find((p) => p.id === remoteStringPeerId);
+    if (!peer) {
+      console.warn(`[netcode] Peer stats not found for ${remoteStringPeerId}`);
+      return;
+    }
+    peer.ack = peerState.ack;
+    peer.seq = peerState.seq;
+    peer.lastPacketTime = performance.now();
   }
   incomingPackets.length = 0;
 }
@@ -221,6 +187,7 @@ function receivePackets() {
 /** Send packet with local events to remote peer */
 function sendPacket() {
   if (!udp || remotePeerId === null) {
+    console.warn("[netcode] Cannot send packet, udp or remotePeerId is null");
     return;
   }
 
@@ -237,6 +204,7 @@ function sendPacket() {
   const packet = app.sim.net.getOutboundPacket(remotePeerId);
 
   if (!packet) {
+    console.warn("[netcode] No packet to send");
     return;
   }
 
