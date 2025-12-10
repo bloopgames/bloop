@@ -28,8 +28,11 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
         opts.hooks.setBuffer(memory.buffer);
         opts.hooks.systemsCallback(system_handle, ptr);
       },
-      __before_frame: function (frame: number) {
+      __before_frame: function (ptr: EnginePointer, frame: number) {
         try {
+          // Refresh DataViews before beforeFrame hook (memory may have grown)
+          opts.hooks.setBuffer(memory.buffer);
+          opts.hooks.setContext(ptr);
           opts.hooks.beforeFrame?.(frame);
         } catch (e) {
           console.error("Error in beforeFrame hook:", e);

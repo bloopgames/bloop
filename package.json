@@ -8,9 +8,10 @@
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
-    "ci": "bun run ci:tsc && bun test && bun run ci:jsr && bun run ci:build",
+    "ci": "bun run ci:tsc && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
     "ci:build": "bun run --filter './packages/*' build",
     "ci:tsc": "bun run --filter '*' ci:tsc",
+    "ci:zig": "(cd packages/engine && zig build test)",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
     "publish": "bun bin/publish.ts",
     "deploy-games": "bun bin/deploy-games.ts"

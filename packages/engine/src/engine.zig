@@ -15,7 +15,7 @@ extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 
 /// Callback into JS before each simulation step
-extern "env" fn __before_frame(frame: u32) void;
+extern "env" fn __before_frame(ctx_ptr: usize, frame: u32) void;
 
 /// Returns the current size of user data for snapshots
 extern "env" fn __user_data_len() u32;
@@ -118,7 +118,7 @@ pub export fn initialize() wasmPointer {
 }
 
 fn wasm_before_frame(frame: u32) void {
-    __before_frame(frame);
+    __before_frame(cb_ptr, frame);
 }
 
 fn wasm_systems_callback(ctx_ptr: usize, dt: u32) void {
