@@ -4,6 +4,30 @@
 **Audience**: Paul Weeks (indie fighting game dev)
 **Goal**: Show working rollback netcode with debug visualization, code walkthrough, ideally tape replay with per-frame rollback dissection
 
+---
+
+## Demo Script
+
+### Core Demo
+1. Open https://trybloop.gg/neil/mario
+2. Show "waiting for someone to join" screen
+3. Have Paul open https://trybloop.gg/neil/mario
+4. Mario game starts - both players can move, collect coins
+5. Toggle debug UI via button in lower right corner
+6. Walk through game code / answer questions
+
+### Stretch Goals
+1. Toggle artificial lag with `?lag=350` - show game has some teleporting but doesn't desync
+2. Hit "Download tape" button in debug UI
+3. Download tape to local file
+4. Run game in dev server (`cd games/mario && bun dev`)
+5. Load tape via drag+drop onto dev server
+6. Show both screens side by side with shared scrubber / frame counter
+7. Make code changes that hot reload while viewing tape
+8. For a single frame, dissect rollback by stepping frame-by-frame through the rollback and seeing the updated render
+
+---
+
 ## Reference Material
 
 - [Muno's Rollback Explainer](https://bymuno.com/post/rollback) - Visual reference we're recreating
@@ -117,20 +141,65 @@ The "maximum wow factor":
 
 **Status**: Not started
 
+### 10. Mario Netcode Integration (~0.5 day)
+Port netcode from buzzer game to mario:
+- Add broker/transport connection (copy from buzzer main.ts)
+- Wire up packet send/receive to engine
+- Add "waiting for player" UI state
+- Add debug UI toggle button (lower right corner)
+- Test with two browser windows
+
+**Status**: Not started (currently only buzzer has netcode)
+
+### 11. Error Handling & Netpause (~0.25 day)
+Graceful degradation when things go wrong:
+- Catch engine errors and display on screen (not just console)
+- Implement netpause when rollback depth > 30 frames
+- Show "catching up" indicator with frame delta
+- Auto-resume when caught up
+- Handle page reload gracefully (clean up stale peer state)
+
+**Status**: Not started
+
 ---
 
-## Priority Order
+## Known Bugs / Quality Issues
 
-| Priority | Item | Status | Notes |
-|----------|------|--------|-------|
-| P0 | Mario game (local multiplayer) | ✅ Done | Foundation for demo |
-| P0 | Engine: per-player inputs | ✅ Done | Required for netcode |
-| P0 | Engine: rollback core | ✅ Done | The main feature |
-| P0 | Engine: packet format | ✅ Done | Wire protocol |
-| P1 | Web: network transport | ✅ Done | Deployed to fly.io |
-| P1 | Debug UI | 🔲 Next | Show the internals |
-| P2 | Cloudflare TURN | ✅ Done | Cross-region connectivity |
-| P3 | Tape packets + rollback dissection | 🔲 | Maximum wow factor |
+| Issue | Impact | Fix |
+|-------|--------|-----|
+| Page reload leads to unexpected results | Demo risk | Needs investigation - likely stale peer state |
+| Rollback >30 frames throws error, game stops silently | Demo blocker | Show error on screen, implement netpause |
+| Mario game has no netcode | Demo blocker | Port netcode integration from buzzer |
+
+**Netpause**: When rollback depth exceeds limit, pause game execution but continue sending/receiving packets. Show visual indicator of how many frames ahead/behind we are. Resume automatically when caught up.
+
+---
+
+## Priority Order (Updated for Demo Script)
+
+### P0 - Core Demo Requirements
+| Item | Status | Notes |
+|------|--------|-------|
+| Mario game (local multiplayer) | ✅ Done | Foundation |
+| Engine: per-player inputs | ✅ Done | Required for netcode |
+| Engine: rollback core | ✅ Done | The main feature |
+| Engine: packet format | ✅ Done | Wire protocol |
+| Web: network transport | ✅ Done | Deployed to fly.io |
+| Cloudflare TURN | ✅ Done | Cross-region connectivity |
+| **Mario netcode integration** | 🔲 Next | Port from buzzer |
+| **Debug UI toggle** | 🔲 Next | Button in lower right |
+| **Crash error display** | 🔲 | Show errors on screen |
+
+### P1 - Stretch Goals
+| Item | Status | Notes |
+|------|--------|-------|
+| `?lag=350` artificial lag | 🔲 | Simulate bad network |
+| Netpause (rollback overflow) | 🔲 | Graceful degradation |
+| Download tape button | 🔲 | Export session for replay |
+| Tape drag+drop loading | 🔲 | Import in dev server |
+| Side-by-side replay | 🔲 | Both screens + shared scrubber |
+| HMR during tape replay | 🔲 | Hot reload while viewing |
+| Rollback frame dissection | 🔲 | Step through resimulation |
 
 ---
 
