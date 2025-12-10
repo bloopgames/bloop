@@ -1,9 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
-import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite";
-import vueDevTools from "vite-plugin-vue-devtools";
 
 function bloopWasmDevPlugin(): Plugin {
   // adjust path to wherever engine builds the wasm
@@ -36,12 +34,16 @@ function bloopWasmDevPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), vueDevTools(), bloopWasmDevPlugin()],
+  plugins: [bloopWasmDevPlugin()],
   server: {
     allowedHosts: ["localhost", "bloop.ngrok.dev"],
   },
+  esbuild: {
+    jsxImportSource: "preact",
+    jsx: "automatic",
+  },
   optimizeDeps: {
-    exclude: ["@bloopjs/engine", "@bloopjs/bloop"],
+    exclude: ["@bloopjs/engine", "@bloopjs/bloop", "@bloopjs/web"],
   },
   resolve: {
     alias: {

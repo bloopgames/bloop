@@ -1,12 +1,18 @@
 import "./style.css";
-import { logger, type PeerId, start } from "@bloopjs/web";
-import { createApp } from "vue";
-import App from "./App.vue";
+import {
+  logger,
+  type PeerId,
+  start,
+  addLog,
+  addPeer,
+  updatePeer,
+  removePeer,
+  setLocalId,
+  setRemoteId,
+  debugState,
+} from "@bloopjs/web";
 import { game } from "./game";
-import { logs, netStatus } from "./ui";
-
-const vueApp = createApp(App);
-vueApp.mount("#app");
+import { createRenderer } from "./render";
 
 // Parse URL params for netcode options
 const urlParams = new URLSearchParams(window.location.search);
@@ -24,12 +30,17 @@ const app = await start({
   game,
   engineWasmUrl: wasmUrl,
   startRecording: false,
+  debugUi: true,
 });
 
-// Set screen dimensions from actual window size
-game.bag.screenWidth = window.innerWidth;
-game.bag.screenHeight = window.innerHeight;
-game.bag.blockX = game.bag.screenWidth / 2; // Re-center the block
+// Get canvas from debug UI and set up renderer
+const canvas = app.canvas!;
+const render = createRenderer(canvas, game);
+
+// Wire up logger to debug state
+logger.onLog = (log) => {
+  addLog(log);
+};
 
 let udp: RTCDataChannel | null = null;
 
@@ -50,10 +61,6 @@ function assignPeerIds(
     return { local: 1, remote: 0 };
   }
 }
-
-logger.onLog = (log) => {
-  logs.value.push(log);
-};
 
 game.system("netcode logger", {
   update({ players }) {
@@ -105,10 +112,10 @@ app.joinRoom("nope", {
       // Assign numeric IDs based on string comparison for consistency
       const ids = assignPeerIds(localStringPeerId, peerId);
       localPeerId = ids.local;
-      netStatus.value.ourId = localPeerId;
+      setLocalId(localPeerId);
       remotePeerId = ids.remote;
       remoteStringPeerId = peerId;
-      netStatus.value.remoteId = remotePeerId;
+      setRemoteId(remotePeerId);
 
       // Initialize the session in the engine
       // peer_count = 2 for a 2-player game
@@ -123,7 +130,7 @@ app.joinRoom("nope", {
     }
   },
   onPeerConnected(peerId) {
-    netStatus.value.peers.push({
+    addPeer({
       id: peerId,
       nickname: peerId.substring(0, 6),
       ack: -1,
@@ -131,14 +138,11 @@ app.joinRoom("nope", {
       lastPacketTime: performance.now(),
     });
     console.log(
-      `[netcode] Peer connected: ${peerId}. Total peers: ${netStatus.value.peers.length}`,
+      `[netcode] Peer connected: ${peerId}. Total peers: ${debugState.netStatus.value.peers.length}`,
     );
   },
   onPeerDisconnected(peerId) {
-    const idx = netStatus.value.peers.findIndex((p) => p.id === peerId);
-    if (idx !== -1) {
-      netStatus.value.peers.splice(idx, 1);
-    }
+    removePeer(peerId);
     if (remotePeerId !== null && peerId === remoteStringPeerId) {
       app.sim.net.disconnectPeer(remotePeerId);
     }
@@ -162,6 +166,14 @@ app.beforeFrame.subscribe((_frame) => {
   }
 });
 
+// Render game after each frame
+app.afterFrame.subscribe(() => {
+  render();
+});
+
+// Initial render
+render();
+
 /** Process incoming packets via engine */
 function receivePackets() {
   // Process buffered packets
@@ -176,14 +188,11 @@ function receivePackets() {
 
     // Update peer stats (we can get seq/ack from engine now)
     const peerState = app.sim.net.getPeerState(remotePeerId);
-    const peer = netStatus.value.peers.find((p) => p.id === remoteStringPeerId);
-    if (!peer) {
-      console.warn(`[netcode] Peer stats not found for ${remoteStringPeerId}`);
-      return;
-    }
-    peer.ack = peerState.ack;
-    peer.seq = peerState.seq;
-    peer.lastPacketTime = performance.now();
+    updatePeer(remoteStringPeerId!, {
+      ack: peerState.ack,
+      seq: peerState.seq,
+      lastPacketTime: performance.now(),
+    });
   }
   incomingPackets.length = 0;
 }

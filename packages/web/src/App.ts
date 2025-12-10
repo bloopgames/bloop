@@ -6,6 +6,7 @@ import {
   type RoomEvents,
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
+import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -20,6 +21,8 @@ export type StartOptions = {
   startRecording?: boolean;
   /** URL for the WebRTC signaling broker (e.g. "wss://broker.example.com/ws") */
   brokerUrl?: string;
+  /** Enable debug UI with optional configuration */
+  debugUi?: boolean | DebugUiOptions;
 };
 
 const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
@@ -40,6 +43,14 @@ export async function start(opts: StartOptions): Promise<App> {
     opts.game,
     opts.brokerUrl ?? DEFAULT_BROKER_URL,
   );
+
+  // Initialize debug UI if enabled
+  if (opts.debugUi) {
+    const debugOpts =
+      typeof opts.debugUi === "boolean" ? {} : opts.debugUi;
+    app.initDebugUi(debugOpts);
+  }
+
   return app;
 }
 
@@ -59,6 +70,7 @@ export class App {
   #rafHandle: number | null = null;
   #unsubscribe: UnsubscribeFn | null = null;
   #now: number = performance.now();
+  #debugUi: DebugUi | null = null;
 
   constructor(sim: Sim, game: Bloop<any>, brokerUrl: string) {
     this.#sim = sim;
@@ -81,6 +93,23 @@ export class App {
 
   set sim(sim: Sim) {
     this.#sim = sim;
+  }
+
+  /** Initialize debug UI (creates shadow DOM and mounts Preact) */
+  initDebugUi(opts: DebugUiOptions = {}): DebugUi {
+    if (this.#debugUi) return this.#debugUi;
+    this.#debugUi = new DebugUi(opts);
+    return this.#debugUi;
+  }
+
+  /** Access debug UI instance */
+  get debugUi(): DebugUi | null {
+    return this.#debugUi;
+  }
+
+  /** Get the canvas element from debug UI (for game rendering) */
+  get canvas(): HTMLCanvasElement | null {
+    return this.#debugUi?.canvas ?? null;
   }
 
   /** Join a multiplayer room via the broker */
@@ -207,6 +236,7 @@ export class App {
     this.sim.unmount();
     this.beforeFrame.unsubscribeAll();
     this.afterFrame.unsubscribeAll();
+    this.#debugUi?.unmount();
   }
 
   /**

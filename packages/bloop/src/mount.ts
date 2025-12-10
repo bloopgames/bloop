@@ -20,7 +20,7 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size
-  const memory = new WebAssembly.Memory({ initial: 30, maximum: 1000 });
+  const memory = new WebAssembly.Memory({ initial: 236, maximum: 1000 });
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       memory,
