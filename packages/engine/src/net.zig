@@ -348,22 +348,22 @@ test "PeerNetState ring buffer wraparound" {
     var peer = PeerNetState{};
     const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
-    // Add frames 0-29 (fills buffer)
+    // Add frames 0 to MAX_ROLLBACK_FRAMES-1 (fills buffer)
     for (0..MAX_ROLLBACK_FRAMES) |i| {
         peer.addUnacked(@intCast(i), &events);
     }
     try std.testing.expectEqual(@as(u16, MAX_ROLLBACK_FRAMES), peer.unackedCount());
 
     // Ack all but last 5
-    peer.trimAcked(24);
+    peer.trimAcked(@intCast(MAX_ROLLBACK_FRAMES - 6));
     try std.testing.expectEqual(@as(u16, 5), peer.unackedCount());
 
-    // Add frame 30 (wraps to slot 0)
-    const events30 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
-    peer.addUnacked(30, &events30);
+    // Add frame MAX_ROLLBACK_FRAMES (wraps to slot 0)
+    const eventsWrap = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
+    peer.addUnacked(@intCast(MAX_ROLLBACK_FRAMES), &eventsWrap);
 
-    // Frame 30 should be accessible at slot 0
-    const retrieved = peer.getUnackedFrame(30);
+    // Frame MAX_ROLLBACK_FRAMES should be accessible at slot 0
+    const retrieved = peer.getUnackedFrame(@intCast(MAX_ROLLBACK_FRAMES));
     try std.testing.expect(retrieved != null);
     try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
 }

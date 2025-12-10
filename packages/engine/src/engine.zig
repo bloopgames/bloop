@@ -15,7 +15,7 @@ extern "env" fn console_log(ptr: [*]const u8, len: usize) void;
 extern "env" fn __systems(fn_handle: u32, ptr: u32, dt: u32) void;
 
 /// Callback into JS before each simulation step
-extern "env" fn __before_frame(frame: u32) void;
+extern "env" fn __before_frame(ctx_ptr: usize, frame: u32) void;
 
 /// Returns the current size of user data for snapshots
 extern "env" fn __user_data_len() u32;
@@ -103,6 +103,7 @@ pub export fn initialize() wasmPointer {
     cb_data[0] = @intFromPtr(sim.?.time);
     cb_data[1] = @intFromPtr(sim.?.inputs);
     cb_data[2] = @intFromPtr(sim.?.events);
+    cb_data[3] = @intFromPtr(sim.?.net_ctx);
 
     // Wire up WASM callbacks
     sim.?.callbacks = .{
@@ -117,7 +118,7 @@ pub export fn initialize() wasmPointer {
 }
 
 fn wasm_before_frame(frame: u32) void {
-    __before_frame(frame);
+    __before_frame(cb_ptr, frame);
 }
 
 fn wasm_systems_callback(ctx_ptr: usize, dt: u32) void {
@@ -343,9 +344,9 @@ pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPo
     sim.?.sessionEmitInputs(peer, match_frame, events_slice);
 }
 
-/// Get current match frame (0 if no session)
-pub export fn get_match_frame() u32 {
-    return sim.?.getMatchFrame();
+/// Get pointer to net context struct
+pub export fn get_net_ctx() usize {
+    return @intFromPtr(sim.?.net_ctx);
 }
 
 // ─────────────────────────────────────────────────────────────

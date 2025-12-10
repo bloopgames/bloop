@@ -102,9 +102,9 @@ export type WasmEngine = {
     events_len: number,
   ) => void;
   /**
-   * Get current match frame (frames since session start)
+   * Get pointer to net context struct
    */
-  get_match_frame: () => number;
+  get_net_ctx: () => EnginePointer;
 
   // Network / Packets
   /**

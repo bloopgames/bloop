@@ -8,6 +8,8 @@ describe("buzzer game", () => {
   beforeEach(() => {
     // Reset bag properties individually since bag is readonly
     Object.assign(game.bag, defaultBag);
+    // Tests run without netcode, so start in "waiting" phase instead of "connecting"
+    game.bag.phase = "waiting";
   });
 
   it("should start with a fixed time", async () => {
@@ -16,10 +18,12 @@ describe("buzzer game", () => {
     expect(game.bag.buzzDelay).toEqual(3);
   });
 
-  it("should start in waiting phase", async () => {
-    const { sim } = await mount(game);
+  it("should start in connecting phase (waiting for netcode)", async () => {
+    // Temporarily set back to connecting to test initial state
+    game.bag.phase = "connecting";
+    await mount(game);
 
-    expect(game.bag.phase).toEqual("waiting");
+    expect(game.bag.phase).toEqual("connecting");
     expect(game.bag.timer).toEqual(0);
     expect(game.bag.player1Score).toEqual(0);
     expect(game.bag.player2Score).toEqual(0);

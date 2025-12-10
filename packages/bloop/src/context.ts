@@ -1,6 +1,7 @@
 import type {
   EnginePointer,
   InputContext,
+  NetContext,
   PlayerInputContext,
   TimeContext,
 } from "@bloopjs/engine";
@@ -32,4 +33,6 @@ export type Context<
   players: readonly PlayerInputContext[];
   /** The engine pointer to the injected system arguments (for advanced use cases) */
   rawPointer: EnginePointer;
+  /** Network context for multiplayer sessions */
+  net: NetContext;
 };

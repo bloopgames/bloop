@@ -1,6 +1,6 @@
 import { Bloop } from "@bloopjs/bloop";
 
-export type GamePhase = "waiting" | "active" | "won" | "lost";
+export type GamePhase = "connecting" | "waiting" | "active" | "won" | "lost";
 
 export type Packet = {
   from: string;
@@ -19,7 +19,7 @@ export const game = Bloop.create({
     blockX: 400, // Position of oscillating block (initialized to center)
     blockSpeed: 400, // Pixels per second (takes 1s to travel ~400px)
     blockDirection: 1, // 1 for right, -1 for left
-    phase: "waiting" as GamePhase,
+    phase: "connecting" as GamePhase,
     timer: 0, // Elapsed time in current phase (seconds)
     player1Score: 0,
     player2Score: 0,
@@ -34,7 +34,16 @@ export const game = Bloop.create({
 
 // Update game state each frame
 game.system("update timer and block", {
-  update({ bag, time }) {
+  update({ bag, time, net }) {
+    // Transition from connecting to waiting when session is active (2 peers)
+    if (bag.phase === "connecting" && net.peerCount >= 2) {
+      bag.phase = "waiting";
+      bag.timer = 0;
+    }
+
+    // Don't update during connecting phase
+    if (bag.phase === "connecting") return;
+
     bag.timer += time.dt;
 
     // Oscillate the block (time.dt is in seconds)
@@ -72,6 +81,9 @@ game.system("update timer and block", {
 // Handle player inputs
 game.system("handle inputs", {
   update({ bag, players }) {
+    // Don't process inputs during connecting phase
+    if (bag.phase === "connecting") return;
+
     // Player 1 = local player (players[0])
     // Player 2 = remote peer (players[1])
     const player1Input = players[0]?.mouse.left.down ?? false;
@@ -96,6 +108,17 @@ game.system("handle inputs", {
         bag.player2Score++;
         bag.timer = 0;
       }
+    }
+  },
+});
+
+// Sync remote player cursor position
+game.system("sync remote cursor", {
+  update({ bag, players }) {
+    const remoteMouse = players[1]?.mouse;
+    if (remoteMouse) {
+      bag.remoteCursorX = remoteMouse.x;
+      bag.remoteCursorY = remoteMouse.y;
     }
   },
 });

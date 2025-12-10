@@ -3,6 +3,7 @@ import type { game, GamePhase } from "./game";
 type GameBag = typeof game.bag;
 
 const BG_COLORS: Record<GamePhase, string> = {
+  connecting: "#6c757d", // Gray - waiting for connection
   waiting: "#ff6b6b", // Red - wait
   active: "#51cf66", // Green - click now
   won: "#4dabf7", // Blue - winner
@@ -10,6 +11,7 @@ const BG_COLORS: Record<GamePhase, string> = {
 };
 
 const PHASE_MESSAGES: Record<GamePhase, string> = {
+  connecting: "Waiting for opponent...",
   waiting: "WAIT...",
   active: "CLICK NOW!",
   won: "YOU WIN!",
@@ -68,13 +70,15 @@ export function createRenderer(
     ctx.textBaseline = "middle";
     ctx.fillText(message, width / 2, height / 2);
 
-    // Score display (top center)
-    ctx.font = `${Math.min(width, height) * 0.04}px sans-serif`;
-    ctx.fillText(
-      `You: ${bag.player1Score}  |  Them: ${bag.player2Score}`,
-      width / 2,
-      height * 0.1,
-    );
+    // Score display (top center) - hide during connecting
+    if (bag.phase !== "connecting") {
+      ctx.font = `${Math.min(width, height) * 0.04}px sans-serif`;
+      ctx.fillText(
+        `You: ${bag.player1Score}  |  Them: ${bag.player2Score}`,
+        width / 2,
+        height * 0.1,
+      );
+    }
 
     // Remote cursor indicator (orange circle)
     if (bag.remoteCursorX > 0 && bag.remoteCursorY > 0) {
