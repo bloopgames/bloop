@@ -64,7 +64,7 @@ bun run deploy-games
 
 - `games/hello` - Minimal example game
 - `games/quickdraw` - Vue-based prototype with netcode (uses Vite, not Bun.serve)
-- `games/mario_rollback` - Mario platformer with rollback netcode
+- `games/mario` - Mario platformer with rollback netcode
 
 ## Architecture
 
@@ -128,6 +128,25 @@ Ergonomics and expressiveness are the north star here. Tests are integration tes
 If a gamedev is using an api multiple times a day during prototyping / development, we want that api to have as little friction as possible to provide a great DX. We want it to feel like a shorthand of their creative process.
 
 While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
+
+### Netcode
+
+The rollback netcode uses `joinRollbackRoom(roomId, app, callbacks)` from `@bloopjs/web`.
+
+**Important:** Do NOT mutate bag state in `onSessionStart`/`onSessionEnd` callbacks - these run outside the game loop and changes get rolled back. Instead, create a system that watches `net.isInSession` to handle session state transitions:
+
+```typescript
+game.system("session-watcher", {
+  update({ bag, net }) {
+    if (bag.phase === "waiting" && net.isInSession) {
+      bag.phase = "playing";
+    }
+    if (bag.phase === "playing" && bag.mode === "online" && !net.isInSession) {
+      bag.phase = "title";
+    }
+  },
+});
+```
 
 ## Testing Pattern
 
@@ -213,105 +232,18 @@ function frame() {
 frame();
 ```
 
-### Hello world text
+### Text and shapes
 
-```ts
-import { Toodle } from "@bloopjs/toodle";
+```typescript
+// Load font
+await toodle.assets.loadFont("ComicNeue", new URL("https://toodle.gg/fonts/ComicNeue-Regular-msdf.json"));
 
-const canvas = document.querySelector("canvas")!;
-const toodle = await Toodle.attach(canvas, {
-  limits: { textureArrayLayers: 5 },
-});
+// Create text
+const text = toodle.Text("ComicNeue", "Hello", { fontSize: 16, color: { r: 1, g: 1, b: 1, a: 1 } });
 
-const fontId = await toodle.assets.loadFont(
-  "ComicNeue",
-  new URL("https://toodle.gg/fonts/ComicNeue-Regular-msdf.json"),
-);
-
-const text = toodle.Text("ComicNeue", "Hello World", {
-  fontSize: 16,
-  color: { r: 0, g: 0, b: 0, a: 1 },
-});
-
-function frame() {
-  toodle.startFrame();
-  text.rotation += 1;
-  toodle.draw(text);
-  toodle.endFrame();
-
-  requestAnimationFrame(frame);
-}
-
-frame();
-```
-
-### Basic shapes
-
-```ts
-import { Toodle } from "@bloopjs/toodle";
-
-const canvas = document.querySelector("canvas")!;
-const toodle = await Toodle.attach(canvas, {
-  limits: { textureArrayLayers: 5 },
-});
-
-const shader = toodle.QuadShader(
-  "line custom shader",
-  1,
-  /*wgsl*/ `
-
-  @fragment
-  fn frag(vertex: VertexOutput) -> @location(0) vec4f {
-    let color = default_fragment_shader(vertex, nearestSampler);
-    let uv = vertex.engine_uv.zw;
-    return vec4f(uv.x, uv.y, 1, 1);
-  }
-    `,
-);
-
-function frame() {
-  const thickness = 5;
-
-  // basic line
-  const basicLine = toodle.shapes.Line({
-    start: { x: 0, y: 0 },
-    end: { x: 0, y: 75 },
-    thickness,
-    color: { r: 1, g: 0, b: 1, a: 1 },
-  });
-
-  // line with custom shader
-  const fancyLine = toodle.shapes.Line({
-    start: { x: 0, y: 0 },
-    end: {
-      x: Math.sin(performance.now() / 1000) * 100,
-      y: Math.cos(performance.now() / 1000) * 100,
-    },
-    thickness,
-    color: { r: 1, g: 0, b: 1, a: 1 },
-    shader,
-  });
-
-  const circle = toodle.shapes.Circle({
-    color: { r: 0.9, g: 0.9, b: 0.9, a: 1 },
-    idealSize: { width: 200, height: 200 },
-  });
-
-  const rectangle = toodle.shapes.Rect({
-    idealSize: { width: 500, height: 120 },
-    color: { r: 0.8, g: 0.8, b: 0.8, a: 1 },
-  });
-
-  toodle.startFrame();
-  toodle.draw(rectangle);
-  toodle.draw(circle);
-  toodle.draw(basicLine);
-  toodle.draw(fancyLine);
-  toodle.endFrame();
-  requestAnimationFrame(frame);
-}
-
-frame();
+// Basic shapes
+const rect = toodle.shapes.Rect({ idealSize: { width: 100, height: 50 }, color: Colors.web.sienna });
+const circle = toodle.shapes.Circle({ idealSize: { width: 32, height: 32 }, color: Colors.web.gold });
 ```
 
 ### Sprite sheets and animation

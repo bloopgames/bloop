@@ -14,6 +14,10 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    /* JSX for Preact */
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+
     /* Linting */
     "strict": true,
     "noFallthroughCasesInSwitch": true,

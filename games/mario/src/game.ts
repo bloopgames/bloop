@@ -34,8 +34,12 @@ function createPlayer(x: number): Player {
   };
 }
 
+export type Phase = "title" | "waiting" | "playing";
+
 export const game = Bloop.create({
   bag: {
+    phase: "title" as Phase,
+    mode: null as "local" | "online" | null,
     p1: createPlayer(P1_START_X),
     p2: createPlayer(P2_START_X),
     block: {
@@ -49,8 +53,28 @@ export const game = Bloop.create({
   },
 });
 
+export function resetGameState(bag: typeof game.bag) {
+  bag.p1 = createPlayer(P1_START_X);
+  bag.p2 = createPlayer(P2_START_X);
+  bag.block = { x: (BLOCK_MIN_X + BLOCK_MAX_X) / 2, direction: 1 };
+  bag.coin = { visible: true, x: (BLOCK_MIN_X + BLOCK_MAX_X) / 2 };
+}
+
+type GameSystem = Parameters<typeof game.system>[1];
+
+function PhaseSystem(phase: Phase, name: string, system: GameSystem) {
+  const original = system.update;
+  game.system(name, {
+    ...system,
+    update(ctx) {
+      if (ctx.bag.phase !== phase) return;
+      original?.(ctx);
+    },
+  });
+}
+
 // Player 1 input: WASD
-game.system("inputs", {
+PhaseSystem("playing", "inputs", {
   update({ bag, players, net }) {
     const p1 = bag.p1;
     const p2 = bag.p2;
@@ -88,7 +112,7 @@ game.system("inputs", {
 });
 
 // Player 2 input: IJKL local or WASD remote
-game.system("p2-input", {
+PhaseSystem("playing", "p2-input", {
   update({ bag, players, net }) {
     const p = bag.p2;
 
@@ -117,7 +141,7 @@ game.system("p2-input", {
 });
 
 // Physics for both players (Y+ is up)
-game.system("physics", {
+PhaseSystem("playing", "physics", {
   update({ bag }) {
     for (const p of [bag.p1, bag.p2]) {
       // Apply gravity (pulls down, so subtract)
@@ -140,7 +164,7 @@ game.system("physics", {
 });
 
 // Block movement (oscillates left/right)
-game.system("block", {
+PhaseSystem("playing", "block", {
   update({ bag }) {
     const block = bag.block;
     block.x += BLOCK_SPEED * block.direction;
@@ -161,7 +185,7 @@ game.system("block", {
 });
 
 // Collision: player head hits block from below (Y+ is up)
-game.system("collision", {
+PhaseSystem("playing", "collision", {
   update({ bag }) {
     const block = bag.block;
 
@@ -201,10 +225,27 @@ game.system("collision", {
 });
 
 // Respawn coin after delay (simple: respawn when both players grounded)
-game.system("coin-respawn", {
+PhaseSystem("playing", "coin-respawn", {
   update({ bag }) {
     if (!bag.coin.visible && bag.p1.grounded && bag.p2.grounded) {
       bag.coin.visible = true;
+    }
+  },
+});
+
+// Handle online session transitions (runs in all phases)
+game.system("session-watcher", {
+  update({ bag, net }) {
+    // Waiting for connection → connected, start playing
+    if (bag.phase === "waiting" && net.isInSession) {
+      resetGameState(bag);
+      bag.phase = "playing";
+    }
+
+    // Was playing online → disconnected, back to title
+    if (bag.phase === "playing" && bag.mode === "online" && !net.isInSession) {
+      bag.phase = "title";
+      bag.mode = null;
     }
   },
 });

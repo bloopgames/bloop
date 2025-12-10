@@ -2,7 +2,7 @@ import "./style.css";
 import { Toodle } from "@bloop.gg/toodle";
 import { joinRollbackRoom, start } from "@bloopjs/web";
 import { createDrawState, draw } from "./draw";
-import { game } from "./game";
+import { game, resetGameState } from "./game";
 
 // In dev, vite serves wasm from /bloop-wasm/. In prod, it's bundled at ./bloop.wasm
 const wasmUrl = import.meta.env.DEV
@@ -47,7 +47,34 @@ async function main() {
     requestAnimationFrame(frame);
   });
 
-  joinRollbackRoom("mario-demo", app);
+  let networkJoined = false;
+
+  function handleKeyDown(e: KeyboardEvent) {
+    const { bag } = game;
+
+    if (bag.phase !== "title") return;
+
+    if (e.key === " ") {
+      // Local multiplayer - start immediately
+      bag.mode = "local";
+      bag.phase = "playing";
+      resetGameState(bag);
+    } else if (e.key === "Enter" && !networkJoined) {
+      // Online multiplayer - wait for connection
+      bag.mode = "online";
+      bag.phase = "waiting";
+      networkJoined = true;
+
+      // Phase transitions are handled by the session-watcher system
+      joinRollbackRoom("mario-demo", app, {
+        onSessionEnd() {
+          networkJoined = false;
+        },
+      });
+    }
+  }
+
+  window.addEventListener("keydown", handleKeyDown);
 
   // HMR support
   if (import.meta.hot) {
