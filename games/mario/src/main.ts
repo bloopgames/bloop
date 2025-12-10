@@ -1,6 +1,6 @@
 import "./style.css";
 import { Toodle } from "@bloop.gg/toodle";
-import { start } from "@bloopjs/web";
+import { joinRollbackRoom, start } from "@bloopjs/web";
 import { createDrawState, draw } from "./draw";
 import { game } from "./game";
 
@@ -14,6 +14,7 @@ async function main() {
     game,
     engineWasmUrl: wasmUrl,
     startRecording: false,
+    debugUi: true,
   });
 
   const canvas = document.querySelector("canvas");
@@ -24,8 +25,14 @@ async function main() {
   toodle.clearColor = { r: 0.36, g: 0.58, b: 0.99, a: 1 }; // Mario sky blue
 
   // Load sprites
-  await toodle.assets.loadTextures({
-    marioWalk: new URL(import.meta.env.BASE_URL + "sprites/MarioWalk.png", window.location.href),
+  await toodle.assets.registerBundle("main", {
+    textures: {
+      marioWalk: new URL(
+        `${import.meta.env.BASE_URL}sprites/MarioWalk.png`,
+        window.location.href,
+      ),
+    },
+    autoLoad: true,
   });
 
   await toodle.assets.loadFont(
@@ -39,6 +46,8 @@ async function main() {
     draw(app.game, toodle, drawState);
     requestAnimationFrame(frame);
   });
+
+  joinRollbackRoom("mario-demo", app);
 
   // HMR support
   if (import.meta.hot) {

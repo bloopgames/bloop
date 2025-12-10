@@ -103,7 +103,23 @@ TypeScript interacts with WASM through `WasmEngine` interface. The `mount()` fun
 Each WASM page is 64KB. When adding new static allocations to the engine, run wasm-objdump -j Import -x zig-out/wasm/bloop.wasm to check the required initial pages and update mount.ts if needed.
 
 WASM extern callbacks use double-underscore prefix (__systems, __before_frame,
-  __user_data_len) to avoid shadowing parameter names in exported functions.
+  __user_data_len) to avoid shadowing parameter names in exported functions. These callbacks receive a context pointer as their first argument for accessing engine state.
+
+### Context Pattern (Engine → TypeScript data)
+
+When exposing engine data to TypeScript, follow the established DataView pattern used by `TimeContext`, `InputContext`, and `NetContext`:
+
+1. **Zig struct** (`context.zig`): Define an `extern struct` with fixed memory layout
+2. **Allocate in Sim** (`sim.zig`): Store pointer as field, allocate in `init()`, free in `deinit()`
+3. **Wire context pointer** (`engine.zig`): Add to `cb_data` array passed to callbacks
+4. **Export getter** (`engine.zig`): `pub export fn get_foo_ctx() usize`
+5. **Add offset constant** (`engine.ts`): `FOO_CTX_OFFSET = ...` (position in cb_data)
+6. **TypeScript wrapper** (`contexts/fooContext.ts`): Class with `dataView?: DataView` and getters
+7. **Wire in bloop** (`bloop.ts`): Read pointer in `setContext` hook, create DataView
+
+Key files: `context.zig`, `sim.zig`, `engine.zig`, `build.zig`, `engine.ts`, `contexts/*.ts`, `bloop.ts`
+
+Do NOT use individual wasm exports + callback hooks for reading engine state. The DataView pattern ensures data stays fresh when WASM memory grows.
 
 ### Bloop (TypeScript user-facing apis)
 

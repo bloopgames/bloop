@@ -66,19 +66,31 @@ game.system("p1-input", {
   },
 });
 
-// Player 2 input: IJKL
+// Player 2 input: IJKL local or WASD remote
 game.system("p2-input", {
-  update({ bag, inputs }) {
+  update({ bag, players, net }) {
     const p = bag.p2;
 
-    // Horizontal movement
-    if (inputs.keys.j.held) p.x -= MOVE_SPEED;
-    if (inputs.keys.l.held) p.x += MOVE_SPEED;
+    if (net.peerCount >= 2) {
+      // Remote player uses WASD
+      if (players[1].keys.a.held) p.x -= MOVE_SPEED;
+      if (players[1].keys.d.held) p.x += MOVE_SPEED;
 
-    // Jump
-    if (inputs.keys.i.down && p.grounded) {
-      p.vy = JUMP_VELOCITY;
-      p.grounded = false;
+      // Jump
+      if (players[1].keys.w.down && p.grounded) {
+        p.vy = JUMP_VELOCITY;
+        p.grounded = false;
+      }
+    } else {
+      // Horizontal movement
+      if (players[0].keys.j.held) p.x -= MOVE_SPEED;
+      if (players[0].keys.l.held) p.x += MOVE_SPEED;
+
+      // Jump
+      if (players[0].keys.i.down && p.grounded) {
+        p.vy = JUMP_VELOCITY;
+        p.grounded = false;
+      }
     }
   },
 });
