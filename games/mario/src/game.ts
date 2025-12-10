@@ -50,18 +50,39 @@ export const game = Bloop.create({
 });
 
 // Player 1 input: WASD
-game.system("p1-input", {
-  update({ bag, inputs }) {
-    const p = bag.p1;
+game.system("inputs", {
+  update({ bag, players, net }) {
+    const p1 = bag.p1;
+    const p2 = bag.p2;
 
     // Horizontal movement
-    if (inputs.keys.a.held) p.x -= MOVE_SPEED;
-    if (inputs.keys.d.held) p.x += MOVE_SPEED;
-
+    if (players[0].keys.a.held) p1.x -= MOVE_SPEED;
+    if (players[0].keys.d.held) p1.x += MOVE_SPEED;
     // Jump
-    if (inputs.keys.w.down && p.grounded) {
-      p.vy = JUMP_VELOCITY;
-      p.grounded = false;
+    if (players[0].keys.w.down && p1.grounded) {
+      p1.vy = JUMP_VELOCITY;
+      p1.grounded = false;
+    }
+
+    // Horizontal movement
+    if (players[1].keys.a.held) p2.x -= MOVE_SPEED;
+    if (players[1].keys.d.held) p2.x += MOVE_SPEED;
+    // Jump
+    if (players[1].keys.w.down && p2.grounded) {
+      p2.vy = JUMP_VELOCITY;
+      p2.grounded = false;
+    }
+
+    if (!net.isInSession) {
+      // locally, control second player with ijkl
+      // Horizontal movement
+      if (players[0].keys.j.held) p2.x -= MOVE_SPEED;
+      if (players[0].keys.l.held) p2.x += MOVE_SPEED;
+      // Jump
+      if (players[0].keys.i.down && p2.grounded) {
+        p2.vy = JUMP_VELOCITY;
+        p2.grounded = false;
+      }
     }
   },
 });

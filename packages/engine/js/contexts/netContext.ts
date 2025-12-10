@@ -13,6 +13,10 @@ export class NetContext {
     return this.dataView.getUint8(0);
   }
 
+  get isInSession(): boolean {
+    return this.peerCount > 0;
+  }
+
   /** Current match frame (frames since session start, 0 if no session) */
   get matchFrame(): number {
     if (!this.dataView) {
