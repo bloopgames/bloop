@@ -145,7 +145,7 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
 
     state.coin.position = {
       x: bag.coin.x,
-      y: BLOCK_Y + BLOCK_SIZE + COIN_SIZE,
+      y: bag.coin.y,
     };
     state.coin.isActive = bag.coin.visible;
 

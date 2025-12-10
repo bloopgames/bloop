@@ -1,7 +1,12 @@
 name: Publish
 on:
   workflow_dispatch:
+
   push:
+    paths:
+      - 'packages/**'
+      - '.github/workflows/publish.yml'
+      - 'bin/publish.ts'
     branches:
       - main
       - nu11/publish

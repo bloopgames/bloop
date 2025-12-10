@@ -20,3 +20,7 @@ export const COIN_SIZE = 12;
 // Starting positions
 export const P1_START_X = -60;
 export const P2_START_X = 60;
+
+// Animation timings
+export const COIN_VISIBLE_DURATION = 0.8; // seconds
+export const COIN_V_Y = 0.7;
