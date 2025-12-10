@@ -8,6 +8,8 @@ import {
   InputContext,
   keyCodeToKey,
   mouseButtonCodeToMouseButton,
+  NET_CTX_OFFSET,
+  NetContext,
   TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
@@ -74,7 +76,6 @@ export class Bloop<GS extends BloopSchema> {
     }
 
     const inputs = new InputContext();
-    const self = this;
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
@@ -83,9 +84,7 @@ export class Bloop<GS extends BloopSchema> {
         return inputs.players;
       },
       rawPointer: -1,
-      get peerCount() {
-        return self.hooks.getPeerCount?.() ?? 0;
-      },
+      net: new NetContext(),
     };
   }
 
@@ -162,6 +161,7 @@ export class Bloop<GS extends BloopSchema> {
       const dv = new DataView(this.#engineBuffer, ptr);
       const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
       const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
+      const netCtxPtr = dv.getUint32(NET_CTX_OFFSET, true);
 
       this.#context.rawPointer = ptr;
       // todo - only rebuild these if the buffer has changed due to memory growth or the pointers have changed
@@ -173,6 +173,7 @@ export class Bloop<GS extends BloopSchema> {
         this.#engineBuffer,
         timeCtxPtr,
       );
+      this.#context.net.dataView = new DataView(this.#engineBuffer, netCtxPtr);
     },
 
     systemsCallback: (system_handle: number, ptr: EnginePointer) => {

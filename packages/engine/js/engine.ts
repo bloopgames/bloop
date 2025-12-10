@@ -1,6 +1,7 @@
 export * as Enums from "./codegen/enums";
 export * from "./contexts/inputContext";
 export * from "./contexts/timeContext";
+export * from "./contexts/netContext";
 export * from "./inputs";
 export type * from "./wasmEngine";
 
@@ -28,6 +29,7 @@ export const DEFAULT_WASM_URL: URL = new URL(
 export const TIME_CTX_OFFSET = 0;
 export const INPUT_CTX_OFFSET = TIME_CTX_OFFSET + 4;
 export const EVENTS_OFFSET = INPUT_CTX_OFFSET + 4;
+export const NET_CTX_OFFSET = EVENTS_OFFSET + 4;
 
 /**
  * Size of snapshot header in bytes

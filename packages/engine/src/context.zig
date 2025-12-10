@@ -1,6 +1,12 @@
 const Events = @import("events.zig");
 pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
 
+pub const NetCtx = extern struct {
+    peer_count: u8,
+    _pad1: [3]u8 = .{ 0, 0, 0 }, // Align match_frame to 4 bytes
+    match_frame: u32,
+};
+
 pub const MAX_PLAYERS: u8 = 12;
 
 pub const KeyCtx = extern struct {

@@ -88,7 +88,7 @@ export class App {
 
     this.game.hooks.beforeFrame = (frame: number) => {
       logger.frameNumber = this.#sim.time.frame;
-      logger.matchFrame = this.#sim.wasm.get_match_frame();
+      logger.matchFrame = this.game.context.net.matchFrame;
       this.beforeFrame.notify(frame);
     };
 

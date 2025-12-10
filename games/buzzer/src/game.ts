@@ -34,9 +34,9 @@ export const game = Bloop.create({
 
 // Update game state each frame
 game.system("update timer and block", {
-  update({ bag, time, peerCount }) {
+  update({ bag, time, net }) {
     // Transition from connecting to waiting when session is active (2 peers)
-    if (bag.phase === "connecting" && peerCount >= 2) {
+    if (bag.phase === "connecting" && net.peerCount >= 2) {
       bag.phase = "waiting";
       bag.timer = 0;
     }

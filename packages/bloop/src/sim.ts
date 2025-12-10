@@ -57,11 +57,6 @@ export type EngineHooks = {
    * Called from the engine right before each simulation step.
    */
   beforeFrame?: (frame: number) => void;
-  /**
-   * Returns the number of peers in the session (0 if no session).
-   * Set by mount() to call wasm.get_peer_count().
-   */
-  getPeerCount?: () => number;
 };
 
 export type SystemsCallback = (

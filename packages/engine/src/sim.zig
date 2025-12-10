@@ -7,6 +7,7 @@ const Net = @import("net.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
+const NetCtx = Ctx.NetCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const RollbackState = Rollback.RollbackState;
@@ -44,6 +45,8 @@ pub const Sim = struct {
     rollback: *RollbackState,
     /// Network state for packet management (heap-allocated due to ~68KB size)
     net: *NetState,
+    /// Network context exposed to game systems via DataView
+    net_ctx: *NetCtx,
     /// Whether a multiplayer session is active
     in_session: bool = false,
 
@@ -69,12 +72,17 @@ pub const Sim = struct {
         const net = try allocator.create(NetState);
         net.* = .{ .allocator = allocator };
 
+        // Allocate NetCtx (small struct exposed to game systems)
+        const net_ctx = try allocator.create(NetCtx);
+        net_ctx.* = .{ .peer_count = 0, .match_frame = 0 };
+
         return Sim{
             .time = time,
             .inputs = inputs,
             .events = events,
             .rollback = rollback,
             .net = net,
+            .net_ctx = net_ctx,
             .allocator = allocator,
             .ctx_ptr = ctx_ptr,
         };
@@ -93,6 +101,7 @@ pub const Sim = struct {
         self.allocator.destroy(self.time);
         self.allocator.destroy(self.inputs);
         self.allocator.destroy(self.events);
+        self.allocator.destroy(self.net_ctx);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -391,6 +400,10 @@ pub const Sim = struct {
         }
 
         self.process_events();
+
+        // Update net context for game systems to read
+        self.net_ctx.peer_count = if (self.in_session) self.rollback.peer_count else 0;
+        self.net_ctx.match_frame = self.getMatchFrame();
 
         // Call game systems
         if (self.callbacks.systems) |systems| {

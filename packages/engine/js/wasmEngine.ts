@@ -102,13 +102,9 @@ export type WasmEngine = {
     events_len: number,
   ) => void;
   /**
-   * Get current match frame (frames since session start)
+   * Get pointer to net context struct
    */
-  get_match_frame: () => number;
-  /**
-   * Get peer count (0 if no session)
-   */
-  get_peer_count: () => number;
+  get_net_ctx: () => EnginePointer;
 
   // Network / Packets
   /**

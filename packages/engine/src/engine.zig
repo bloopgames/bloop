@@ -103,6 +103,7 @@ pub export fn initialize() wasmPointer {
     cb_data[0] = @intFromPtr(sim.?.time);
     cb_data[1] = @intFromPtr(sim.?.inputs);
     cb_data[2] = @intFromPtr(sim.?.events);
+    cb_data[3] = @intFromPtr(sim.?.net_ctx);
 
     // Wire up WASM callbacks
     sim.?.callbacks = .{
@@ -343,16 +344,9 @@ pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPo
     sim.?.sessionEmitInputs(peer, match_frame, events_slice);
 }
 
-/// Get current match frame (0 if no session)
-pub export fn get_match_frame() u32 {
-    return sim.?.getMatchFrame();
-}
-
-/// Get peer count (0 if no session)
-pub export fn get_peer_count() u8 {
-    const s = sim.?;
-    if (!s.in_session) return 0;
-    return s.rollback.peer_count;
+/// Get pointer to net context struct
+pub export fn get_net_ctx() usize {
+    return @intFromPtr(sim.?.net_ctx);
 }
 
 // ─────────────────────────────────────────────────────────────

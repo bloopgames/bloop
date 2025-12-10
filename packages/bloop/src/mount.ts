@@ -70,7 +70,6 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
 
   opts.hooks.setBuffer(memory.buffer);
   opts.hooks.setContext(enginePointer);
-  opts.hooks.getPeerCount = () => wasm.get_peer_count();
 
   return {
     sim,
