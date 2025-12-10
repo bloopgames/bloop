@@ -348,6 +348,13 @@ pub export fn get_match_frame() u32 {
     return sim.?.getMatchFrame();
 }
 
+/// Get peer count (0 if no session)
+pub export fn get_peer_count() u8 {
+    const s = sim.?;
+    if (!s.in_session) return 0;
+    return s.rollback.peer_count;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Network / Packet exports
 // ─────────────────────────────────────────────────────────────

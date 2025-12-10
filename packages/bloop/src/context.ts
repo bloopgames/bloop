@@ -32,4 +32,9 @@ export type Context<
   players: readonly PlayerInputContext[];
   /** The engine pointer to the injected system arguments (for advanced use cases) */
   rawPointer: EnginePointer;
+  /**
+   * Number of peers in the current session (0 if not in a multiplayer session).
+   * Use this to detect when a remote peer has connected.
+   */
+  peerCount: number;
 };

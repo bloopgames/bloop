@@ -105,6 +105,10 @@ export type WasmEngine = {
    * Get current match frame (frames since session start)
    */
   get_match_frame: () => number;
+  /**
+   * Get peer count (0 if no session)
+   */
+  get_peer_count: () => number;
 
   // Network / Packets
   /**

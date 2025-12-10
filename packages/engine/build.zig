@@ -51,6 +51,7 @@ pub fn build(b: *std.Build) void {
         "session_end",
         "session_emit_inputs",
         "get_match_frame",
+        "get_peer_count",
         // Network / Packets
         "session_set_local_peer",
         "session_peer_connect",

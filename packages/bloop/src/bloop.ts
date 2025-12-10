@@ -74,6 +74,7 @@ export class Bloop<GS extends BloopSchema> {
     }
 
     const inputs = new InputContext();
+    const self = this;
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
@@ -82,6 +83,9 @@ export class Bloop<GS extends BloopSchema> {
         return inputs.players;
       },
       rawPointer: -1,
+      get peerCount() {
+        return self.hooks.getPeerCount?.() ?? 0;
+      },
     };
   }
 
