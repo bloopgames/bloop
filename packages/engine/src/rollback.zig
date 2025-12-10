@@ -3,7 +3,7 @@ const Tapes = @import("tapes.zig");
 const Events = @import("events.zig");
 const Event = Events.Event;
 
-pub const MAX_ROLLBACK_FRAMES = 30;
+pub const MAX_ROLLBACK_FRAMES = 1000;
 pub const MAX_PEERS = 12;
 pub const MAX_EVENTS_PER_FRAME = 16;
 
