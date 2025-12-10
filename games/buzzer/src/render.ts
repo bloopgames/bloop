@@ -1,17 +1,6 @@
-import type { Bloop } from "@bloopjs/bloop";
-import type { GamePhase } from "./game";
+import type { game, GamePhase } from "./game";
 
-type GameBag = {
-  screenWidth: number;
-  screenHeight: number;
-  blockX: number;
-  phase: GamePhase;
-  player1Score: number;
-  player2Score: number;
-  winner: null | 1 | 2;
-  remoteCursorX: number;
-  remoteCursorY: number;
-};
+type GameBag = typeof game.bag;
 
 const BG_COLORS: Record<GamePhase, string> = {
   waiting: "#ff6b6b", // Red - wait
@@ -29,7 +18,7 @@ const PHASE_MESSAGES: Record<GamePhase, string> = {
 
 export function createRenderer(
   canvas: HTMLCanvasElement,
-  game: Bloop<GameBag>,
+  getBag: () => GameBag,
 ) {
   const ctx = canvas.getContext("2d")!;
 
@@ -39,9 +28,10 @@ export function createRenderer(
     if (parent) {
       canvas.width = parent.clientWidth;
       canvas.height = parent.clientHeight;
-      game.bag.screenWidth = canvas.width;
-      game.bag.screenHeight = canvas.height;
-      game.bag.blockX = canvas.width / 2;
+      const bag = getBag();
+      bag.screenWidth = canvas.width;
+      bag.screenHeight = canvas.height;
+      bag.blockX = canvas.width / 2;
     }
   }
 
@@ -49,7 +39,7 @@ export function createRenderer(
   window.addEventListener("resize", resize);
 
   return function render() {
-    const bag = game.bag;
+    const bag = getBag();
     const { width, height } = canvas;
 
     // Background based on phase

@@ -16,7 +16,7 @@ export class DebugUi {
   #host: HTMLElement;
   #shadow: ShadowRoot;
   #canvas: HTMLCanvasElement;
-  #mountPoint: HTMLDivElement;
+  #mountPoint: HTMLElement;
   #cleanup: (() => void) | null = null;
   #hotkey: string;
 

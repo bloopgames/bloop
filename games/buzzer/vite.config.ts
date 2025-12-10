@@ -38,6 +38,9 @@ export default defineConfig({
   server: {
     allowedHosts: ["localhost", "bloop.ngrok.dev"],
   },
+  // JSX config for Preact - only needed when linking @bloopjs/web directly
+  // via workspace:* in the monorepo. When published, the package will be
+  // pre-built without JSX so consumers don't need this.
   esbuild: {
     jsxImportSource: "preact",
     jsx: "automatic",

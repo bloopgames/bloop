@@ -1,16 +1,6 @@
 import "./style.css";
-import {
-  logger,
-  type PeerId,
-  start,
-  addLog,
-  addPeer,
-  updatePeer,
-  removePeer,
-  setLocalId,
-  setRemoteId,
-  debugState,
-} from "@bloopjs/web";
+import { unwrap } from "@bloopjs/bloop";
+import { logger, type PeerId, start, Debug } from "@bloopjs/web";
 import { game } from "./game";
 import { createRenderer } from "./render";
 
@@ -30,16 +20,22 @@ const app = await start({
   game,
   engineWasmUrl: wasmUrl,
   startRecording: false,
-  debugUi: true,
+  debugUi: {
+    container: unwrap(
+      document.getElementById("app"),
+      "expected #app container to exist",
+    ),
+  },
 });
 
 // Get canvas from debug UI and set up renderer
-const canvas = app.canvas!;
-const render = createRenderer(canvas, game);
+const canvas = unwrap(app.canvas, "expected canvas from debug UI");
+// Use a getter so HMR can replace the game and renderer stays connected
+const render = createRenderer(canvas, () => app.game.bag);
 
 // Wire up logger to debug state
 logger.onLog = (log) => {
-  addLog(log);
+  Debug.addLog(log);
 };
 
 let udp: RTCDataChannel | null = null;
@@ -112,10 +108,10 @@ app.joinRoom("nope", {
       // Assign numeric IDs based on string comparison for consistency
       const ids = assignPeerIds(localStringPeerId, peerId);
       localPeerId = ids.local;
-      setLocalId(localPeerId);
+      Debug.setLocalId(localPeerId);
       remotePeerId = ids.remote;
       remoteStringPeerId = peerId;
-      setRemoteId(remotePeerId);
+      Debug.setRemoteId(remotePeerId);
 
       // Initialize the session in the engine
       // peer_count = 2 for a 2-player game
@@ -130,7 +126,7 @@ app.joinRoom("nope", {
     }
   },
   onPeerConnected(peerId) {
-    addPeer({
+    Debug.addPeer({
       id: peerId,
       nickname: peerId.substring(0, 6),
       ack: -1,
@@ -138,11 +134,11 @@ app.joinRoom("nope", {
       lastPacketTime: performance.now(),
     });
     console.log(
-      `[netcode] Peer connected: ${peerId}. Total peers: ${debugState.netStatus.value.peers.length}`,
+      `[netcode] Peer connected: ${peerId}. Total peers: ${Debug.debugState.netStatus.value.peers.length}`,
     );
   },
   onPeerDisconnected(peerId) {
-    removePeer(peerId);
+    Debug.removePeer(peerId);
     if (remotePeerId !== null && peerId === remoteStringPeerId) {
       app.sim.net.disconnectPeer(remotePeerId);
     }
@@ -188,7 +184,7 @@ function receivePackets() {
 
     // Update peer stats (we can get seq/ack from engine now)
     const peerState = app.sim.net.getPeerState(remotePeerId);
-    updatePeer(remoteStringPeerId!, {
+    Debug.updatePeer(remoteStringPeerId!, {
       ack: peerState.ack,
       seq: peerState.seq,
       lastPacketTime: performance.now(),
