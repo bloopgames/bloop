@@ -25,7 +25,7 @@ async function main() {
 
   // Load sprites
   await toodle.assets.loadTextures({
-    marioWalk: new URL("/sprites/MarioWalk.png", window.location.href),
+    marioWalk: new URL(import.meta.env.BASE_URL + "sprites/MarioWalk.png", window.location.href),
   });
 
   await toodle.assets.loadFont(
