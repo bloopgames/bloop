@@ -1,30 +1,58 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
-import vue from "@vitejs/plugin-vue";
-import { defineConfig, type Plugin } from "vite";
-import vueDevTools from "vite-plugin-vue-devtools";
+import { defineConfig, type Plugin, type UserConfig } from "vite";
 
-function bloopWasmDevPlugin(): Plugin {
-  // adjust path to wherever engine builds the wasm
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [bloopLocalDevPlugin()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
+});
+
+/**
+ * Vite plugin for local monorepo development with bloop packages.
+ * Handles:
+ * - Serving WASM from packages/engine
+ * - JSX config for Preact (used by @bloopjs/web debug UI)
+ * - Excluding workspace packages from optimization
+ * - Allowed hosts for ngrok tunneling
+ */
+function bloopLocalDevPlugin(): Plugin {
   const wasmPath = path.resolve(
     __dirname,
     "../../packages/engine/wasm/bloop.wasm",
   );
 
   return {
-    name: "bloop-wasm-dev",
+    name: "bloop-local-dev",
+    config(): UserConfig {
+      return {
+        server: {
+          allowedHosts: ["localhost", "bloop.ngrok.dev"],
+        },
+        esbuild: {
+          jsxImportSource: "preact",
+          jsx: "automatic",
+        },
+        optimizeDeps: {
+          exclude: ["@bloopjs/engine", "@bloopjs/bloop", "@bloopjs/web"],
+        },
+      };
+    },
     configureServer(server) {
       server.middlewares.use(
         "/bloop-wasm/bloop.wasm",
-        async (req, res, next) => {
+        async (_req, res, _next) => {
           try {
             const data = await fs.readFile(wasmPath);
             res.setHeader("Content-Type", "application/wasm");
             res.end(data);
           } catch (err) {
-            // so you can see useful errors if the path is wrong
-            console.error("[bloop-wasm-dev] failed to read wasm", err);
+            console.error("[bloop-local-dev] failed to read wasm", err);
             res.statusCode = 404;
             res.end("wasm not found");
           }
@@ -33,19 +61,3 @@ function bloopWasmDevPlugin(): Plugin {
     },
   };
 }
-
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [vue(), vueDevTools(), bloopWasmDevPlugin()],
-  server: {
-    allowedHosts: ["localhost", "bloop.ngrok.dev"],
-  },
-  optimizeDeps: {
-    exclude: ["@bloopjs/engine", "@bloopjs/bloop"],
-  },
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
-});
