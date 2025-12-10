@@ -1,6 +1,6 @@
-import { render, type ComponentChild } from "preact";
+import { type ComponentChild, render } from "preact";
 import { Root } from "./components/Root.tsx";
-import { debugState } from "./state.ts";
+import { type DebugState, debugState } from "./state.ts";
 import { styles } from "./styles.ts";
 
 export type DebugUiOptions = {
@@ -90,7 +90,7 @@ export class DebugUi {
   }
 
   /** Access to state signals for external updates */
-  get state() {
+  get state(): DebugState {
     return debugState;
   }
 

@@ -1,4 +1,9 @@
-import { signal, computed, type Signal, type ReadonlySignal } from "@preact/signals";
+import {
+  computed,
+  type ReadonlySignal,
+  type Signal,
+  signal,
+} from "@preact/signals";
 import type { Log } from "../netcode/logs.ts";
 
 export type FrameNumber = number;
@@ -18,7 +23,7 @@ export type NetStatus = {
   peers: Peer[];
 };
 
-type DebugState = {
+export type DebugState = {
   isVisible: Signal<boolean>;
   netStatus: Signal<NetStatus>;
   logs: Signal<Log[]>;
