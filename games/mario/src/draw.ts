@@ -1,5 +1,5 @@
-import type { QuadNode, SceneNode, Text, Toodle } from "@bloop.gg/toodle";
-import { Colors } from "@bloop.gg/toodle";
+import type { QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
+import { Colors } from "@bloopjs/toodle";
 import {
   BLOCK_SIZE,
   BLOCK_Y,
@@ -61,7 +61,7 @@ export function createDrawState(toodle: Toodle): DrawState {
 
   const ground = gameScreen.add(
     toodle.shapes.Rect({
-      idealSize: { width: 400, height: 40 },
+      size: { width: 400, height: 40 },
       position: { x: 0, y: GROUND_Y - 20 },
       color: GROUND_COLOR,
     }),
@@ -69,28 +69,28 @@ export function createDrawState(toodle: Toodle): DrawState {
 
   const block = gameScreen.add(
     toodle.shapes.Rect({
-      idealSize: { width: BLOCK_SIZE, height: BLOCK_SIZE },
+      size: { width: BLOCK_SIZE, height: BLOCK_SIZE },
       color: BLOCK_COLOR,
     }),
   );
 
   const coin = gameScreen.add(
     toodle.shapes.Circle({
-      idealSize: { width: COIN_SIZE, height: COIN_SIZE },
+      radius: COIN_SIZE / 2,
       color: COIN_COLOR,
     }),
   );
 
   const p1 = gameScreen.add(
     toodle.Quad("marioWalk", {
-      idealSize: { width: 16, height: 16 },
+      size: { width: 16, height: 16 },
       region: { x: 0, y: 0, width: 16, height: 16 },
     }),
   );
 
   const p2 = gameScreen.add(
     toodle.shapes.Rect({
-      idealSize: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+      size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
       color: LUIGI_COLOR,
     }),
   );

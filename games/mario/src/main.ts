@@ -1,5 +1,5 @@
 import "./style.css";
-import { Toodle } from "@bloop.gg/toodle";
+import { Toodle } from "@bloopjs/toodle";
 import { joinRollbackRoom, start } from "@bloopjs/web";
 import { createDrawState, draw } from "./draw";
 import { game, resetGameState } from "./game";

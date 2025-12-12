@@ -15,8 +15,8 @@
     "vite": "^7.2.2"
   },
   "dependencies": {
-    "@bloop.gg/toodle": "^0.0.100",
     "@bloopjs/bloop": "workspace:*",
+    "@bloopjs/toodle": "^0.1.1",
     "@bloopjs/web": "workspace:*"
   }
 }
