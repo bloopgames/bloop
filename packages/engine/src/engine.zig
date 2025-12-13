@@ -20,6 +20,9 @@ extern "env" fn __before_frame(ctx_ptr: usize, frame: u32) void;
 /// Returns the current size of user data for snapshots
 extern "env" fn __user_data_len() u32;
 
+/// Callback into JS when tape buffer fills up
+extern "env" fn __on_tape_full(ctx_ptr: u32) void;
+
 /// Writes user data from js to the given snapshot pointer
 extern "env" fn user_data_serialize(ptr: wasmPointer, len: u32) void;
 
@@ -112,6 +115,7 @@ pub export fn initialize() wasmPointer {
         .user_serialize = wasm_user_serialize,
         .user_deserialize = wasm_user_deserialize,
         .user_data_len = wasm_user_data_len,
+        .on_tape_full = wasm_on_tape_full,
     };
 
     return cb_ptr;
@@ -136,6 +140,10 @@ fn wasm_user_deserialize(ptr: usize, len: u32) void {
 
 fn wasm_user_data_len() u32 {
     return __user_data_len();
+}
+
+fn wasm_on_tape_full() void {
+    __on_tape_full(cb_ptr);
 }
 
 pub export fn alloc(size: usize) wasmPointer {

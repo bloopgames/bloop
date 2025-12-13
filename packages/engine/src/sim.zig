@@ -4,6 +4,7 @@ const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
 const Rollback = @import("rollback.zig");
 const Net = @import("net.zig");
+const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
@@ -27,6 +28,8 @@ pub const Callbacks = struct {
     user_deserialize: ?*const fn (ptr: usize, len: u32) void = null,
     /// Returns the current size of user data (dynamic, may change between frames)
     user_data_len: ?*const fn () u32 = null,
+    /// Called when tape buffer fills up and recording stops
+    on_tape_full: ?*const fn () void = null,
 };
 
 pub const Sim = struct {
@@ -417,7 +420,13 @@ pub const Sim = struct {
         if (self.is_recording and !self.is_replaying) {
             if (self.tape) |*t| {
                 t.start_frame() catch {
-                    @panic("Failed to advance tape frame");
+                    // Tape is full - stop recording gracefully
+                    self.stop_recording();
+                    if (self.callbacks.on_tape_full) |on_tape_full| {
+                        on_tape_full();
+                    } else {
+                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+                    }
                 };
             }
         }
@@ -488,7 +497,15 @@ pub const Sim = struct {
         // Record to tape if recording
         if (self.is_recording) {
             if (self.tape) |*t| {
-                t.append_event(event) catch @panic("Failed to record event");
+                t.append_event(event) catch {
+                    // Tape is full - stop recording gracefully
+                    self.stop_recording();
+                    if (self.callbacks.on_tape_full) |on_tape_full| {
+                        on_tape_full();
+                    } else {
+                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+                    }
+                };
             }
         }
 
@@ -632,11 +649,11 @@ pub const Sim = struct {
         const snapshot = self.tape.?.closest_snapshot(frame);
         self.restore(snapshot);
 
+        // Remember if we were already replaying (from load_tape)
+        const was_replaying = self.is_replaying;
+
         // Enter replay mode for resimulation
         self.is_replaying = true;
-        defer {
-            self.is_replaying = false;
-        }
 
         // Advance to the desired frame
         while (self.time.frame < frame) {
@@ -651,6 +668,12 @@ pub const Sim = struct {
             if (count == 0) {
                 @panic("Failed to advance frame during seek");
             }
+        }
+
+        // Preserve replay state if we were replaying before (e.g., from load_tape)
+        // Only reset if we weren't in replay mode before this seek
+        if (!was_replaying) {
+            self.is_replaying = false;
         }
     }
 };

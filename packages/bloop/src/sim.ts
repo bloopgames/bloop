@@ -1,7 +1,5 @@
 import {
   type EnginePointer,
-  type InputSource,
-  inputSourceToInputSourceCode,
   type Key,
   keyToKeyCode,
   type MouseButton,
@@ -81,6 +79,7 @@ export type DeserializeFn = (
  * * Moving the engine forward and backward in time
  * * Maintaining a js-friendly view of engine memory
  * * Pausing and unpausing game logic
+ * * Managing recording and tapes
  */
 export class Sim {
   wasm: WasmEngine;
@@ -95,6 +94,12 @@ export class Sim {
    * Use this to send/receive packets and query peer network state.
    */
   readonly net: Net;
+
+  /**
+   * Callback fired when tape buffer fills up and recording stops.
+   * The tape data is passed so you can save it before clearing.
+   */
+  onTapeFull?: (tape: Uint8Array) => void;
 
   constructor(
     wasm: WasmEngine,
@@ -182,15 +187,6 @@ export class Sim {
     }
   }
 
-  record() {
-    const serializer = this.#serialize ? this.#serialize() : null;
-    const size = serializer ? serializer.size : 0;
-    const result = this.wasm.start_recording(size, 1024);
-    if (result !== 0) {
-      throw new Error(`failed to start recording, error code=${result}`);
-    }
-  }
-
   /**
    * Snapshot the current game state into a byte array
    */
@@ -213,6 +209,19 @@ export class Sim {
     copy.set(memoryView);
 
     return copy;
+  }
+
+  /**
+   * Start recording the simulation at the current frame
+   * @param maxEvents Maximum number of events to record (default 1024)
+   */
+  record(maxEvents: number = 1024) {
+    const serializer = this.#serialize ? this.#serialize() : null;
+    const size = serializer ? serializer.size : 0;
+    const result = this.wasm.start_recording(size, maxEvents);
+    if (result !== 0) {
+      throw new Error(`failed to start recording, error code=${result}`);
+    }
   }
 
   /**
@@ -307,11 +316,11 @@ export class Sim {
   }
 
   get isRecording(): boolean {
-    return this.wasm.is_recording();
+    return Boolean(this.wasm.is_recording());
   }
 
   get isReplaying(): boolean {
-    return this.wasm.is_replaying();
+    return Boolean(this.wasm.is_replaying());
   }
 
   get hasHistory(): boolean {
@@ -380,10 +389,7 @@ export class Sim {
 
     // Allocate memory for events and copy
     const ptr = this.wasm.alloc(events.byteLength);
-    assert(
-      ptr > 0,
-      `failed to allocate ${events.byteLength} bytes for events`,
-    );
+    assert(ptr > 0, `failed to allocate ${events.byteLength} bytes for events`);
 
     const memoryView = new Uint8Array(this.buffer, ptr, events.byteLength);
     memoryView.set(events);
@@ -395,5 +401,4 @@ export class Sim {
     // Free the allocated memory
     this.wasm.free(ptr, events.byteLength);
   }
-
 }
