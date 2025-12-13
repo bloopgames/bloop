@@ -52,8 +52,22 @@ export async function mount(
         }
       },
       __on_tape_full: function (_ctxPtr: number) {
-        if (sim?.onTapeFull) {
-          sim.onTapeFull(sim.saveTape());
+        if (!sim) {
+          throw new Error("Sim not initialized in on_tape_full");
+        }
+        const tapeBytes = sim.saveTape();
+        if (sim.onTapeFull) {
+          sim.onTapeFull(tapeBytes);
+        } else {
+          const size = tapeBytes.length / 1024;
+          const duration = sim.time.time;
+          const kbPerSecond = size / duration;
+
+          console.warn("Tape full. Recording stopped", {
+            size: `${(tapeBytes.length / 1024).toFixed(0)}kb`,
+            duration: `${sim.time.time.toFixed(2)}s`,
+            kbPerSecond: `${kbPerSecond.toFixed(2)} kb/s`,
+          });
         }
       },
       console_log: function (ptr: EnginePointer, len: number) {
