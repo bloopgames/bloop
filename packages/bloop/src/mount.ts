@@ -7,21 +7,10 @@ import { type EngineHooks, Sim } from "./sim";
 import { assert } from "./util";
 
 /**
- * Calculate max events from tape options
+ * Mount a simulation engine instance - instantiates wasm and sets up hooks and initial state.
+ *
+ * This is called by app.start on the web.
  */
-function calculateMaxEvents(tape?: TapeOptions): number {
-  if (!tape) return 1024; // default
-
-  if ("maxEvents" in tape) {
-    return tape.maxEvents;
-  }
-
-  // duration-based: frames * average events per frame
-  // At 60fps, duration seconds = duration * 60 frames
-  const avgEvents = tape.averageEventsPerFrame ?? 2;
-  return Math.ceil(tape.duration * 60 * avgEvents);
-}
-
 export async function mount(
   opts: MountOpts,
   options?: MountOptions,
@@ -145,3 +134,16 @@ export type MountOpts = {
 export type MountResult = {
   sim: Sim;
 };
+
+function calculateMaxEvents(tape?: TapeOptions): number {
+  if (!tape) return 1024; // default
+
+  if ("maxEvents" in tape) {
+    return tape.maxEvents;
+  }
+
+  // duration-based: frames * average events per frame
+  // At 60fps, duration seconds = duration * 60 frames
+  const avgEvents = tape.averageEventsPerFrame ?? 2;
+  return Math.ceil(tape.duration * 60 * avgEvents);
+}

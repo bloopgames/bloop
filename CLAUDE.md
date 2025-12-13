@@ -11,6 +11,46 @@ Bloop is a rewindable 2D game simulation library. It enables:
 - Hot reloading code changes during rewinded play sessions
 - Rollback netcode (in development) for up to 12 player sessions.
 
+## General Guidelines
+
+* This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
+
+* In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
+
+```ts
+if (this.sim?.isRecording) {
+  // do something
+}
+```
+
+instead do this unless explicitly asked for a silent null guard:
+
+```ts
+// throws an error if this.sim is null/undefined
+if (unwrap(this.sim).isRecording) {
+  // do something
+}
+```
+
+* Prefer typescript types to interfaces wherever possible.
+
+* Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
+
+* Put public apis at the top of the file and helper files towards the bottom. eg
+
+```ts
+export class MyThing {
+
+
+}
+
+export function myOtherThing() {
+  someHelperFunction();
+}
+
+function someHelperFunction() { ... }
+```
+
 ## Build & Development Commands
 
 Use Bun exclusively (not npm/yarn/pnpm/node):
@@ -167,14 +207,6 @@ it("test name", async () => {
   expect(game.bag.value).toBe(1);
 });
 ```
-
-## General Guidelines
-
-In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state.
-
-Prefer typescript types to interfaces wherever possible.
-
-This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
 
 ## Rendering
 
