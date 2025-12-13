@@ -114,7 +114,7 @@ bun run deploy-games
 
 **System** - Game logic registered via `game.system("name", { update, keydown, mousedown, ... })`. Systems receive a `Context` with `bag`, `time`, and `inputs`.
 
-**Sim** - Simulation runner that wraps the WASM engine. Handles stepping frames forward/backward, recording/replaying tapes, and snapshotting state.
+**Sim** - Simulation runner that wraps the WASM engine. Handles stepping frames forward/backward, recording/replaying tapes, and snapshotting state. Note that `sim.seek(frame)` uses absolute frame numbers, not relative to tape start—if recording started at frame 3, seek to frame 3 to get the beginning of the tape.
 
 **App** (web only) - Browser runtime that connects DOM events to the Sim and runs the RAF loop. Handles HMR via `app.acceptHmr()`.
 
@@ -138,12 +138,25 @@ The engine in `packages/engine/src/*.zig` manages:
 
 Performance is the north star, and we should have high unit test coverage here. We should prefer having one explicit way to do things instead more ergonomic apis. Exported wasm functions must be listed explicitly in build.zig
 
-TypeScript interacts with WASM through `WasmEngine` interface. The `mount()` function instantiates WASM and wires up callbacks.
+TypeScript interacts with WASM through `WasmEngine` interface. The `mount()` function instantiates WASM and wires up callbacks. Note that WASM exports return `0`/`1` for booleans, so wrap with `Boolean()` in TypeScript:
+
+```typescript
+get isRecording(): boolean {
+  return Boolean(this.wasm.is_recording());
+}
+```
 
 Each WASM page is 64KB. When adding new static allocations to the engine, run wasm-objdump -j Import -x zig-out/wasm/bloop.wasm to check the required initial pages and update mount.ts if needed.
 
 WASM extern callbacks use double-underscore prefix (__systems, __before_frame,
   __user_data_len) to avoid shadowing parameter names in exported functions. These callbacks receive a context pointer as their first argument for accessing engine state.
+
+For logging in Zig, use the `Log` module which outputs to the browser console:
+
+```zig
+const Log = @import("log.zig");
+Log.log("Message with args: {d}", .{value});
+```
 
 ### Context Pattern (Engine → TypeScript data)
 
