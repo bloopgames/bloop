@@ -130,7 +130,7 @@ Reuse/port from quickdraw:
 - Logs panel (reuse Logs.vue pattern)
 - Integrate with mario game
 
-**Status**: Not started
+**Status**: Completed (Dec 12) - Ported from buzzer game
 
 ### 9. Tape Replay + Rollback Dissection (stretch, ~0.5 day)
 The "maximum wow factor":
@@ -149,7 +149,7 @@ Port netcode from buzzer game to mario:
 - Add debug UI toggle button (lower right corner)
 - Test with two browser windows
 
-**Status**: Not started (currently only buzzer has netcode)
+**Status**: Completed (Dec 12) - Ported from buzzer game
 
 ### 11. Error Handling & Netpause (~0.25 day)
 Graceful degradation when things go wrong:
@@ -168,8 +168,7 @@ Graceful degradation when things go wrong:
 | Issue | Impact | Fix |
 |-------|--------|-----|
 | Page reload leads to unexpected results | Demo risk | Needs investigation - likely stale peer state |
-| Rollback >30 frames throws error, game stops silently | Demo blocker | Show error on screen, implement netpause |
-| Mario game has no netcode | Demo blocker | Port netcode integration from buzzer |
+| Rollback >30 frames throws error, game stops silently | Demo risk | Show error on screen, implement netpause |
 
 **Netpause**: When rollback depth exceeds limit, pause game execution but continue sending/receiving packets. Show visual indicator of how many frames ahead/behind we are. Resume automatically when caught up.
 
@@ -186,9 +185,9 @@ Graceful degradation when things go wrong:
 | Engine: packet format | ✅ Done | Wire protocol |
 | Web: network transport | ✅ Done | Deployed to fly.io |
 | Cloudflare TURN | ✅ Done | Cross-region connectivity |
-| **Mario netcode integration** | 🔲 Next | Port from buzzer |
-| **Debug UI toggle** | 🔲 Next | Button in lower right |
-| **Crash error display** | 🔲 | Show errors on screen |
+| Mario netcode integration | ✅ Done | Ported from buzzer |
+| Debug UI toggle | ✅ Done | Button in lower right |
+| Crash error display | ⏸️ Deprioritized | Show errors on screen |
 
 ### P1 - Stretch Goals
 | Item | Status | Notes |

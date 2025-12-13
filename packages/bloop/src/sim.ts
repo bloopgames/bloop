@@ -182,15 +182,6 @@ export class Sim {
     }
   }
 
-  record() {
-    const serializer = this.#serialize ? this.#serialize() : null;
-    const size = serializer ? serializer.size : 0;
-    const result = this.wasm.start_recording(size, 1024);
-    if (result !== 0) {
-      throw new Error(`failed to start recording, error code=${result}`);
-    }
-  }
-
   /**
    * Snapshot the current game state into a byte array
    */
@@ -213,6 +204,18 @@ export class Sim {
     copy.set(memoryView);
 
     return copy;
+  }
+
+  /**
+   * Start recording the simulation at the current frame
+   */
+  record() {
+    const serializer = this.#serialize ? this.#serialize() : null;
+    const size = serializer ? serializer.size : 0;
+    const result = this.wasm.start_recording(size, 1024);
+    if (result !== 0) {
+      throw new Error(`failed to start recording, error code=${result}`);
+    }
   }
 
   /**
@@ -380,10 +383,7 @@ export class Sim {
 
     // Allocate memory for events and copy
     const ptr = this.wasm.alloc(events.byteLength);
-    assert(
-      ptr > 0,
-      `failed to allocate ${events.byteLength} bytes for events`,
-    );
+    assert(ptr > 0, `failed to allocate ${events.byteLength} bytes for events`);
 
     const memoryView = new Uint8Array(this.buffer, ptr, events.byteLength);
     memoryView.set(events);
@@ -395,5 +395,4 @@ export class Sim {
     // Free the allocated memory
     this.wasm.free(ptr, events.byteLength);
   }
-
 }

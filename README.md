@@ -10,7 +10,7 @@ Bloop is a rewindable 2d game simulation library that can be embedded in any gam
 - Rewind any live or recorded gameplay session
 - Hot reload code changes during a rewinded play session
 
-[Technical Details](./details.md) | [Why Bloop?](./why.md)
+[Why Bloop?](./why.md)
 
 ## 1.0
 
