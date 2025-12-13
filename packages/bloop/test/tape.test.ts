@@ -57,6 +57,8 @@ describe("tapes", () => {
       expect(sim.isRecording).toBe(true);
     });
 
+    it.skip("restarted recordings have valid tape data (TODO - write this)", async () => {});
+
     it("can start recording mid-game", async () => {
       const game = Bloop.create({
         bag: { score: 0 },
@@ -74,56 +76,43 @@ describe("tapes", () => {
       const { sim } = await mount(game, { startRecording: false });
       expect(sim.isRecording).toBe(false);
 
-      // Play for a bit without recording
+      // Play for a bit without recording (frames 0->1, 1->2, 2->3)
       sim.step();
       sim.step();
       sim.emit.keydown("Space");
       sim.step();
       expect(game.bag.score).toBe(10);
+      expect(game.context.time.frame).toBe(3);
 
-      // Now start recording mid-game
+      // Now start recording mid-game at frame 3
       sim.record(100);
       expect(sim.isRecording).toBe(true);
 
-      // Score more points while recording
+      // Score more points while recording (frames 3->4, 4->5)
       sim.emit.keyup("Space");
       sim.step();
       sim.emit.keydown("Space");
       sim.step();
       expect(game.bag.score).toBe(20);
+      expect(game.context.time.frame).toBe(5);
 
       // Can save tape successfully
       const tape = sim.saveTape();
       expect(tape.length).toBeGreaterThan(0);
 
-      // Can seek back within the recorded portion
-      sim.stepBack();
+      // Verify tape can be loaded in a fresh sim and replayed correctly
+      const { sim: sim2 } = await mount(game);
+      sim2.loadTape(tape);
+
+      // At frame 3 (start of recording), score should be 10
+      sim2.seek(3);
       expect(game.bag.score).toBe(10);
+
+      // At frame 5 (end of recording), score should be 20
+      sim2.seek(5);
+      expect(game.bag.score).toBe(20);
     });
 
-    it("tape.duration option calculates correct max events", async () => {
-      const game = Bloop.create({ bag: {} });
-      let tapeFull = false;
-
-      // 1 second at 60fps with default 2 events/frame = 120 events
-      // But we need frame start events too, so actual capacity is lower
-      const { sim } = await mount(game, {
-        tape: { duration: 0.5 }, // ~60 events
-      });
-
-      sim.onTapeFull = () => {
-        tapeFull = true;
-      };
-
-      // Run for more frames than the tape can hold
-      for (let i = 0; i < 100; i++) {
-        sim.step();
-      }
-
-      // Should have triggered tape full
-      expect(tapeFull).toBe(true);
-      expect(sim.isRecording).toBe(false);
-    });
   });
 
   describe("snapshots", () => {

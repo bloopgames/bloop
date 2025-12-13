@@ -4,6 +4,7 @@ const Events = @import("events.zig");
 const Tapes = @import("tapes.zig");
 const Rollback = @import("rollback.zig");
 const Net = @import("net.zig");
+const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
@@ -423,6 +424,8 @@ pub const Sim = struct {
                     self.stop_recording();
                     if (self.callbacks.on_tape_full) |on_tape_full| {
                         on_tape_full();
+                    } else {
+                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
                     }
                 };
             }
@@ -499,6 +502,8 @@ pub const Sim = struct {
                     self.stop_recording();
                     if (self.callbacks.on_tape_full) |on_tape_full| {
                         on_tape_full();
+                    } else {
+                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
                     }
                 };
             }
