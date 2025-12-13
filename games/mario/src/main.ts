@@ -13,9 +13,15 @@ async function main() {
   const app = await start({
     game,
     engineWasmUrl: wasmUrl,
-    startRecording: false,
     debugUi: true,
   });
+
+  app.sim.onTapeFull = (bytes) => {
+    console.warn(
+      "Simulation tape full!",
+      `${(bytes.byteLength / 1024).toFixed(0)}kb`,
+    );
+  };
 
   const canvas = document.querySelector("canvas");
   if (!canvas) throw new Error("No canvas element found");
