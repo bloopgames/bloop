@@ -95,6 +95,12 @@ export class Sim {
    */
   readonly net: Net;
 
+  /**
+   * Callback fired when tape buffer fills up and recording stops.
+   * The tape data is passed so you can save it before clearing.
+   */
+  onTapeFull?: (tape: Uint8Array) => void;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
@@ -207,11 +213,12 @@ export class Sim {
 
   /**
    * Start recording the simulation at the current frame
+   * @param maxEvents Maximum number of events to record (default 1024)
    */
-  record() {
+  record(maxEvents: number = 1024) {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    const result = this.wasm.start_recording(size, 1024);
+    const result = this.wasm.start_recording(size, maxEvents);
     if (result !== 0) {
       throw new Error(`failed to start recording, error code=${result}`);
     }
@@ -309,11 +316,11 @@ export class Sim {
   }
 
   get isRecording(): boolean {
-    return this.wasm.is_recording();
+    return Boolean(this.wasm.is_recording());
   }
 
   get isReplaying(): boolean {
-    return this.wasm.is_replaying();
+    return Boolean(this.wasm.is_replaying());
   }
 
   get hasHistory(): boolean {

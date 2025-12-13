@@ -6,21 +6,45 @@ import {
 import { type EngineHooks, Sim } from "./sim";
 import { assert } from "./util";
 
-export async function mount(opts: MountOpts): Promise<MountResult> {
+/**
+ * Calculate max events from tape options
+ */
+function calculateMaxEvents(tape?: TapeOptions): number {
+  if (!tape) return 1024; // default
+
+  if ("maxEvents" in tape) {
+    return tape.maxEvents;
+  }
+
+  // duration-based: frames * average events per frame
+  // At 60fps, duration seconds = duration * 60 frames
+  const avgEvents = tape.averageEventsPerFrame ?? 2;
+  return Math.ceil(tape.duration * 60 * avgEvents);
+}
+
+export async function mount(
+  opts: MountOpts,
+  options?: MountOptions,
+): Promise<MountResult> {
+  const wasmUrl = options?.wasmUrl ?? opts.wasmUrl ?? DEFAULT_WASM_URL;
+  const startRecording = options?.startRecording ?? opts.startRecording ?? true;
+  const maxEvents = calculateMaxEvents(options?.tape);
+
   // https://github.com/oven-sh/bun/issues/12434
-  const bytes = await fetch(opts.wasmUrl ?? DEFAULT_WASM_URL)
+  const bytes = await fetch(wasmUrl)
     .then((res) => res.arrayBuffer())
     .catch((e) => {
-      console.error(
-        `Failed to fetch wasm at ${opts.wasmUrl ?? DEFAULT_WASM_URL}`,
-        e,
-      );
+      console.error(`Failed to fetch wasm at ${wasmUrl}`, e);
       throw e;
     });
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size
   const memory = new WebAssembly.Memory({ initial: 236, maximum: 1000 });
+
+  // Create sim early so we can reference it in callbacks
+  let sim: Sim;
+
   const wasmInstantiatedSource = await WebAssembly.instantiate(bytes, {
     env: {
       memory,
@@ -36,6 +60,11 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
           opts.hooks.beforeFrame?.(frame);
         } catch (e) {
           console.error("Error in beforeFrame hook:", e);
+        }
+      },
+      __on_tape_full: function (_ctxPtr: number) {
+        if (sim?.onTapeFull) {
+          sim.onTapeFull(sim.saveTape());
         }
       },
       console_log: function (ptr: EnginePointer, len: number) {
@@ -63,12 +92,12 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
   const wasm = wasmInstantiatedSource.instance.exports as WasmEngine;
 
   const enginePointer = wasm.initialize();
-  const sim = new Sim(wasm, memory, {
+  sim = new Sim(wasm, memory, {
     serialize: opts.hooks.serialize,
   });
 
-  if (opts.startRecording ?? true) {
-    sim.record();
+  if (startRecording) {
+    sim.record(maxEvents);
   }
 
   opts.hooks.setBuffer(memory.buffer);
@@ -78,6 +107,28 @@ export async function mount(opts: MountOpts): Promise<MountResult> {
     sim,
   };
 }
+
+export type TapeOptions =
+  | { maxEvents: number }
+  | { duration: number; averageEventsPerFrame?: number };
+
+export type MountOptions = {
+  /**
+   * Whether to start recording immediately upon mount
+   * Defaults to true
+   */
+  startRecording?: boolean;
+
+  /**
+   * Tape configuration options
+   */
+  tape?: TapeOptions;
+
+  /**
+   * Custom WASM URL (for advanced use cases)
+   */
+  wasmUrl?: URL;
+};
 
 export type MountOpts = {
   hooks: EngineHooks;
