@@ -1,7 +1,5 @@
 import {
   type EnginePointer,
-  type InputSource,
-  inputSourceToInputSourceCode,
   type Key,
   keyToKeyCode,
   type MouseButton,
@@ -81,6 +79,7 @@ export type DeserializeFn = (
  * * Moving the engine forward and backward in time
  * * Maintaining a js-friendly view of engine memory
  * * Pausing and unpausing game logic
+ * * Managing recording and tapes
  */
 export class Sim {
   wasm: WasmEngine;
