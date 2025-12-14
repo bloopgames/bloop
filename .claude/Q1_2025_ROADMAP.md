@@ -3,7 +3,7 @@
 ## The Goal
 
 Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
-- A polished GIF on the README
+- A polished [GIF](GIF_STORYBOARD.md) on the README
 - A 45-60 second video
 - Posts to web gamedev discord, Zig discord, Bun discord, and beyond
 

@@ -1,55 +1,11 @@
-# CLAUDE.md
+This is Bloop, a rewindable 2D game simulation library built with TypeScript and Zig. We are currently working towards `.claude/Q1_2025_ROADMAP.md`
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What is Bloop?
-
-Bloop is a rewindable 2D game simulation library. It enables:
+## Key Features
 
 - Writing game state and logic in TypeScript
 - Rewinding any live or recorded gameplay session
 - Hot reloading code changes during rewinded play sessions
 - Rollback netcode (in development) for up to 12 player sessions.
-
-## General Guidelines
-
-* This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
-
-* In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
-
-```ts
-if (this.sim?.isRecording) {
-  // do something
-}
-```
-
-instead do this unless explicitly asked for a silent null guard:
-
-```ts
-// throws an error if this.sim is null/undefined
-if (unwrap(this.sim).isRecording) {
-  // do something
-}
-```
-
-* Prefer typescript types to interfaces wherever possible.
-
-* Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
-
-* Put public apis at the top of the file and helper files towards the bottom. eg
-
-```ts
-export class MyThing {
-
-
-}
-
-export function myOtherThing() {
-  someHelperFunction();
-}
-
-function someHelperFunction() { ... }
-```
 
 ## Build & Development Commands
 
@@ -59,8 +15,8 @@ Use Bun exclusively (not npm/yarn/pnpm/node):
 # Install dependencies
 bun install
 
-# Run all dev servers
-bun run dev
+# Run all checks
+bun run ci
 
 # Type checking
 bun run ci:tsc
@@ -68,17 +24,14 @@ bun run ci:tsc
 # Run ts tests
 bun test
 
-# Run all ci checks
-bun run ci
+# Build engine WASM
+(cd packages/engine && bun run build:wasm)
 
 # Run engine tests
 (cd packages/engine && zig build test)
 
 # Run a single test file
 bun test packages/bloop/test/bloop.test.ts
-
-# Build engine WASM (requires zig)
-(cd packages/engine && bun run build:wasm)
 
 # Watch engine WASM during development
 (cd packages/engine && bun dev)
@@ -94,11 +47,11 @@ bun run deploy-games
 
 **Packages (publishable libraries):**
 
-- `packages/engine` - Zig WASM core that handles time, inputs, events, snapshots, and tape recording.
+- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games. Speed of expression is the north star. Write integration tests that cover user-facing APIs here.
 
-- `packages/bloop` - TypeScript game framework (`@bloopjs/bloop`) - the main API for creating games.
+- `packages/engine` - Zig core that handles time, inputs, events, snapshots, and tape recording. Performance is the north star. Write high coverage unit tests for all modules heres.
 
-- `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR, translating browser APIs into bloop calls. Tests should be end-to-end tests using a real browser environment (e.g. Playwright).
+- `packages/web` - Browser runtime (`@bloopjs/web`) - handles RAF loop, DOM events, HMR, translating browser APIs into bloop calls. Write end-to-end smoke tests using Playwright.
 
 **Games (example apps):**
 
@@ -160,46 +113,10 @@ Log.log("Message with args: {d}", .{value});
 
 ### Context Pattern (Engine → TypeScript data)
 
-When exposing engine data to TypeScript, follow the established DataView pattern used by `TimeContext`, `InputContext`, and `NetContext`:
+When exposing engine data to TypeScript, follow the established DataView pattern used by `TimeContext`, `InputContext`, and `NetContext`
 
-1. **Zig struct** (`context.zig`): Define an `extern struct` with fixed memory layout
-2. **Allocate in Sim** (`sim.zig`): Store pointer as field, allocate in `init()`, free in `deinit()`
-3. **Wire context pointer** (`engine.zig`): Add to `cb_data` array passed to callbacks
-4. **Export getter** (`engine.zig`): `pub export fn get_foo_ctx() usize`
-5. **Add offset constant** (`engine.ts`): `FOO_CTX_OFFSET = ...` (position in cb_data)
-6. **TypeScript wrapper** (`contexts/fooContext.ts`): Class with `dataView?: DataView` and getters
-7. **Wire in bloop** (`bloop.ts`): Read pointer in `setContext` hook, create DataView
+### Bloop - packages/bloop (TypeScript user-facing apis)
 
-Key files: `context.zig`, `sim.zig`, `engine.zig`, `build.zig`, `engine.ts`, `contexts/*.ts`, `bloop.ts`
-
-Do NOT use individual wasm exports + callback hooks for reading engine state. The DataView pattern ensures data stays fresh when WASM memory grows.
-
-### Bloop (TypeScript user-facing apis)
-
-Ergonomics and expressiveness are the north star here. Tests are integration tests, integrating with the `Bloop` and `Sim` objects the way the developer would. The target audience is game designers who can code, so the library needs to be expressive enough to design games live, but must also pass the "sniff test" of a seasoned developer in terms of performance.
-
-If a gamedev is using an api multiple times a day during prototyping / development, we want that api to have as little friction as possible to provide a great DX. We want it to feel like a shorthand of their creative process.
-
-While performance is still important, we are willing to consider tradeoffs for higher level apis provided that the lower level apis are available and the constraints are documented.
-
-### Netcode
-
-The rollback netcode uses `joinRollbackRoom(roomId, app, callbacks)` from `@bloopjs/web`.
-
-**Important:** Do NOT mutate bag state in `onSessionStart`/`onSessionEnd` callbacks - these run outside the game loop and changes get rolled back. Instead, create a system that watches `net.isInSession` to handle session state transitions:
-
-```typescript
-game.system("session-watcher", {
-  update({ bag, net }) {
-    if (bag.phase === "waiting" && net.isInSession) {
-      bag.phase = "playing";
-    }
-    if (bag.phase === "playing" && bag.mode === "online" && !net.isInSession) {
-      bag.phase = "title";
-    }
-  },
-});
-```
 
 ## Testing Pattern
 
@@ -221,114 +138,43 @@ it("test name", async () => {
 });
 ```
 
-## Rendering
+## Development Notes
 
-While bloop has no rendering capabilities, games you can't see are not very fun to play.
+* This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
 
-A lot of examples use Toodle for rendering (imported from `@bloopjs/toodle`). Toodle is a simple immediate-mode 2D canvas rendering library. It provides primitives for drawing shapes, text, and images.
+* In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
 
-Toodle's coordinate system has the origin (0,0) at the center of the canvas, with positive Y going upwards. This is different from the default HTML canvas coordinate system where (0,0) is at the top-left and positive Y goes downwards.
+```ts
+if (this.sim?.isRecording) {
+  // do something
+}
+```
 
-Examples copied from the documentation website for basic functionality:
+instead do this unless explicitly asked for a silent null guard:
 
-### Basic quads with hierarchy
+```ts
+// throws an error if this.sim is null/undefined
+if (unwrap(this.sim).isRecording) {
+  // do something
+}
+```
 
-```typescript
-import { Toodle } from "@bloopjs/toodle";
+* Prefer typescript types to interfaces wherever possible.
 
-// attach toodle
-const canvas = document.querySelector("canvas")!;
-const toodle = await Toodle.attach(canvas, {
-  filter: "nearest",
-  limits: { textureArrayLayers: 5 },
-});
 
-toodle.clearColor = { r: 0, g: 0, b: 0, a: 1 };
+* Put public apis at the top of the file and helper files towards the bottom. eg
 
-// load textures
-await toodle.assets.loadTextures({
-  mario: new URL("https://toodle.gg/img/MarioIdle.png"),
-  mushroom: new URL("https://toodle.gg/img/Mushroom.png"),
-});
+```ts
+export class MyThing {
 
-// You can use a node that doesn't draw anything as a parent
-const root = toodle.Node({
-  position: { x: 40, y: 40 },
-});
-// Every node has an `add` method that returns the node that was added
-const mario = root.add(toodle.Quad("mario"));
-const mushroom = mario.add(
-  toodle.Quad("mushroom", {
-    // children's positions are in local space relative to the parent
-    position: { x: 24, y: 0 },
-  }),
-);
 
-function frame() {
-  toodle.startFrame();
-  mario.scale = 3 + Math.sin(toodle.frameCount / 30);
-  mario.rotation += 1;
-  mushroom.rotation += 1;
-  toodle.draw(mario);
-  toodle.endFrame();
-  requestAnimationFrame(frame);
 }
 
-frame();
+export function myOtherThing() {
+  someHelperFunction();
+}
+
+function someHelperFunction() { ... }
 ```
 
-### Text and shapes
-
-```typescript
-// Load font
-await toodle.assets.loadFont("ComicNeue", new URL("https://toodle.gg/fonts/ComicNeue-Regular-msdf.json"));
-
-// Create text
-const text = toodle.Text("ComicNeue", "Hello", { fontSize: 16, color: { r: 1, g: 1, b: 1, a: 1 } });
-
-// Basic shapes
-const rect = toodle.shapes.Rect({ idealSize: { width: 100, height: 50 }, color: Colors.web.sienna });
-const circle = toodle.shapes.Circle({ idealSize: { width: 32, height: 32 }, color: Colors.web.gold });
-```
-
-### Sprite sheets and animation
-
-```typescript
-// Load a sprite sheet
-await toodle.assets.loadTextures({
-  marioWalk: new URL("/sprites/MarioWalk.png", window.location.href),
-});
-
-// Create a quad with region for sprite sheet frame selection
-const sprite = toodle.Quad("marioWalk", {
-  idealSize: { width: 16, height: 16 },
-  region: { x: 0, y: 0, width: 16, height: 16 },
-});
-
-// Animate by updating region.x to select frame
-sprite.region.x = frameIndex * 16;
-```
-
-### Node visibility
-
-Use `isActive` to show/hide nodes (not `hidden` or `visible`):
-
-```typescript
-node.isActive = false; // hides the node
-node.isActive = true;  // shows the node
-```
-
-### Scaling with pixel art
-
-Use `filter: "nearest"` when attaching Toodle for crisp pixel art:
-
-```typescript
-const toodle = await Toodle.attach(canvas, { filter: "nearest" });
-```
-
-### Common patterns
-
-- Create nodes once in setup, update their properties each frame (immediate-mode style but with persistent objects)
-- Use a root `toodle.Node()` with `scale` to uniformly scale the entire scene
-- Position is always the center of the node
-- Colors use `{ r, g, b, a }` with values 0-1, or use `Colors.web.*` helpers
+* Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
