@@ -1,4 +1,4 @@
-import { debugState } from "../state.ts";
+import { cycleLayout, debugState } from "../state.ts";
 
 type DebugToggleProps = {
   hotkey?: string;
@@ -7,14 +7,10 @@ type DebugToggleProps = {
 export function DebugToggle({ hotkey = "Escape" }: DebugToggleProps) {
   const isVisible = debugState.isVisible.value;
 
-  const toggle = () => {
-    debugState.isVisible.value = !debugState.isVisible.value;
-  };
-
   return (
     <button
       className="debug-toggle"
-      onClick={toggle}
+      onClick={cycleLayout}
       onMouseDown={(e) => e.stopPropagation()}
       onMouseUp={(e) => e.stopPropagation()}
       title={isVisible ? `Hide debug (${hotkey})` : `Show debug (${hotkey})`}

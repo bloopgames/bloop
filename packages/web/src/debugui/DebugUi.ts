@@ -1,6 +1,6 @@
 import { type ComponentChild, render } from "preact";
 import { Root } from "./components/Root.tsx";
-import { type DebugState, debugState } from "./state.ts";
+import { type DebugState, cycleLayout, debugState } from "./state.ts";
 import { styles } from "./styles.ts";
 
 export type DebugUiOptions = {
@@ -30,7 +30,7 @@ export class DebugUi {
     // Create host element
     this.#host = document.createElement("bloop-debug-ui");
     this.#host.style.cssText =
-      "display:block;width:100%;height:100%;position:absolute;top:0;left:0;";
+      "display:block;width:100%;height:100%;position:absolute;top:0;left:0;overflow:hidden;overscroll-behavior:none;";
 
     // Attach shadow DOM
     this.#shadow = this.#host.attachShadow({ mode: "open" });
@@ -47,7 +47,7 @@ export class DebugUi {
     this.#shadow.appendChild(this.#mountPoint);
 
     // Initialize state
-    debugState.isVisible.value = initiallyVisible;
+    debugState.layoutMode.value = initiallyVisible ? "letterboxed" : "off";
 
     // Create canvas element (game renders here)
     this.#canvas = document.createElement("canvas");
@@ -61,8 +61,8 @@ export class DebugUi {
     // Set up hotkey listener
     this.#cleanup = this.#setupHotkey();
 
-    // Re-render when isVisible changes
-    debugState.isVisible.subscribe(() => {
+    // Re-render when layoutMode changes
+    debugState.layoutMode.subscribe(() => {
       this.#render();
     });
   }
@@ -77,7 +77,7 @@ export class DebugUi {
   #setupHotkey(): () => void {
     const handler = (e: KeyboardEvent) => {
       if (e.key === this.#hotkey) {
-        debugState.isVisible.value = !debugState.isVisible.value;
+        cycleLayout();
       }
     };
     window.addEventListener("keydown", handler);
@@ -100,7 +100,7 @@ export class DebugUi {
   }
 
   set isVisible(value: boolean) {
-    debugState.isVisible.value = value;
+    debugState.layoutMode.value = value ? "letterboxed" : "off";
   }
 
   unmount(): void {

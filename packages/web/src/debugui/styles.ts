@@ -6,11 +6,22 @@ export const styles = /*css*/ `
 
 /* Layout */
 .fullscreen {
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+.fullscreen .canvas-container {
+  width: 100%;
+  height: 100%;
+}
+
+.fullscreen canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .layout {
@@ -24,6 +35,225 @@ export const styles = /*css*/ `
   width: 100%;
   height: 100%;
   padding: 1rem;
+}
+
+/* Letterboxed layout - using equal vw/vh percentages keeps game at viewport aspect ratio */
+.layout-letterboxed {
+  display: grid;
+  grid-template-areas:
+    "top-bar top-bar top-bar"
+    "left-bar game right-bar"
+    "bottom-bar bottom-bar bottom-bar";
+  grid-template-columns: 2vw 1fr 2vw;
+  grid-template-rows: 2vh 1fr 2vh;
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a1a;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.top-bar {
+  grid-area: top-bar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #111;
+  color: #aaa;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 0;
+}
+
+.top-bar-side-label {
+  width: 2vw;
+  text-align: center;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #666;
+}
+
+.top-bar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  flex: 1;
+}
+
+.top-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-bar-label {
+  opacity: 0.6;
+}
+
+.top-bar-value {
+  color: #fff;
+  font-weight: 500;
+}
+
+.left-bar {
+  grid-area: left-bar;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  background: #111;
+  padding: 4px 0;
+}
+
+.right-bar {
+  grid-area: right-bar;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  background: #111;
+  padding: 4px 0;
+}
+
+.vertical-bar {
+  width: 12px;
+  flex: 1;
+  background: #333;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.vertical-bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #4a9eff;
+  border-radius: 2px;
+  transition: height 0.1s ease-out;
+}
+
+
+.bottom-bar {
+  grid-area: bottom-bar;
+  display: flex;
+  align-items: center;
+  background: #111;
+  padding: 0 8px;
+  gap: 8px;
+}
+
+.playbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.playbar-btn {
+  width: 1.5vh;
+  height: 1.5vh;
+  min-width: 18px;
+  min-height: 18px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+
+.playbar-btn:hover {
+  background: #333;
+  color: #fff;
+}
+
+.playbar-btn:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #222;
+  color: #ccc;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.tooltip-left {
+  left: 0;
+  transform: none;
+}
+
+.tooltip kbd {
+  background: #444;
+  padding: 1px 4px;
+  border-radius: 2px;
+  margin-left: 4px;
+  font-family: monospace;
+}
+
+.seek-bar {
+  flex: 1;
+  height: 16px;
+  background: #222;
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.seek-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(to right, #4a2070, #7b3fa0);
+  border-radius: 4px;
+  transition: width 0.1s ease-out;
+}
+
+.seek-bar-position {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+}
+
+.letterboxed-game {
+  grid-area: game;
+  overflow: hidden;
+}
+
+.letterboxed-game .canvas-container {
+  width: 100%;
+  height: 100%;
+}
+
+.letterboxed-game canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .game {

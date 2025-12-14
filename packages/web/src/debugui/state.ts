@@ -8,6 +8,8 @@ import type { Log } from "../netcode/logs.ts";
 
 export type FrameNumber = number;
 
+export type LayoutMode = "off" | "letterboxed" | "full";
+
 export type Peer = {
   id: string;
   nickname: string;
@@ -24,14 +26,20 @@ export type NetStatus = {
 };
 
 export type DebugState = {
-  isVisible: Signal<boolean>;
+  layoutMode: Signal<LayoutMode>;
+  isVisible: ReadonlySignal<boolean>;
   netStatus: Signal<NetStatus>;
   logs: Signal<Log[]>;
   peer: ReadonlySignal<Peer | null>;
   advantage: ReadonlySignal<number | null>;
+  // Metrics for letterboxed layout
+  fps: Signal<number>;
+  frameTime: Signal<number>; // ms per frame
+  snapshotSize: Signal<number>; // bytes
+  frameNumber: Signal<number>;
 };
 
-const isVisible = signal(false);
+const layoutMode = signal<LayoutMode>("off");
 const netStatus = signal<NetStatus>({
   ourId: null,
   remoteId: null,
@@ -39,10 +47,17 @@ const netStatus = signal<NetStatus>({
   peers: [],
 });
 const logs = signal<Log[]>([]);
+const fps = signal(0);
+const frameTime = signal(0);
+const snapshotSize = signal(0);
+const frameNumber = signal(0);
 
 export const debugState: DebugState = {
-  /** Whether debug UI is visible */
-  isVisible,
+  /** Layout mode: off, letterboxed, or full */
+  layoutMode,
+
+  /** Whether debug UI is visible (derived from layoutMode) */
+  isVisible: computed(() => layoutMode.value !== "off"),
 
   /** Network status */
   netStatus,
@@ -58,7 +73,25 @@ export const debugState: DebugState = {
     const peer = netStatus.value.peers[0];
     return peer ? peer.seq - peer.ack : null;
   }),
+
+  /** Metrics for letterboxed layout */
+  fps,
+  frameTime,
+  snapshotSize,
+  frameNumber,
 };
+
+/** Cycle through layout modes: off -> letterboxed -> full -> off */
+export function cycleLayout(): void {
+  const current = layoutMode.value;
+  if (current === "off") {
+    layoutMode.value = "letterboxed";
+  } else if (current === "letterboxed") {
+    layoutMode.value = "full";
+  } else {
+    layoutMode.value = "off";
+  }
+}
 
 export function addLog(log: Log): void {
   debugState.logs.value = [...debugState.logs.value, log];
@@ -116,7 +149,7 @@ export function clearLogs(): void {
 }
 
 export function resetState(): void {
-  debugState.isVisible.value = false;
+  debugState.layoutMode.value = "off";
   debugState.logs.value = [];
   debugState.netStatus.value = {
     ourId: null,
@@ -124,4 +157,8 @@ export function resetState(): void {
     rtt: null,
     peers: [],
   };
+  debugState.fps.value = 0;
+  debugState.frameTime.value = 0;
+  debugState.snapshotSize.value = 0;
+  debugState.frameNumber.value = 0;
 }
