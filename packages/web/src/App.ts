@@ -7,6 +7,7 @@ import {
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
+import { debugState } from "./debugui/state.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -208,8 +209,38 @@ export class App {
     };
     window.addEventListener("keydown", playbarHotkeys);
 
+    // FPS calculation
+    let fpsFrames = 0;
+    let fpsLastTime = performance.now();
+
     const frame = () => {
-      this.sim.step(performance.now() - this.#now);
+      const stepStart = performance.now();
+      const ticks = this.sim.step(stepStart - this.#now);
+
+      // Update debug metrics only when we actually ran simulation
+      if (ticks > 0) {
+        const stepEnd = performance.now();
+        debugState.frameTime.value = stepEnd - stepStart;
+        debugState.frameNumber.value = this.sim.time.frame;
+
+        // Measure snapshot size when debug UI is visible (letterboxed mode)
+        if (debugState.layoutMode.value === "letterboxed") {
+          const bag = this.game.bag;
+          if (bag) {
+            debugState.snapshotSize.value = JSON.stringify(bag).length;
+          }
+        }
+
+        // Calculate FPS every second
+        fpsFrames++;
+        const elapsed = stepEnd - fpsLastTime;
+        if (elapsed >= 1000) {
+          debugState.fps.value = Math.round((fpsFrames * 1000) / elapsed);
+          fpsFrames = 0;
+          fpsLastTime = stepEnd;
+        }
+      }
+
       if (!this.sim.isPaused) {
         try {
           this.afterFrame.notify(this.sim.time.frame);

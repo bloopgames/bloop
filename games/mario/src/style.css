@@ -4,11 +4,4 @@
 
 body {
   margin: 0;
-  background: #5c94fc;
-}
-
-canvas {
-  display: block;
-  width: 100vw;
-  height: 100vh;
 }

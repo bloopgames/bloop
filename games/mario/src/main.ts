@@ -16,7 +16,7 @@ async function main() {
     debugUi: true,
   });
 
-  const canvas = document.querySelector("canvas");
+  const canvas = app.canvas;
   if (!canvas) throw new Error("No canvas element found");
 
   const toodle = await Toodle.attach(canvas, { filter: "nearest" });

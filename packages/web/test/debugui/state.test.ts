@@ -9,7 +9,9 @@ import {
   setRemoteId,
   clearLogs,
   resetState,
+  cycleLayout,
   type Peer,
+  type LayoutMode,
 } from "../../src/debugui/state.ts";
 
 describe("debugui state", () => {
@@ -17,14 +19,27 @@ describe("debugui state", () => {
     resetState();
   });
 
-  describe("isVisible", () => {
-    it("starts as false", () => {
+  describe("layoutMode and isVisible", () => {
+    it("starts as off", () => {
+      expect(debugState.layoutMode.value).toBe("off");
       expect(debugState.isVisible.value).toBe(false);
     });
 
-    it("can be toggled", () => {
-      debugState.isVisible.value = true;
+    it("cycles through modes: off -> letterboxed -> full -> off", () => {
+      expect(debugState.layoutMode.value).toBe("off");
+      expect(debugState.isVisible.value).toBe(false);
+
+      cycleLayout();
+      expect(debugState.layoutMode.value).toBe("letterboxed");
       expect(debugState.isVisible.value).toBe(true);
+
+      cycleLayout();
+      expect(debugState.layoutMode.value).toBe("full");
+      expect(debugState.isVisible.value).toBe(true);
+
+      cycleLayout();
+      expect(debugState.layoutMode.value).toBe("off");
+      expect(debugState.isVisible.value).toBe(false);
     });
   });
 
@@ -155,7 +170,7 @@ describe("debugui state", () => {
 
   describe("resetState", () => {
     it("resets all state to initial values", () => {
-      debugState.isVisible.value = true;
+      debugState.layoutMode.value = "letterboxed";
       addLog({
         source: "local",
         frame_number: 1,
@@ -175,6 +190,7 @@ describe("debugui state", () => {
 
       resetState();
 
+      expect(debugState.layoutMode.value as LayoutMode).toBe("off");
       expect(debugState.isVisible.value).toBe(false);
       expect(debugState.logs.value).toHaveLength(0);
       expect(debugState.netStatus.value.peers).toHaveLength(0);
