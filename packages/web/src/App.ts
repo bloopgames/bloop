@@ -7,7 +7,7 @@ import {
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
-import { debugState } from "./debugui/state.ts";
+import { debugState, triggerHmrFlash } from "./debugui/state.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -131,6 +131,8 @@ export class App {
   beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
   /** Event listeners for after a frame is processed */
   afterFrame: ReturnType<typeof createListener> = createListener<[number]>();
+  /** Event listeners for HMR events */
+  onHmr = createListener<[HmrEvent]>();
 
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
@@ -276,6 +278,7 @@ export class App {
     this.sim.unmount();
     this.beforeFrame.unsubscribeAll();
     this.afterFrame.unsubscribeAll();
+    this.onHmr.unsubscribeAll();
     this.#debugUi?.unmount();
   }
 
@@ -288,10 +291,14 @@ export class App {
    * import.meta.hot?.accept("./game", async (newModule) => {
    *   await app.acceptHmr(newModule?.game, {
    *   wasmUrl: monorepoWasmUrl,
+   *   files: ["./game"],
    * });
    * ```
    */
-  async acceptHmr(module: any, opts?: Partial<MountOpts>): Promise<void> {
+  async acceptHmr(
+    module: any,
+    opts?: Partial<MountOpts> & { files?: string[] },
+  ): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
       throw new Error(
@@ -310,6 +317,10 @@ export class App {
     this.sim.unmount();
     this.sim = sim;
     this.game = game;
+
+    // Trigger HMR flash and notify listeners
+    triggerHmrFlash();
+    this.onHmr.notify({ files: opts?.files ?? [] });
   }
 }
 
@@ -343,3 +354,7 @@ function createListener<T extends any[]>(): {
 }
 
 export type UnsubscribeFn = () => void;
+
+export type HmrEvent = {
+  files: string[];
+};
