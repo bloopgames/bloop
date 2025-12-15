@@ -16,12 +16,12 @@ pub const Snapshot = extern struct {
     snapshot_len: u32,
     time_len: u32,
     input_len: u32,
-    events_len: u32,
     net_len: u32,
+    events_len: u32,
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
-    events: EventBuffer,
     net: Ctx.NetCtx,
+    events: EventBuffer,
 
     pub fn init(
         alloc: std.mem.Allocator,
