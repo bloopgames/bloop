@@ -39,6 +39,19 @@ export type DebugState = {
   frameNumber: Signal<number>;
   // HMR flash indicator
   hmrFlash: Signal<boolean>;
+  // Tape playback state
+  isPlaying: Signal<boolean>;
+  tapeUtilization: Signal<number>; // 0-1, how full the tape buffer is
+  playheadPosition: Signal<number>; // 0-1, current position in tape
+  tapeStartFrame: Signal<number>; // first frame in tape
+  tapeFrameCount: Signal<number>; // total frames in tape
+  // Playbar handlers (set by App)
+  onJumpBack: Signal<(() => void) | null>;
+  onStepBack: Signal<(() => void) | null>;
+  onPlayPause: Signal<(() => void) | null>;
+  onStepForward: Signal<(() => void) | null>;
+  onJumpForward: Signal<(() => void) | null>;
+  onSeek: Signal<((position: number) => void) | null>;
 };
 
 const layoutMode = signal<LayoutMode>("off");
@@ -54,6 +67,21 @@ const frameTime = signal(0);
 const snapshotSize = signal(0);
 const frameNumber = signal(0);
 const hmrFlash = signal(false);
+
+// Tape playback state
+const isPlaying = signal(true);
+const tapeUtilization = signal(0);
+const playheadPosition = signal(0);
+const tapeStartFrame = signal(0);
+const tapeFrameCount = signal(0);
+
+// Playbar handlers
+const onJumpBack = signal<(() => void) | null>(null);
+const onStepBack = signal<(() => void) | null>(null);
+const onPlayPause = signal<(() => void) | null>(null);
+const onStepForward = signal<(() => void) | null>(null);
+const onJumpForward = signal<(() => void) | null>(null);
+const onSeek = signal<((position: number) => void) | null>(null);
 
 export const debugState: DebugState = {
   /** Layout mode: off, letterboxed, or full */
@@ -85,6 +113,21 @@ export const debugState: DebugState = {
 
   /** HMR flash indicator */
   hmrFlash,
+
+  /** Tape playback state */
+  isPlaying,
+  tapeUtilization,
+  playheadPosition,
+  tapeStartFrame,
+  tapeFrameCount,
+
+  /** Playbar handlers */
+  onJumpBack,
+  onStepBack,
+  onPlayPause,
+  onStepForward,
+  onJumpForward,
+  onSeek,
 };
 
 /** Cycle through layout modes: off -> letterboxed -> full -> off */
@@ -201,4 +244,11 @@ export function resetState(): void {
   debugState.snapshotSize.value = 0;
   debugState.frameNumber.value = 0;
   debugState.hmrFlash.value = false;
+  // Tape state
+  debugState.isPlaying.value = true;
+  debugState.tapeUtilization.value = 0;
+  debugState.playheadPosition.value = 0;
+  debugState.tapeStartFrame.value = 0;
+  debugState.tapeFrameCount.value = 0;
+  // Don't reset handlers - they're set once by App
 }

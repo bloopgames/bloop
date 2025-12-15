@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
+    "dev:mario": "bun run build:wasm && bun run --filter './games/mario' dev",
     "ci": "bun run ci:tsc && bun run build:wasm && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
     "build:wasm": "(cd packages/engine && bun run build:wasm)",
     "ci:build": "bun run --filter './packages/*' build",

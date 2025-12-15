@@ -70,3 +70,9 @@ const fack: System<typeof game0> = { ... }
 ## Figure out why .wasm increases with size of rollback buffer / event inputs
 
 ## Untested: started recording from non-zero frame
+
+## Dev pause and pause levels
+
+## Save tape as .png
+
+## Put git version hash in tape metadata

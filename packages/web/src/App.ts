@@ -1,13 +1,13 @@
 import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
-import { mouseButtonCodeToMouseButton } from "@bloopjs/engine";
+import { mouseButtonCodeToMouseButton, readTapeHeader } from "@bloopjs/engine";
+import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
+import { debugState, triggerHmrFlash } from "./debugui/state.ts";
 import {
   joinRoom as joinRoomInternal,
   type RoomEvents,
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
-import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
-import { debugState, triggerHmrFlash } from "./debugui/state.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -41,7 +41,7 @@ export async function start(opts: StartOptions): Promise<App> {
 
   const debugOpts = opts.debugUi
     ? typeof opts.debugUi === "boolean"
-      ? {}
+      ? { initiallyVisible: true }
       : opts.debugUi
     : undefined;
 
@@ -109,6 +109,60 @@ export class App {
   #initDebugUi(opts: DebugUiOptions = {}): DebugUi {
     if (this.#debugUi) return this.#debugUi;
     this.#debugUi = new DebugUi(opts);
+
+    // Wire up playbar handlers
+    debugState.onPlayPause.value = () => {
+      this.sim.isPaused ? this.sim.unpause() : this.sim.pause();
+    };
+    debugState.onStepBack.value = () => {
+      if (this.sim.hasHistory) this.sim.stepBack();
+    };
+    debugState.onStepForward.value = () => {
+      if (this.sim.hasHistory) {
+        this.sim.seek(this.sim.time.frame + 1);
+      }
+    };
+    debugState.onJumpBack.value = () => {
+      if (this.sim.hasHistory) {
+        const target = Math.max(
+          debugState.tapeStartFrame.value,
+          this.sim.time.frame - 10,
+        );
+        this.sim.seek(target);
+      }
+    };
+    debugState.onJumpForward.value = () => {
+      if (this.sim.hasHistory) {
+        const maxFrame =
+          debugState.tapeStartFrame.value + debugState.tapeFrameCount.value;
+        const target = Math.min(maxFrame, this.sim.time.frame + 10);
+        this.sim.seek(target);
+      }
+    };
+    debugState.onSeek.value = (ratio: number) => {
+      if (this.sim.hasHistory) {
+        const startFrame = debugState.tapeStartFrame.value;
+        const frameCount = debugState.tapeFrameCount.value;
+        const targetFrame = startFrame + Math.floor(ratio * frameCount);
+        this.sim.seek(targetFrame);
+      }
+    };
+
+    // Set up drag-and-drop tape loading on canvas
+    const canvas = this.#debugUi.canvas;
+    canvas.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "copy";
+    });
+    canvas.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files[0];
+      if (file && file.name.endsWith(".bloop")) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        this.loadTape(bytes);
+      }
+    });
+
     return this.#debugUi;
   }
 
@@ -127,6 +181,21 @@ export class App {
     joinRoomInternal(this.brokerUrl, roomId, callbacks);
   }
 
+  /** Load a tape for replay */
+  loadTape(tape: Uint8Array): void {
+    const header = readTapeHeader(tape);
+    this.sim.loadTape(tape);
+    this.sim.seek(header.startFrame);
+    this.sim.pause();
+
+    // Update debug state with tape info
+    debugState.tapeStartFrame.value = header.startFrame;
+    debugState.tapeFrameCount.value = header.frameCount;
+    debugState.tapeUtilization.value = 1; // Loaded tape is "full"
+    debugState.playheadPosition.value = 0;
+    debugState.isPlaying.value = false;
+  }
+
   /** Event listeners for before a frame is processed */
   beforeFrame: ReturnType<typeof createListener> = createListener<[number]>();
   /** Event listeners for after a frame is processed */
@@ -136,38 +205,46 @@ export class App {
 
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
+    // TODO: move this logic to the engine
+    // Skip emitting input events during replay to avoid filling the event buffer
+    const shouldEmitInputs = () => !this.sim.isReplaying;
+
     const handleKeydown = (event: KeyboardEvent) => {
-      this.sim.emit.keydown(event.code as Key);
+      if (shouldEmitInputs()) this.sim.emit.keydown(event.code as Key);
     };
     window.addEventListener("keydown", handleKeydown);
 
     const handleKeyup = (event: KeyboardEvent) => {
-      this.sim.emit.keyup(event.code as Key);
+      if (shouldEmitInputs()) this.sim.emit.keyup(event.code as Key);
     };
     window.addEventListener("keyup", handleKeyup);
 
     const handleMousemove = (event: MouseEvent) => {
-      this.sim.emit.mousemove(event.clientX, event.clientY);
+      if (shouldEmitInputs()) this.sim.emit.mousemove(event.clientX, event.clientY);
     };
     window.addEventListener("mousemove", handleMousemove);
 
     const handleMousedown = (event: MouseEvent) => {
-      this.sim.emit.mousedown(mouseButtonCodeToMouseButton(event.button + 1));
+      if (shouldEmitInputs())
+        this.sim.emit.mousedown(mouseButtonCodeToMouseButton(event.button + 1));
     };
     window.addEventListener("mousedown", handleMousedown);
 
     const handleMouseup = (event: MouseEvent) => {
-      this.sim.emit.mouseup(mouseButtonCodeToMouseButton(event.button + 1));
+      if (shouldEmitInputs())
+        this.sim.emit.mouseup(mouseButtonCodeToMouseButton(event.button + 1));
     };
     window.addEventListener("mouseup", handleMouseup);
 
     const handleMousewheel = (event: WheelEvent) => {
-      this.sim.emit.mousewheel(event.deltaX, event.deltaY);
+      if (shouldEmitInputs())
+        this.sim.emit.mousewheel(event.deltaX, event.deltaY);
     };
     window.addEventListener("wheel", handleMousewheel);
 
     // Touch events for mobile support
     const handleTouchstart = (event: TouchEvent) => {
+      if (!shouldEmitInputs()) return;
       const touch = event.touches[0];
       if (touch) {
         this.sim.emit.mousemove(touch.clientX, touch.clientY);
@@ -177,11 +254,12 @@ export class App {
     window.addEventListener("touchstart", handleTouchstart);
 
     const handleTouchend = () => {
-      this.sim.emit.mouseup("Left");
+      if (shouldEmitInputs()) this.sim.emit.mouseup("Left");
     };
     window.addEventListener("touchend", handleTouchend);
 
     const handleTouchmove = (event: TouchEvent) => {
+      if (!shouldEmitInputs()) return;
       const touch = event.touches[0];
       if (touch) {
         this.sim.emit.mousemove(touch.clientX, touch.clientY);
@@ -190,21 +268,43 @@ export class App {
     window.addEventListener("touchmove", handleTouchmove);
 
     const playbarHotkeys = (event: KeyboardEvent) => {
+      // Ctrl/Cmd+S to save tape
+      if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+        event.preventDefault();
+        if (this.sim.hasHistory) {
+          const tape = this.sim.saveTape();
+          const blob = new Blob([tape], { type: "application/octet-stream" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `tape-${Date.now()}.bloop`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        return;
+      }
+
       const isPauseHotkey =
         event.key === "Enter" && (event.ctrlKey || event.metaKey);
       if (isPauseHotkey || event.key === "6") {
         this.sim.isPaused ? this.sim.unpause() : this.sim.pause();
       }
 
-      if (this.sim.isPaused) {
+      if (this.sim.hasHistory) {
         switch (event.key) {
+          case "4":
+            debugState.onJumpBack.value?.();
+            break;
           case ",":
           case "5":
-            this.sim.stepBack();
+            if (this.sim.isPaused) this.sim.stepBack();
             break;
           case ".":
           case "7":
-            this.sim.step();
+            if (this.sim.isPaused) this.sim.seek(this.sim.time.frame + 1);
+            break;
+          case "8":
+            debugState.onJumpForward.value?.();
             break;
         }
       }
@@ -219,11 +319,13 @@ export class App {
       const stepStart = performance.now();
       const ticks = this.sim.step(stepStart - this.#now);
 
-      // Update debug metrics only when we actually ran simulation
+      // Always update frame number (even when paused/stepping)
+      debugState.frameNumber.value = this.sim.time.frame;
+
+      // Update performance metrics only when we actually ran simulation
       if (ticks > 0) {
         const stepEnd = performance.now();
         debugState.frameTime.value = stepEnd - stepStart;
-        debugState.frameNumber.value = this.sim.time.frame;
 
         // Measure snapshot size when debug UI is visible (letterboxed mode)
         if (debugState.layoutMode.value === "letterboxed") {
@@ -240,6 +342,25 @@ export class App {
           debugState.fps.value = Math.round((fpsFrames * 1000) / elapsed);
           fpsFrames = 0;
           fpsLastTime = stepEnd;
+        }
+      }
+
+      // Update tape playback state
+      debugState.isPlaying.value = !this.sim.isPaused;
+      if (this.sim.hasHistory && debugState.tapeFrameCount.value > 0) {
+        const currentFrame = this.sim.time.frame;
+        const startFrame = debugState.tapeStartFrame.value;
+        const frameCount = debugState.tapeFrameCount.value;
+        const position = (currentFrame - startFrame) / frameCount;
+        debugState.playheadPosition.value = Math.max(0, Math.min(1, position));
+
+        // Auto-pause at end of tape
+        if (
+          this.sim.isReplaying &&
+          !this.sim.isPaused &&
+          currentFrame >= startFrame + frameCount
+        ) {
+          this.sim.pause();
         }
       }
 

@@ -159,6 +159,7 @@ export const styles = /*css*/ `
   min-width: 18px;
   min-height: 18px;
   border: none;
+  outline: none;
   background: transparent;
   color: #888;
   font-size: 10px;

@@ -69,6 +69,17 @@ game.system("session-watcher", {
   },
 });
 
+PhaseSystem("title", "title-screen", {
+  keydown({ bag, event }) {
+    if (event.key === "Space") {
+      // Local multiplayer - start immediately
+      bag.mode = "local";
+      bag.phase = "playing";
+      resetGameState(bag);
+    }
+  },
+});
+
 // Player 1 input: WASD
 PhaseSystem("playing", "inputs", {
   update({ bag, players, net }) {

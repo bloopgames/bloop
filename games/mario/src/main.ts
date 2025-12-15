@@ -52,30 +52,47 @@ async function main() {
 
   let networkJoined = false;
 
-  function handleKeyDown(e: KeyboardEvent) {
-    const { bag } = game;
+  game.system("title-input", {
+    keydown({ bag, event }) {
+      if (bag.phase !== "title") return;
 
-    if (bag.phase !== "title") return;
+      // todo - do this in the game logic to keep tapes working for online sessions
+      if (event.key === "Enter" && !networkJoined) {
+        // Online multiplayer - wait for connection
+        bag.mode = "online";
+        bag.phase = "waiting";
+        networkJoined = true;
 
-    if (e.key === " ") {
-      // Local multiplayer - start immediately
-      bag.mode = "local";
-      bag.phase = "playing";
-      resetGameState(bag);
-    } else if (e.key === "Enter" && !networkJoined) {
-      // Online multiplayer - wait for connection
-      bag.mode = "online";
-      bag.phase = "waiting";
-      networkJoined = true;
+        // Phase transitions are handled by the session-watcher system
+        joinRollbackRoom("mario-demo", app, {
+          onSessionEnd() {
+            networkJoined = false;
+          },
+        });
+      }
+    },
+  });
 
-      // Phase transitions are handled by the session-watcher system
-      joinRollbackRoom("mario-demo", app, {
-        onSessionEnd() {
-          networkJoined = false;
-        },
-      });
-    }
-  }
+  // function handleKeyDown(e: KeyboardEvent) {
+  //   if (e.key === " ") {
+  //     // Local multiplayer - start immediately
+  //     bag.mode = "local";
+  //     bag.phase = "playing";
+  //     resetGameState(bag);
+  //   } else if (e.key === "Enter" && !networkJoined) {
+  //     // Online multiplayer - wait for connection
+  //     bag.mode = "online";
+  //     bag.phase = "waiting";
+  //     networkJoined = true;
+
+  //     // Phase transitions are handled by the session-watcher system
+  //     joinRollbackRoom("mario-demo", app, {
+  //       onSessionEnd() {
+  //         networkJoined = false;
+  //       },
+  //     });
+  //   }
+  // }
 
   window.addEventListener("keydown", handleKeyDown);
 
