@@ -1,4 +1,4 @@
-import { mkdir, cp, rm, readdir } from "node:fs/promises";
+import { cp, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { $ } from "bun";
 
@@ -32,13 +32,13 @@ async function main() {
 
   // Clean infra dist/neil folder
   const infraDistDir = path.join(infraDir, "dist");
-  const neilDir = path.join(infraDistDir, "neil");
+  const neilDir = path.join(infraDistDir, "nu11");
   await rm(neilDir, { recursive: true, force: true });
 
   // Build each game
   for (const game of games) {
     const gamePath = path.join(gamesDir, game);
-    const deployPath = `neil/${game}`;
+    const deployPath = `nu11/${game}`;
     const base = `/${deployPath}/`;
 
     console.log(`\nBuilding ${game} with base=${base}...`);
@@ -61,7 +61,7 @@ async function main() {
   console.log("\n=== Build complete ===");
   console.log("Games will be available at:");
   for (const game of games) {
-    console.log(`  /neil/${game}/`);
+    console.log(`  /nu11/${game}/`);
   }
 
   if (isDryRun) {

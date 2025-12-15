@@ -13,7 +13,6 @@ async function main() {
   const app = await start({
     game,
     engineWasmUrl: wasmUrl,
-    debugUi: true,
   });
 
   const canvas = app.canvas;
