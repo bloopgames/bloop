@@ -64,3 +64,7 @@ we should make this possible with something like
 ```ts
 const fack: System<typeof game0> = { ... }
 ```
+
+## Don't build .wasm to version control
+
+## Figure out why .wasm increases with size of rollback buffer / event inputs

@@ -19,7 +19,11 @@ async function main() {
   const canvas = app.canvas;
   if (!canvas) throw new Error("No canvas element found");
 
-  const toodle = await Toodle.attach(canvas, { filter: "nearest" });
+  const toodle = await Toodle.attach(canvas, {
+    filter: "nearest",
+    backend: "webgpu",
+    limits: { textureArrayLayers: 5 },
+  });
 
   toodle.clearColor = { r: 0.36, g: 0.58, b: 0.99, a: 1 }; // Mario sky blue
 

@@ -107,35 +107,6 @@ PhaseSystem("playing", "inputs", {
   },
 });
 
-// Player 2 input: IJKL local or WASD remote
-PhaseSystem("playing", "p2-input", {
-  update({ bag, players, net }) {
-    const p = bag.p2;
-
-    if (net.peerCount >= 2) {
-      // Remote player uses WASD
-      if (players[1].keys.a.held) p.x -= cfg.MOVE_SPEED;
-      if (players[1].keys.d.held) p.x += cfg.MOVE_SPEED;
-
-      // Jump
-      if (players[1].keys.w.down && p.grounded) {
-        p.vy = cfg.JUMP_VELOCITY;
-        p.grounded = false;
-      }
-    } else {
-      // Horizontal movement
-      if (players[0].keys.j.held) p.x -= cfg.MOVE_SPEED;
-      if (players[0].keys.l.held) p.x += cfg.MOVE_SPEED;
-
-      // Jump
-      if (players[0].keys.i.down && p.grounded) {
-        p.vy = cfg.JUMP_VELOCITY;
-        p.grounded = false;
-      }
-    }
-  },
-});
-
 // Physics for both players (Y+ is up)
 PhaseSystem("playing", "physics", {
   update({ bag }) {
