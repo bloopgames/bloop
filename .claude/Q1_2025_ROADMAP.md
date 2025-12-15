@@ -14,12 +14,16 @@ Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
 **Goal:** GIF ready, shared with trusted circle for feedback
 
 ### Build
-- [ ] Frame counter UI
+- [x] Frame counter UI
+- [x] Wire HMR → CA pulse trigger
+- [ ] Fix stuck inputs bug
+- [ ] Record network packets to tape / replay online matches
+- [ ] Sprite animations for mario game
+- [ ] Add inputs UI to mario game (match https://bymuno.com/post/rollback)
+- [ ] Update mario gamefeel and physics to match 1-1
+- [ ] Update mario environment art
 - [ ] Chromatic aberration post-process shader
-- [ ] Wire HMR → CA pulse trigger
-- [ ] Debug hitbox toggle (if not already done)
-- [ ] Fix critical bugs
-- [ ] Build out mario gamefeel, animations, environment art
+- [ ] Debug hitbox toggle
 
 ### Capture
 - [ ] Record GIF sequence (multiple takes)
@@ -130,7 +134,7 @@ Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
 These are important but come after public feedback:
 
 - ECS (table stakes, but not blocking launch)
-- Editor tooling (inspector, playbar, config editor)
+- Editor tooling (config editor, scene builder)
 - Logo (nice to have, not blocking)
 - Additional platform targets beyond browser
 - Godot/Toodle integrations
