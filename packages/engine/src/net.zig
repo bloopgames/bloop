@@ -2,7 +2,6 @@ const std = @import("std");
 const Events = @import("events.zig");
 pub const Packets = @import("packets.zig");
 const rollback = @import("rollback.zig");
-const Log = @import("log.zig");
 const Event = Events.Event;
 
 // Re-export from rollback for convenience

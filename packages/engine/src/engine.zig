@@ -163,12 +163,8 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
-    return start_recording_ex(user_data_len, max_events, Tapes.Tape.DEFAULT_MAX_PACKET_BYTES);
-}
-
-pub export fn start_recording_ex(user_data_len: u32, max_events: u32, max_packet_bytes: u32) u8 {
-    sim.?.start_recording_ex(user_data_len, max_events, max_packet_bytes) catch |e| {
+pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_bytes: u32) u8 {
+    sim.?.start_recording(user_data_len, max_events, max_packet_bytes) catch |e| {
         switch (e) {
             Sim.RecordingError.AlreadyRecording => {
                 wasm_log("Already recording");

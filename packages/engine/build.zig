@@ -27,7 +27,6 @@ pub fn build(b: *std.Build) void {
         "register_systems",
         // Recording/playback
         "start_recording",
-        "start_recording_ex",
         "stop_recording",
         "is_recording",
         "is_replaying",

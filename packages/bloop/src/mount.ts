@@ -17,8 +17,7 @@ export async function mount(
 ): Promise<MountResult> {
   const wasmUrl = options?.wasmUrl ?? opts.wasmUrl ?? DEFAULT_WASM_URL;
   const startRecording = options?.startRecording ?? opts.startRecording ?? true;
-  const maxEvents = calculateMaxEvents(options?.tape);
-  const maxPacketBytes = options?.tape?.maxPacketBytes;
+  const { maxEvents, maxPacketBytes } = calculateTapeConfig(options?.tape);
 
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await fetch(wasmUrl)
@@ -117,11 +116,10 @@ export type TapeOptions = (
   | { duration: number; averageEventsPerFrame?: number }
 ) & {
   /**
-   * Maximum packet buffer size in bytes
-   * Default: 64KB (sufficient for local recording)
-   * For network sessions, use Sim.NETWORK_MAX_PACKET_BYTES (2MB)
+   * Set to true for local-only recording (no network packet buffer).
+   * Default: false (allocates 2MB for network packet recording)
    */
-  maxPacketBytes?: number;
+  localOnly?: boolean;
 };
 
 export type MountOptions = {
@@ -158,15 +156,25 @@ export type MountResult = {
   sim: Sim;
 };
 
-function calculateMaxEvents(tape?: TapeOptions): number {
-  if (!tape) return 1024; // default
+function calculateTapeConfig(tape?: TapeOptions): {
+  maxEvents: number;
+  maxPacketBytes: number;
+} {
+  let maxEvents: number;
 
-  if ("maxEvents" in tape) {
-    return tape.maxEvents;
+  if (!tape) {
+    maxEvents = 1024; // default
+  } else if ("maxEvents" in tape) {
+    maxEvents = tape.maxEvents;
+  } else {
+    // duration-based: frames * average events per frame
+    // At 60fps, duration seconds = duration * 60 frames
+    const avgEvents = tape.averageEventsPerFrame ?? 2;
+    maxEvents = Math.ceil(tape.duration * 60 * avgEvents);
   }
 
-  // duration-based: frames * average events per frame
-  // At 60fps, duration seconds = duration * 60 frames
-  const avgEvents = tape.averageEventsPerFrame ?? 2;
-  return Math.ceil(tape.duration * 60 * avgEvents);
+  // Default to network mode (2MB), localOnly mode uses 0 bytes
+  const maxPacketBytes = tape?.localOnly ? 0 : Sim.NETWORK_MAX_PACKET_BYTES;
+
+  return { maxEvents, maxPacketBytes };
 }

@@ -91,7 +91,7 @@ pub const Snapshot = extern struct {
 pub const TapeHeader = extern struct {
     // magic numbers
     magic: u32 = 0x54415045, // "TAPE" in ASCII
-    version: u16 = 1, // bumped for packet support
+    version: u16 = 2, // v2: session state support
     reserved: u16 = 0,
 
     // frame and event data
@@ -106,11 +106,17 @@ pub const TapeHeader = extern struct {
     event_start_offset: u32 = 0,
     event_end_offset: u32 = 0,
 
-    // packet storage (new in v1)
+    // packet storage (v1)
     packet_start_offset: u32 = 0,
     packet_end_offset: u32 = 0,
     packet_count: u32 = 0,
     max_packet_bytes: u32 = 0,
+
+    // session state for auto-restore on load (v2)
+    peer_count: u8 = 0,
+    local_peer_id: u8 = 0,
+    in_session: u8 = 0, // bool as u8 for alignment
+    _session_pad: u8 = 0,
 };
 
 /// A network packet recorded at a specific frame
@@ -205,16 +211,23 @@ pub const Tape = struct {
         if (header.magic != 0x54415045) {
             return TapeError.InvalidTape;
         }
-        // Support v0 (no packets) and v1 (with packets)
-        if (header.version > 1) {
+        // Support v0 (no packets), v1 (with packets), v2 (session state)
+        if (header.version > 2) {
             return TapeError.UnsupportedVersion;
         }
         // Upgrade v0 tapes to have empty packet section
-        if (header.version == 0) {
+        if (header.version < 1) {
             header.packet_start_offset = 0;
             header.packet_end_offset = 0;
             header.packet_count = 0;
             header.max_packet_bytes = 0;
+        }
+        // Upgrade v0/v1 tapes to have empty session state
+        if (header.version < 2) {
+            header.peer_count = 0;
+            header.local_peer_id = 0;
+            header.in_session = 0;
+            header._session_pad = 0;
         }
         return Tape{ .buf = buf };
     }

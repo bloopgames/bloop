@@ -133,6 +133,16 @@ pub const Sim = struct {
         self.rollback.confirmed_snapshot = snap;
 
         self.in_session = true;
+
+        // If recording, update tape header with session state
+        if (self.is_recording) {
+            if (self.tape) |*t| {
+                const header = t.get_header();
+                header.in_session = 1;
+                header.peer_count = peer_count;
+                // local_peer_id will be updated when setLocalPeer is called
+            }
+        }
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
@@ -192,6 +202,14 @@ pub const Sim = struct {
     /// Set local peer ID for packet encoding
     pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
         self.net.setLocalPeer(peer_id);
+
+        // If recording and in session, update tape header with local_peer_id
+        if (self.is_recording and self.in_session) {
+            if (self.tape) |*t| {
+                const header = t.get_header();
+                header.local_peer_id = peer_id;
+            }
+        }
     }
 
     /// Connect a peer for packet management
@@ -488,7 +506,9 @@ pub const Sim = struct {
             while (iter.next()) |packet| {
                 // Process the packet as if it was just received
                 // This will trigger rollback if needed, just like during the original session
-                self.net.receivePacket(packet.data, self.rollback) catch {};
+                self.net.receivePacket(packet.data, self.rollback) catch |e| {
+                    std.debug.panic("Failed to replay packet at frame {}: {any}", .{ self.time.frame, e });
+                };
             }
         }
     }
@@ -643,12 +663,7 @@ pub const Sim = struct {
     };
 
     /// Start recording to a new tape
-    pub fn start_recording(self: *Sim, user_data_len: u32, max_events: u32) RecordingError!void {
-        return self.start_recording_ex(user_data_len, max_events, Tapes.Tape.DEFAULT_MAX_PACKET_BYTES);
-    }
-
-    /// Start recording to a new tape with custom packet buffer size
-    pub fn start_recording_ex(self: *Sim, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
+    pub fn start_recording(self: *Sim, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
         if (self.is_recording) {
             return RecordingError.AlreadyRecording;
         }
@@ -669,6 +684,14 @@ pub const Sim = struct {
         };
         self.is_recording = true;
 
+        // Capture session state for auto-restore on tape load
+        if (self.in_session) {
+            const header = self.tape.?.get_header();
+            header.in_session = 1;
+            header.peer_count = self.rollback.peer_count;
+            header.local_peer_id = self.net.local_peer_id;
+        }
+
         // Start the first frame
         self.tape.?.start_frame() catch {
             return RecordingError.TapeError;
@@ -681,6 +704,7 @@ pub const Sim = struct {
     }
 
     /// Load a tape from raw bytes (enters replay mode)
+    /// Auto-initializes session if tape was recorded during a networked session
     pub fn load_tape(self: *Sim, tape_buf: []u8) !void {
         if (self.is_recording) {
             return error.CurrentlyRecording;
@@ -692,6 +716,15 @@ pub const Sim = struct {
 
         self.tape = try Tapes.Tape.load(copy);
         self.is_replaying = true;
+
+        // Auto-initialize session if tape was recorded during a session
+        const header = self.tape.?.get_header();
+        if (header.in_session == 1) {
+            // Get user data length dynamically for snapshot
+            const user_data_len = self.getUserDataLen();
+            try self.sessionInit(header.peer_count, user_data_len);
+            self.setLocalPeer(header.local_peer_id);
+        }
     }
 
     /// Get the current tape buffer (for serialization)
@@ -1174,7 +1207,7 @@ test "start_recording enables recording" {
     try std.testing.expectEqual(false, sim.is_recording);
     try std.testing.expectEqual(null, sim.tape);
 
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
 
     try std.testing.expectEqual(true, sim.is_recording);
     try std.testing.expect(sim.tape != null);
@@ -1184,9 +1217,9 @@ test "start_recording fails if already recording" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
 
-    const result = sim.start_recording(0, 1024);
+    const result = sim.start_recording(0, 1024, 0);
     try std.testing.expectError(Sim.RecordingError.AlreadyRecording, result);
 }
 
@@ -1194,7 +1227,7 @@ test "stop_recording disables recording" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
     try std.testing.expectEqual(true, sim.is_recording);
 
     sim.stop_recording();
@@ -1205,7 +1238,7 @@ test "recording captures events" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
 
     sim.emit_keydown(.KeyA, 0);
     sim.tick();
@@ -1231,7 +1264,7 @@ test "Sim.seek restores to target frame" {
     defer sim.deinit();
 
     // Start recording
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
 
     // Advance a few frames with input
     sim.emit_keydown(.KeyA, 0);
@@ -1256,7 +1289,7 @@ test "Sim.seek replays events correctly" {
     defer sim.deinit();
 
     // Start recording
-    try sim.start_recording(0, 1024);
+    try sim.start_recording(0, 1024, 0);
 
     // Frame 0->1: press A
     sim.emit_keydown(.KeyA, 0);

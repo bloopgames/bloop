@@ -27,11 +27,7 @@ export type WasmEngine = {
   /**
    * Start recording inputs to tape
    */
-  start_recording: (data_len: number, max_events: number) => EngineOk;
-  /**
-   * Start recording inputs to tape with custom packet buffer size
-   */
-  start_recording_ex: (
+  start_recording: (
     data_len: number,
     max_events: number,
     max_packet_bytes: number,

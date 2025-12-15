@@ -212,27 +212,19 @@ export class Sim {
   }
 
   /**
-   * Default packet buffer size (64KB) - sufficient for local recording
-   */
-  static readonly DEFAULT_MAX_PACKET_BYTES = 64 * 1024;
-
-  /**
-   * Larger packet buffer (2MB) - recommended for network session recording
+   * Packet buffer size (2MB) for network session recording
    */
   static readonly NETWORK_MAX_PACKET_BYTES = 2 * 1024 * 1024;
 
   /**
    * Start recording the simulation at the current frame
-   * @param maxEvents Maximum number of events to record (default 1024)
-   * @param maxPacketBytes Maximum packet buffer size (default 64KB, use NETWORK_MAX_PACKET_BYTES for network sessions)
+   * @param maxEvents Maximum number of events to record
+   * @param maxPacketBytes Maximum packet buffer size (0 for local-only, 2MB default for network)
    */
-  record(maxEvents: number = 1024, maxPacketBytes?: number) {
+  record(maxEvents: number, maxPacketBytes: number) {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    const result =
-      maxPacketBytes !== undefined
-        ? this.wasm.start_recording_ex(size, maxEvents, maxPacketBytes)
-        : this.wasm.start_recording(size, maxEvents);
+    const result = this.wasm.start_recording(size, maxEvents, maxPacketBytes);
     if (result !== 0) {
       throw new Error(`failed to start recording, error code=${result}`);
     }

@@ -41,8 +41,8 @@ describe("tapes", () => {
 
       sim.onTapeFull = () => {
         restartCount++;
-        // Restart recording with fresh tape
-        sim.record(10);
+        // Restart recording with fresh tape (local only)
+        sim.record(10, 0);
       };
 
       // Fill tape multiple times
@@ -84,8 +84,8 @@ describe("tapes", () => {
       expect(game.bag.score).toBe(10);
       expect(game.context.time.frame).toBe(3);
 
-      // Now start recording mid-game at frame 3
-      sim.record(100);
+      // Now start recording mid-game at frame 3 (local only)
+      sim.record(100, 0);
       expect(sim.isRecording).toBe(true);
 
       // Score more points while recording (frames 3->4, 4->5)
@@ -377,12 +377,7 @@ describe("tapes", () => {
         startRecording: false,
       });
 
-      // Initialize session on replay sim - needed for rollback to work
-      replaySim.sessionInit(2);
-      replaySim.net.setLocalPeer(0);
-      replaySim.net.connectPeer(1);
-
-      // Load tape and replay - verify same progression
+      // Load tape - session auto-initialized from tape header
       replaySim.loadTape(tapeBytes);
 
       replaySim.step(); // frame 0 -> 1
