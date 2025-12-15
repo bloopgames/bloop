@@ -132,7 +132,7 @@ export class App {
   /** Event listeners for after a frame is processed */
   afterFrame: ReturnType<typeof createListener> = createListener<[number]>();
   /** Event listeners for HMR events */
-  onHmr = createListener<[HmrEvent]>();
+  onHmr: ReturnType<typeof createListener> = createListener<[HmrEvent]>();
 
   /** Subscribe to the browser events and start the render loop */
   subscribe(): void {
