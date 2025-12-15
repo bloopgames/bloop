@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
-    "ci": "bun run ci:tsc && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
+    "ci": "bun run ci:tsc && bun run build:wasm && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
+    "build:wasm": "(cd packages/engine && bun run build:wasm)",
     "ci:build": "bun run --filter './packages/*' build",
     "ci:tsc": "bun run --filter '*' ci:tsc",
     "ci:zig": "(cd packages/engine && zig build test)",

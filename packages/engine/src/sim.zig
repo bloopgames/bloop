@@ -114,6 +114,13 @@ pub const Sim = struct {
     /// Initialize a multiplayer session with rollback support
     /// Captures current frame as session_start_frame
     pub fn sessionInit(self: *Sim, peer_count: u8, user_data_len: u32) !void {
+        // Record session event to tape if recording (but not replaying)
+        if (self.is_recording and !self.is_replaying) {
+            if (self.tape) |*t| {
+                t.append_event(Event.sessionInit(peer_count)) catch {};
+            }
+        }
+
         // Reset existing state
         self.rollback.deinit();
         self.net.deinit();
@@ -150,6 +157,13 @@ pub const Sim = struct {
 
     /// End the current session
     pub fn sessionEnd(self: *Sim) void {
+        // Record session event to tape if recording (but not replaying)
+        if (self.is_recording and !self.is_replaying) {
+            if (self.tape) |*t| {
+                t.append_event(Event.sessionEnd()) catch {};
+            }
+        }
+
         self.rollback.deinit();
         self.rollback.* = .{ .allocator = self.allocator };
         self.net.deinit();
@@ -199,17 +213,38 @@ pub const Sim = struct {
 
     /// Set local peer ID for packet encoding
     pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
+        // Record session event to tape if recording (but not replaying)
+        if (self.is_recording and !self.is_replaying) {
+            if (self.tape) |*t| {
+                t.append_event(Event.sessionSetLocalPeer(peer_id)) catch {};
+            }
+        }
+
         self.net.setLocalPeer(peer_id);
         self.net_ctx.local_peer_id = peer_id;
     }
 
     /// Connect a peer for packet management
     pub fn connectPeer(self: *Sim, peer_id: u8) void {
+        // Record session event to tape if recording (but not replaying)
+        if (self.is_recording and !self.is_replaying) {
+            if (self.tape) |*t| {
+                t.append_event(Event.sessionConnectPeer(peer_id)) catch {};
+            }
+        }
+
         self.net.connectPeer(peer_id);
     }
 
     /// Disconnect a peer
     pub fn disconnectPeer(self: *Sim, peer_id: u8) void {
+        // Record session event to tape if recording (but not replaying)
+        if (self.is_recording and !self.is_replaying) {
+            if (self.tape) |*t| {
+                t.append_event(Event.sessionDisconnectPeer(peer_id)) catch {};
+            }
+        }
+
         self.net.disconnectPeer(peer_id);
     }
 
@@ -304,16 +339,11 @@ pub const Sim = struct {
 
         var step_count: u32 = 0;
         while (self.accumulator >= hz) {
-            // Inject packets from tape before processing this frame (for replay)
-            // This populates rollback state with remote inputs from recorded packets
+            // Replay tape data during replay mode
             if (self.is_replaying) {
-                self.inject_tape_packets();
-            }
-
-            // During replay with a session, inject local tape events into rollback
-            // so sessionStep can handle them uniformly with remote inputs
-            if (self.is_replaying and self.in_session) {
-                self.inject_tape_events_to_rollback();
+                self.replay_tape_session_events(); // Process session events first
+                self.replay_tape_packets(); // Then packets (populates rollback state)
+                self.replay_tape_inputs(); // Then input events
             }
 
             // Notify host before each simulation step
@@ -424,15 +454,8 @@ pub const Sim = struct {
         self.time.dt_ms = hz;
         self.time.total_ms += hz;
 
-        // If replaying and not at end of tape, use tape events.
-        // But NOT when in a session - sessionStep handles all inputs via rollback/injectInputsForFrame.
-        if (self.is_replaying and !self.in_session) {
-            if (self.tape) |*t| {
-                if (self.time.frame < t.frame_count() -| 1) {
-                    self.use_tape_events();
-                }
-            }
-        }
+        // Note: Tape replay is handled centrally in step() via replay_tape_inputs()
+        // which populates the event buffer or rollback state as appropriate.
 
         self.process_events();
 
@@ -478,20 +501,36 @@ pub const Sim = struct {
         self.events.count = 0;
     }
 
-    fn use_tape_events(self: *Sim) void {
+    /// Replay session lifecycle events from tape for the current frame.
+    /// Must be called before replay_tape_packets and replay_tape_inputs.
+    fn replay_tape_session_events(self: *Sim) void {
         if (self.tape) |*t| {
             const tape_events = t.get_events(self.time.frame);
-            self.events.count = std.math.cast(u16, tape_events.len) orelse {
-                @panic("Too many events in tape for event buffer");
-            };
-            for (tape_events, 0..) |event, idx| {
-                self.events.events[idx] = event;
+            for (tape_events) |event| {
+                switch (event.kind) {
+                    .SessionInit => {
+                        self.sessionInit(event.payload.peer_id, self.getUserDataLen()) catch {};
+                    },
+                    .SessionSetLocalPeer => {
+                        self.setLocalPeer(event.payload.peer_id);
+                    },
+                    .SessionConnectPeer => {
+                        self.connectPeer(event.payload.peer_id);
+                    },
+                    .SessionDisconnectPeer => {
+                        self.disconnectPeer(event.payload.peer_id);
+                    },
+                    .SessionEnd => {
+                        self.sessionEnd();
+                    },
+                    else => {},
+                }
             }
         }
     }
 
-    /// Inject packets from tape for the current frame during replay
-    fn inject_tape_packets(self: *Sim) void {
+    /// Replay packets from tape for the current frame
+    fn replay_tape_packets(self: *Sim) void {
         if (self.tape) |*t| {
             var iter = t.get_packets_for_frame(self.time.frame);
             while (iter.next()) |packet| {
@@ -504,21 +543,24 @@ pub const Sim = struct {
         }
     }
 
-    /// Inject tape events into rollback state for the local peer during replay.
-    /// This ensures sessionStep can handle local inputs uniformly with remote inputs.
-    fn inject_tape_events_to_rollback(self: *Sim) void {
+    /// Replay input events from tape for the current frame.
+    /// Routes inputs appropriately: to rollback state if in session, otherwise directly to event buffer.
+    fn replay_tape_inputs(self: *Sim) void {
         if (self.tape) |*t| {
-            // Get the match frame we're about to process (same calculation as sessionStep)
-            const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1;
             const tape_events = t.get_events(self.time.frame);
-
-            // Filter out FrameStart markers and inject input events into rollback
             for (tape_events) |event| {
-                if (event.kind != .FrameStart) {
-                    // Set peer_id to local peer for proper routing
+                // Skip FrameStart markers and session events
+                if (event.kind == .FrameStart or event.kind.isSessionEvent()) continue;
+
+                if (self.in_session) {
+                    // Route through rollback for proper multiplayer handling
+                    const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1;
                     var local_event = event;
                     local_event.peer_id = self.net.local_peer_id;
                     self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});
+                } else {
+                    // Direct injection for non-session replay
+                    self.inject_event(event);
                 }
             }
         }
@@ -757,14 +799,8 @@ pub const Sim = struct {
         self.is_replaying = true;
 
         // Advance to the desired frame
+        // step() handles tape event replay via replay_tape_inputs()
         while (self.time.frame < frame) {
-            const tape_events = self.tape.?.get_events(self.time.frame);
-            self.events.count = std.math.cast(u16, tape_events.len) orelse {
-                @panic("Too many events in tape for event buffer");
-            };
-            for (tape_events, 0..) |event, idx| {
-                self.events.events[idx] = event;
-            }
             const count = self.step(hz);
             if (count == 0) {
                 @panic("Failed to advance frame during seek");

@@ -112,7 +112,6 @@ describe("tapes", () => {
       sim2.seek(5);
       expect(game.bag.score).toBe(20);
     });
-
   });
 
   describe("snapshots", () => {
@@ -393,6 +392,197 @@ describe("tapes", () => {
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
 
       replaySim.step(); // frame 4 -> 5
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
+    });
+
+    it("records session that starts after initial gameplay", async () => {
+      // Game where clicks increment player scores
+      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game0.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game1.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      // Start without recording
+      const { sim: sim0 } = await mount(game0, { startRecording: false });
+      const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+      // Run some frames before session (no recording)
+      sim0.step(); // frame 0 -> 1
+      sim1.step();
+      sim0.step(); // frame 1 -> 2
+      sim1.step();
+      sim0.step(); // frame 2 -> 3
+      sim1.step();
+      expect(game0.context.time.frame).toBe(3);
+
+      // Initialize session at frame 3
+      sim0.sessionInit(2);
+      sim0.net.setLocalPeer(0);
+      sim0.net.connectPeer(1);
+      sim1.sessionInit(2);
+      sim1.net.setLocalPeer(1);
+      sim1.net.connectPeer(0);
+
+      // Start recording now (snapshot has session_start_frame=3)
+      sim0.record(1000, 2 * 1024 * 1024);
+
+      // Frame 3->4: Player 0 clicks locally, Player 1 clicks on sim1
+      sim0.emit.mousedown("Left", 0);
+      sim1.emit.mousedown("Left", 1);
+      sim0.step();
+      sim1.step();
+      // p0 click registered locally, p1 click not received yet
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 4->5: No new clicks, p1 packet still delayed
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 5->6: Now sim0 receives the delayed packet
+      const packet = sim1.net.getOutboundPacket(0);
+      assert(packet, "Packet from sim1 to sim0 should not be null");
+      sim0.net.receivePacket(packet); // triggers rollback
+      sim0.step();
+      sim1.step();
+      // After rollback and resimulation, p1 click is now counted
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
+
+      // Save tape from sim0's perspective
+      const tapeBytes = sim0.saveTape();
+      expect(tapeBytes.length).toBeGreaterThan(0);
+
+      // Create fresh game instance for replay
+      const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      replayGame.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+
+      // Load tape - session auto-initialized from snapshot (session_start_frame=3)
+      replaySim.loadTape(tapeBytes);
+
+      // Tape starts at frame 3
+      replaySim.step(); // frame 3 -> 4
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 4 -> 5
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 5 -> 6 - packet replay should trigger same result
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
+    });
+
+    it("recording before session init - session state not captured (expected to fail)", async () => {
+      // This test demonstrates the limitation: if recording starts before session init,
+      // the initial snapshot won't have session state, so replay won't work correctly.
+
+      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game0.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game1.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      // Start WITH recording at frame 0 (no session yet)
+      const { sim: sim0 } = await mount(game0);
+      const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+      // Run some frames before session (recording is active but no session)
+      sim0.step(); // frame 0 -> 1
+      sim1.step();
+      sim0.step(); // frame 1 -> 2
+      sim1.step();
+      sim0.step(); // frame 2 -> 3
+      sim1.step();
+      expect(game0.context.time.frame).toBe(3);
+
+      // Initialize session at frame 3 (but recording started at frame 0!)
+      sim0.sessionInit(2);
+      sim0.net.setLocalPeer(0);
+      sim0.net.connectPeer(1);
+      sim1.sessionInit(2);
+      sim1.net.setLocalPeer(1);
+      sim1.net.connectPeer(0);
+
+      // Frame 3->4: Player 0 clicks locally, Player 1 clicks on sim1
+      sim0.emit.mousedown("Left", 0);
+      sim1.emit.mousedown("Left", 1);
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 4->5: p1 packet still delayed
+      sim0.step();
+      sim1.step();
+
+      // Frame 5->6: Now sim0 receives the delayed packet
+      const packet = sim1.net.getOutboundPacket(0);
+      assert(packet, "Packet from sim1 to sim0 should not be null");
+      sim0.net.receivePacket(packet);
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
+
+      // Save tape
+      const tapeBytes = sim0.saveTape();
+      expect(tapeBytes.length).toBeGreaterThan(0);
+
+      // Create fresh game instance for replay
+      const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      replayGame.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+
+      // Load tape - initial snapshot has in_session=0, so no session auto-init
+      replaySim.loadTape(tapeBytes);
+
+      // Tape starts at frame 0
+      // Step through frames - this will fail because:
+      // 1. Session not auto-initialized (snapshot was taken before session)
+      // 2. Packets recorded during session won't replay correctly
+      replaySim.step(); // frame 0 -> 1
+      replaySim.step(); // frame 1 -> 2
+      replaySim.step(); // frame 2 -> 3
+      replaySim.step(); // frame 3 -> 4 - p0 click should register
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 4 -> 5
+      replaySim.step(); // frame 5 -> 6 - packet should replay but session not active
+
+      // This assertion will likely FAIL because session wasn't auto-initialized
+      // The packet is recorded but won't be processed correctly without session state
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
   });

@@ -29,7 +29,7 @@ export async function mount(
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size
-  const memory = new WebAssembly.Memory({ initial: 236, maximum: 1000 });
+  const memory = new WebAssembly.Memory({ initial: 310, maximum: 1000 });
 
   // Create sim early so we can reference it in callbacks
   let sim: Sim;
