@@ -4,6 +4,14 @@ import { defineConfig, type Plugin, type UserConfig } from "vite";
 
 export default defineConfig({
   plugins: [bloopLocalDevPlugin()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        tapeLoad: path.resolve(__dirname, "tape-load.html"),
+      },
+    },
+  },
 });
 
 /**

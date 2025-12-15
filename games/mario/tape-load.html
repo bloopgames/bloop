@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Load Tape - Mario</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    .file-input-wrapper {
+      margin-bottom: 20px;
+    }
+    input[type="file"] {
+      padding: 10px;
+      background: #16213e;
+      border: 2px dashed #0f3460;
+      border-radius: 8px;
+      color: #eee;
+      cursor: pointer;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    input[type="file"]:hover {
+      border-color: #e94560;
+    }
+    .status {
+      padding: 10px;
+      background: #16213e;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .instructions {
+      font-size: 14px;
+      color: #888;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Load Tape</h1>
+    <div class="file-input-wrapper">
+      <input type="file" id="tape-input" accept=".bloop" />
+    </div>
+    <div class="status" id="status">Select a .bloop tape file to load</div>
+    <div class="instructions">
+      <p>To save a tape: Run the mario game and press Ctrl+S (or Cmd+S on Mac)</p>
+      <p>Playback controls: Use the bottom bar buttons or hotkeys (5=back, 6=pause, 7=forward)</p>
+    </div>
+  </div>
+  <script type="module" src="/src/tape-load.ts"></script>
+</body>
+</html>

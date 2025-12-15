@@ -98,7 +98,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
         max={rightMax}
         side="right"
       />
-      <BottomBar tapeUtilization={0.67} playheadPosition={0.8} isPlaying={true} />
+      <BottomBar />
     </main>
   );
 }

@@ -3,6 +3,7 @@ export * from "./contexts/inputContext";
 export * from "./contexts/timeContext";
 export * from "./contexts/netContext";
 export * from "./inputs";
+export * from "./tape";
 export type * from "./wasmEngine";
 
 /**

@@ -586,4 +586,73 @@ describe("tapes", () => {
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
   });
+
+  describe("tape loading from file", () => {
+    it("replays keydown events at correct frame", async () => {
+      // Load tape recorded from mario game
+      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      // Track keydown events externally (bag gets overwritten by tape snapshot)
+      let spaceDownFrame = -1;
+      let keydownCount = 0;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          keydownCount++;
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+
+      // Tape starts at frame 0, space keydown is at frame 94
+      expect(sim.time.frame).toBe(0);
+      expect(spaceDownFrame).toBe(-1);
+
+      // Step to frame 93 - no space yet
+      sim.seek(93);
+      expect(sim.time.frame).toBe(93);
+      expect(spaceDownFrame).toBe(-1);
+
+      // Step to frame 95 to process events at frame 94
+      sim.seek(95);
+      expect(sim.time.frame).toBe(95);
+      expect(spaceDownFrame).toBe(94);
+    });
+
+    it("replays events when stepping forward with step()", async () => {
+      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      let spaceDownFrame = -1;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+
+      expect(sim.time.frame).toBe(0);
+      expect(sim.isReplaying).toBe(true);
+
+      // Step forward using step() - should advance and replay events
+      for (let i = 0; i < 100; i++) {
+        sim.step(16);
+      }
+
+      expect(sim.time.frame).toBe(100);
+      expect(spaceDownFrame).toBe(94);
+    });
+  });
 });

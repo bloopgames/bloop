@@ -119,8 +119,7 @@ export class Sim {
   }
 
   step(ms?: number): number {
-    if (this.#isPaused && !this.isReplaying) {
-      // console.log({ paused: this.#isPaused, isReplaying: this.isReplaying });
+    if (this.#isPaused) {
       return 0;
     }
     return this.wasm.step(ms ?? 16);
