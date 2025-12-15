@@ -377,7 +377,7 @@ describe("tapes", () => {
         startRecording: false,
       });
 
-      // Load tape - session auto-initialized from tape header
+      // Load tape - session auto-initialized from snapshot
       replaySim.loadTape(tapeBytes);
 
       replaySim.step(); // frame 0 -> 1

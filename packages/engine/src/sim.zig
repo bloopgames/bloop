@@ -128,21 +128,15 @@ pub const Sim = struct {
         // Reinitialize net state
         self.net.* = .{ .allocator = self.allocator };
 
-        // Take initial confirmed snapshot
-        const snap = try self.take_snapshot(user_data_len);
-        self.rollback.confirmed_snapshot = snap;
+        // Update net_ctx for snapshots (captured in take_snapshot)
+        self.net_ctx.peer_count = peer_count;
+        self.net_ctx.in_session = 1;
 
         self.in_session = true;
 
-        // If recording, update tape header with session state
-        if (self.is_recording) {
-            if (self.tape) |*t| {
-                const header = t.get_header();
-                header.in_session = 1;
-                header.peer_count = peer_count;
-                // local_peer_id will be updated when setLocalPeer is called
-            }
-        }
+        // Take initial confirmed snapshot (after in_session is set so it's captured)
+        const snap = try self.take_snapshot(user_data_len);
+        self.rollback.confirmed_snapshot = snap;
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
@@ -160,6 +154,8 @@ pub const Sim = struct {
         self.net.deinit();
         self.net.* = .{ .allocator = self.allocator };
         self.in_session = false;
+        self.net_ctx.in_session = 0;
+        self.net_ctx.peer_count = 0;
     }
 
     /// Emit inputs for a peer at a given match frame
@@ -202,14 +198,7 @@ pub const Sim = struct {
     /// Set local peer ID for packet encoding
     pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
         self.net.setLocalPeer(peer_id);
-
-        // If recording and in session, update tape header with local_peer_id
-        if (self.is_recording and self.in_session) {
-            if (self.tape) |*t| {
-                const header = t.get_header();
-                header.local_peer_id = peer_id;
-            }
-        }
+        self.net_ctx.local_peer_id = peer_id;
     }
 
     /// Connect a peer for packet management
@@ -629,6 +618,7 @@ pub const Sim = struct {
         snap.write_time(@intFromPtr(self.time));
         snap.write_inputs(@intFromPtr(self.inputs));
         snap.write_events(@intFromPtr(self.events));
+        snap.write_net(@intFromPtr(self.net_ctx));
 
         if (snap.user_data_len > 0) {
             if (self.callbacks.user_serialize) |serialize| {
@@ -640,15 +630,25 @@ pub const Sim = struct {
     }
 
     /// Restore state from a snapshot
+    /// If the snapshot was taken during a session (in_session == 1), auto-initializes the session
     pub fn restore(self: *Sim, snapshot: *Tapes.Snapshot) void {
         @memcpy(std.mem.asBytes(self.time), std.mem.asBytes(&snapshot.time));
         @memcpy(std.mem.asBytes(self.inputs), std.mem.asBytes(&snapshot.inputs));
         @memcpy(std.mem.asBytes(self.events), std.mem.asBytes(&snapshot.events));
+        @memcpy(std.mem.asBytes(self.net_ctx), std.mem.asBytes(&snapshot.net));
 
         if (snapshot.user_data_len > 0) {
             if (self.callbacks.user_deserialize) |deserialize| {
                 deserialize(@intFromPtr(snapshot.user_data().ptr), snapshot.user_data_len);
             }
+        }
+
+        // Auto-initialize session if snapshot was taken during a session
+        if (snapshot.net.in_session == 1 and !self.in_session) {
+            self.sessionInit(snapshot.net.peer_count, snapshot.user_data_len) catch {
+                @panic("Failed to auto-init session from snapshot");
+            };
+            self.setLocalPeer(snapshot.net.local_peer_id);
         }
     }
 
@@ -684,14 +684,6 @@ pub const Sim = struct {
         };
         self.is_recording = true;
 
-        // Capture session state for auto-restore on tape load
-        if (self.in_session) {
-            const header = self.tape.?.get_header();
-            header.in_session = 1;
-            header.peer_count = self.rollback.peer_count;
-            header.local_peer_id = self.net.local_peer_id;
-        }
-
         // Start the first frame
         self.tape.?.start_frame() catch {
             return RecordingError.TapeError;
@@ -704,7 +696,7 @@ pub const Sim = struct {
     }
 
     /// Load a tape from raw bytes (enters replay mode)
-    /// Auto-initializes session if tape was recorded during a networked session
+    /// Restores the initial snapshot which will auto-init session if needed
     pub fn load_tape(self: *Sim, tape_buf: []u8) !void {
         if (self.is_recording) {
             return error.CurrentlyRecording;
@@ -717,14 +709,9 @@ pub const Sim = struct {
         self.tape = try Tapes.Tape.load(copy);
         self.is_replaying = true;
 
-        // Auto-initialize session if tape was recorded during a session
-        const header = self.tape.?.get_header();
-        if (header.in_session == 1) {
-            // Get user data length dynamically for snapshot
-            const user_data_len = self.getUserDataLen();
-            try self.sessionInit(header.peer_count, user_data_len);
-            self.setLocalPeer(header.local_peer_id);
-        }
+        // Restore initial snapshot from tape - this will auto-init session if net_ctx.in_session is set
+        const snapshot = self.tape.?.closest_snapshot(0);
+        self.restore(snapshot);
     }
 
     /// Get the current tape buffer (for serialization)

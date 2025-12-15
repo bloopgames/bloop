@@ -17,10 +17,11 @@ pub const Snapshot = extern struct {
     time_len: u32,
     input_len: u32,
     events_len: u32,
-    reserved_2: u32,
+    net_len: u32,
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
     events: EventBuffer,
+    net: Ctx.NetCtx,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -34,9 +35,11 @@ pub const Snapshot = extern struct {
         snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
         snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
         snapshot.*.events_len = @sizeOf(EventBuffer);
+        snapshot.*.net_len = @sizeOf(Ctx.NetCtx);
         snapshot.*.user_data_len = user_data_len;
         snapshot.*.engine_data_len = @sizeOf(Snapshot);
         snapshot.*.time = Ctx.TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
+        snapshot.*.net = Ctx.NetCtx{ .peer_count = 0, .match_frame = 0 };
 
         return snapshot;
     }
@@ -81,6 +84,17 @@ pub const Snapshot = extern struct {
         @memcpy(out[events_offset .. events_offset + size], std.mem.asBytes(events_buffer));
     }
 
+    pub fn write_net(self: *Snapshot, net_ptr: EnginePointer) void {
+        const out: [*]u8 = @ptrCast(self);
+        const net_ctx: *const Ctx.NetCtx = @ptrFromInt(net_ptr);
+        const net_len_offset = @offsetOf(Snapshot, "net_len");
+        const net_offset = @offsetOf(Snapshot, "net");
+        const size = @sizeOf(Ctx.NetCtx);
+
+        std.mem.writeInt(u32, out[net_len_offset .. net_len_offset + 4], size, .little);
+        @memcpy(out[net_offset .. net_offset + size], std.mem.asBytes(net_ctx));
+    }
+
     pub fn user_data(self: *Snapshot) []u8 {
         const base = @as([*]u8, @ptrCast(self));
         const user_data_offset = @sizeOf(Snapshot);
@@ -91,7 +105,7 @@ pub const Snapshot = extern struct {
 pub const TapeHeader = extern struct {
     // magic numbers
     magic: u32 = 0x54415045, // "TAPE" in ASCII
-    version: u16 = 2, // v2: session state support
+    version: u16 = 1, // v1: packet support
     reserved: u16 = 0,
 
     // frame and event data
@@ -111,12 +125,6 @@ pub const TapeHeader = extern struct {
     packet_end_offset: u32 = 0,
     packet_count: u32 = 0,
     max_packet_bytes: u32 = 0,
-
-    // session state for auto-restore on load (v2)
-    peer_count: u8 = 0,
-    local_peer_id: u8 = 0,
-    in_session: u8 = 0, // bool as u8 for alignment
-    _session_pad: u8 = 0,
 };
 
 /// A network packet recorded at a specific frame
@@ -207,23 +215,16 @@ pub const Tape = struct {
         if (header.magic != 0x54415045) {
             return TapeError.InvalidTape;
         }
-        // Support v0 (no packets), v1 (with packets), v2 (session state)
-        if (header.version > 2) {
+        // Support v0 (no packets) and v1 (with packets)
+        if (header.version > 1) {
             return TapeError.UnsupportedVersion;
         }
         // Upgrade v0 tapes to have empty packet section
-        if (header.version < 1) {
+        if (header.version == 0) {
             header.packet_start_offset = 0;
             header.packet_end_offset = 0;
             header.packet_count = 0;
             header.max_packet_bytes = 0;
-        }
-        // Upgrade v0/v1 tapes to have empty session state
-        if (header.version < 2) {
-            header.peer_count = 0;
-            header.local_peer_id = 0;
-            header.in_session = 0;
-            header._session_pad = 0;
         }
         return Tape{ .buf = buf };
     }
