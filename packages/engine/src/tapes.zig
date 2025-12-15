@@ -39,7 +39,7 @@ pub const Snapshot = extern struct {
         snapshot.*.user_data_len = user_data_len;
         snapshot.*.engine_data_len = @sizeOf(Snapshot);
         snapshot.*.time = Ctx.TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
-        snapshot.*.net = Ctx.NetCtx{ .peer_count = 0, .match_frame = 0 };
+        snapshot.*.net = Ctx.NetCtx{ .peer_count = 0, .match_frame = 0, .session_start_frame = 0 };
 
         return snapshot;
     }

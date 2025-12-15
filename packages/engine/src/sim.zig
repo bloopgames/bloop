@@ -131,6 +131,7 @@ pub const Sim = struct {
         // Update net_ctx for snapshots (captured in take_snapshot)
         self.net_ctx.peer_count = peer_count;
         self.net_ctx.in_session = 1;
+        self.net_ctx.session_start_frame = self.time.frame;
 
         self.in_session = true;
 
@@ -156,6 +157,7 @@ pub const Sim = struct {
         self.in_session = false;
         self.net_ctx.in_session = 0;
         self.net_ctx.peer_count = 0;
+        self.net_ctx.session_start_frame = 0;
     }
 
     /// Emit inputs for a peer at a given match frame
@@ -645,10 +647,23 @@ pub const Sim = struct {
 
         // Auto-initialize session if snapshot was taken during a session
         if (snapshot.net.in_session == 1 and !self.in_session) {
-            self.sessionInit(snapshot.net.peer_count, snapshot.user_data_len) catch {
-                @panic("Failed to auto-init session from snapshot");
+            // Initialize rollback/net state directly with session_start_frame from snapshot
+            // (don't use sessionInit which would set session_start_frame = current frame)
+            self.rollback.deinit();
+            self.net.deinit();
+
+            self.rollback.* = .{
+                .session_start_frame = snapshot.net.session_start_frame,
+                .peer_count = snapshot.net.peer_count,
+                .allocator = self.allocator,
             };
-            self.setLocalPeer(snapshot.net.local_peer_id);
+            self.net.* = .{ .allocator = self.allocator };
+            self.net.setLocalPeer(snapshot.net.local_peer_id);
+
+            self.in_session = true;
+
+            // Take initial confirmed snapshot for rollback
+            self.rollback.confirmed_snapshot = self.take_snapshot(snapshot.user_data_len) catch null;
         }
     }
 
