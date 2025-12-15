@@ -73,29 +73,6 @@ async function main() {
     },
   });
 
-  // function handleKeyDown(e: KeyboardEvent) {
-  //   if (e.key === " ") {
-  //     // Local multiplayer - start immediately
-  //     bag.mode = "local";
-  //     bag.phase = "playing";
-  //     resetGameState(bag);
-  //   } else if (e.key === "Enter" && !networkJoined) {
-  //     // Online multiplayer - wait for connection
-  //     bag.mode = "online";
-  //     bag.phase = "waiting";
-  //     networkJoined = true;
-
-  //     // Phase transitions are handled by the session-watcher system
-  //     joinRollbackRoom("mario-demo", app, {
-  //       onSessionEnd() {
-  //         networkJoined = false;
-  //       },
-  //     });
-  //   }
-  // }
-
-  window.addEventListener("keydown", handleKeyDown);
-
   // HMR support
   if (import.meta.hot) {
     import.meta.hot.accept("./game", async (newModule) => {

@@ -4,6 +4,7 @@ import {
   type Signal,
   signal,
 } from "@preact/signals";
+import type { App } from "../App";
 import type { Log } from "../netcode/logs.ts";
 
 export type FrameNumber = number;
@@ -251,4 +252,61 @@ export function resetState(): void {
   debugState.tapeStartFrame.value = 0;
   debugState.tapeFrameCount.value = 0;
   // Don't reset handlers - they're set once by App
+}
+
+/** Wire up playbar handlers to control an App instance */
+export function wirePlaybarHandlers(app: App): void {
+  debugState.onPlayPause.value = () => {
+    app.sim.isPaused ? app.sim.unpause() : app.sim.pause();
+  };
+  debugState.onStepBack.value = () => {
+    if (app.sim.hasHistory) app.sim.stepBack();
+  };
+  debugState.onStepForward.value = () => {
+    if (app.sim.hasHistory) {
+      app.sim.seek(app.sim.time.frame + 1);
+    }
+  };
+  debugState.onJumpBack.value = () => {
+    if (app.sim.hasHistory) {
+      const target = Math.max(
+        debugState.tapeStartFrame.value,
+        app.sim.time.frame - 10,
+      );
+      app.sim.seek(target);
+    }
+  };
+  debugState.onJumpForward.value = () => {
+    if (app.sim.hasHistory) {
+      const maxFrame =
+        debugState.tapeStartFrame.value + debugState.tapeFrameCount.value;
+      const target = Math.min(maxFrame, app.sim.time.frame + 10);
+      app.sim.seek(target);
+    }
+  };
+  debugState.onSeek.value = (ratio: number) => {
+    if (app.sim.hasHistory) {
+      const startFrame = debugState.tapeStartFrame.value;
+      const frameCount = debugState.tapeFrameCount.value;
+      const targetFrame = startFrame + Math.floor(ratio * frameCount);
+      app.sim.seek(targetFrame);
+    }
+  };
+}
+
+/** Set up drag-and-drop tape loading on a canvas element */
+export function wireTapeDragDrop(canvas: HTMLCanvasElement, app: App): void {
+  canvas.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "copy";
+  });
+  canvas.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files[0];
+    if (!file?.name.endsWith(".bloop")) {
+      return;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    app.loadTape(bytes);
+  });
 }

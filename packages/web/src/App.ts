@@ -2,7 +2,12 @@ import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton, readTapeHeader } from "@bloopjs/engine";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
-import { debugState, triggerHmrFlash } from "./debugui/state.ts";
+import {
+  debugState,
+  triggerHmrFlash,
+  wirePlaybarHandlers,
+  wireTapeDragDrop,
+} from "./debugui/state.ts";
 import {
   joinRoom as joinRoomInternal,
   type RoomEvents,
@@ -110,58 +115,9 @@ export class App {
     if (this.#debugUi) return this.#debugUi;
     this.#debugUi = new DebugUi(opts);
 
-    // Wire up playbar handlers
-    debugState.onPlayPause.value = () => {
-      this.sim.isPaused ? this.sim.unpause() : this.sim.pause();
-    };
-    debugState.onStepBack.value = () => {
-      if (this.sim.hasHistory) this.sim.stepBack();
-    };
-    debugState.onStepForward.value = () => {
-      if (this.sim.hasHistory) {
-        this.sim.seek(this.sim.time.frame + 1);
-      }
-    };
-    debugState.onJumpBack.value = () => {
-      if (this.sim.hasHistory) {
-        const target = Math.max(
-          debugState.tapeStartFrame.value,
-          this.sim.time.frame - 10,
-        );
-        this.sim.seek(target);
-      }
-    };
-    debugState.onJumpForward.value = () => {
-      if (this.sim.hasHistory) {
-        const maxFrame =
-          debugState.tapeStartFrame.value + debugState.tapeFrameCount.value;
-        const target = Math.min(maxFrame, this.sim.time.frame + 10);
-        this.sim.seek(target);
-      }
-    };
-    debugState.onSeek.value = (ratio: number) => {
-      if (this.sim.hasHistory) {
-        const startFrame = debugState.tapeStartFrame.value;
-        const frameCount = debugState.tapeFrameCount.value;
-        const targetFrame = startFrame + Math.floor(ratio * frameCount);
-        this.sim.seek(targetFrame);
-      }
-    };
-
-    // Set up drag-and-drop tape loading on canvas
-    const canvas = this.#debugUi.canvas;
-    canvas.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      e.dataTransfer!.dropEffect = "copy";
-    });
-    canvas.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      const file = e.dataTransfer?.files[0];
-      if (file && file.name.endsWith(".bloop")) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        this.loadTape(bytes);
-      }
-    });
+    // Wire up playbar handlers and drag-drop
+    wirePlaybarHandlers(this);
+    wireTapeDragDrop(this.#debugUi.canvas, this);
 
     return this.#debugUi;
   }

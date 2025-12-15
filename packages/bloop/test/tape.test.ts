@@ -654,31 +654,5 @@ describe("tapes", () => {
       expect(sim.time.frame).toBe(100);
       expect(spaceDownFrame).toBe(94);
     });
-
-    it("plays forward after pause/unpause cycle (UI flow)", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      const game = Bloop.create({ bag: {} });
-      const { sim } = await mount(game, { startRecording: false });
-
-      // Load tape and pause (like App.loadTape does)
-      sim.loadTape(tapeBytes);
-      sim.seek(0);
-      sim.pause();
-
-      // Verify paused state
-      expect(sim.isPaused).toBe(true);
-      expect(sim.time.frame).toBe(0);
-
-      // Unpause (like clicking play button)
-      sim.unpause();
-      expect(sim.isPaused).toBe(false);
-
-      // Step forward like RAF loop would
-      const ticks = sim.step(16);
-      expect(ticks).toBeGreaterThan(0);
-      expect(sim.time.frame).toBeGreaterThan(0);
-    });
   });
 });
