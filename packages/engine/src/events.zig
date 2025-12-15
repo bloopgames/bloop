@@ -79,6 +79,46 @@ pub const Event = extern struct {
             .payload = .{ .frame_number = frame_number },
         };
     }
+
+    pub inline fn sessionInit(peer_count: u8) Event {
+        return Event{
+            .kind = .SessionInit,
+            .device = .None,
+            .payload = .{ .peer_id = peer_count },
+        };
+    }
+
+    pub inline fn sessionSetLocalPeer(peer_id: u8) Event {
+        return Event{
+            .kind = .SessionSetLocalPeer,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
+
+    pub inline fn sessionConnectPeer(peer_id: u8) Event {
+        return Event{
+            .kind = .SessionConnectPeer,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
+
+    pub inline fn sessionDisconnectPeer(peer_id: u8) Event {
+        return Event{
+            .kind = .SessionDisconnectPeer,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
+
+    pub inline fn sessionEnd() Event {
+        return Event{
+            .kind = .SessionEnd,
+            .device = .None,
+            .payload = .{ .peer_id = 0 },
+        };
+    }
 };
 
 pub const EventPayload = extern union {
@@ -87,6 +127,8 @@ pub const EventPayload = extern union {
     mouse_move: extern struct { x: f32, y: f32 },
     delta: extern struct { delta_x: f32, delta_y: f32 },
     frame_number: u32,
+    /// Used by SessionInit (peer_count) and SessionSetLocalPeer/ConnectPeer/DisconnectPeer (peer_id)
+    peer_id: u8,
 };
 
 pub const EventType = enum(u8) {
@@ -99,6 +141,19 @@ pub const EventType = enum(u8) {
     MouseWheel,
     /// Frame is complete. Frame number payload indicates which frame has completed its events
     FrameStart,
+    /// Session lifecycle events
+    SessionInit,
+    SessionSetLocalPeer,
+    SessionConnectPeer,
+    SessionDisconnectPeer,
+    SessionEnd,
+
+    pub fn isSessionEvent(self: EventType) bool {
+        return switch (self) {
+            .SessionInit, .SessionSetLocalPeer, .SessionConnectPeer, .SessionDisconnectPeer, .SessionEnd => true,
+            else => false,
+        };
+    }
 };
 
 // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button#value

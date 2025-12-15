@@ -212,13 +212,19 @@ export class Sim {
   }
 
   /**
-   * Start recording the simulation at the current frame
-   * @param maxEvents Maximum number of events to record (default 1024)
+   * Packet buffer size (2MB) for network session recording
    */
-  record(maxEvents: number = 1024) {
+  static readonly NETWORK_MAX_PACKET_BYTES = 2 * 1024 * 1024;
+
+  /**
+   * Start recording the simulation at the current frame
+   * @param maxEvents Maximum number of events to record
+   * @param maxPacketBytes Maximum packet buffer size (0 for local-only, 2MB default for network)
+   */
+  record(maxEvents: number, maxPacketBytes: number) {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
-    const result = this.wasm.start_recording(size, maxEvents);
+    const result = this.wasm.start_recording(size, maxEvents, maxPacketBytes);
     if (result !== 0) {
       throw new Error(`failed to start recording, error code=${result}`);
     }

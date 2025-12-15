@@ -3,8 +3,11 @@ pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
 
 pub const NetCtx = extern struct {
     peer_count: u8,
-    _pad1: [3]u8 = .{ 0, 0, 0 }, // Align match_frame to 4 bytes
+    local_peer_id: u8 = 0,
+    in_session: u8 = 0, // bool as u8 for alignment
+    _pad1: u8 = 0,
     match_frame: u32,
+    session_start_frame: u32 = 0,
 };
 
 pub const MAX_PLAYERS: u8 = 12;

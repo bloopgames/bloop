@@ -163,8 +163,8 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn start_recording(user_data_len: u32, max_events: u32) u8 {
-    sim.?.start_recording(user_data_len, max_events) catch |e| {
+pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_bytes: u32) u8 {
+    sim.?.start_recording(user_data_len, max_events, max_packet_bytes) catch |e| {
         switch (e) {
             Sim.RecordingError.AlreadyRecording => {
                 wasm_log("Already recording");
@@ -239,6 +239,11 @@ pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
             },
             Tapes.TapeError.UnsupportedVersion => {
                 wasm_log("Failed to load tape: Unsupported tape version");
+                return 1;
+            },
+            Tapes.TapeError.PacketBufferFull => {
+                // This error can't happen during tape loading, but we need exhaustive handling
+                wasm_log("Failed to load tape: Packet buffer full");
                 return 1;
             },
         }

@@ -17,7 +17,7 @@ export async function mount(
 ): Promise<MountResult> {
   const wasmUrl = options?.wasmUrl ?? opts.wasmUrl ?? DEFAULT_WASM_URL;
   const startRecording = options?.startRecording ?? opts.startRecording ?? true;
-  const maxEvents = calculateMaxEvents(options?.tape);
+  const { maxEvents, maxPacketBytes } = calculateTapeConfig(options?.tape);
 
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await fetch(wasmUrl)
@@ -29,7 +29,7 @@ export async function mount(
 
   // 1mb to 64mb
   // use bun check:wasm to find initial memory page size
-  const memory = new WebAssembly.Memory({ initial: 236, maximum: 1000 });
+  const memory = new WebAssembly.Memory({ initial: 310, maximum: 1000 });
 
   // Create sim early so we can reference it in callbacks
   let sim: Sim;
@@ -100,7 +100,7 @@ export async function mount(
   });
 
   if (startRecording) {
-    sim.record(maxEvents);
+    sim.record(maxEvents, maxPacketBytes);
   }
 
   opts.hooks.setBuffer(memory.buffer);
@@ -111,9 +111,16 @@ export async function mount(
   };
 }
 
-export type TapeOptions =
+export type TapeOptions = (
   | { maxEvents: number }
-  | { duration: number; averageEventsPerFrame?: number };
+  | { duration: number; averageEventsPerFrame?: number }
+) & {
+  /**
+   * Set to true for local-only recording (no network packet buffer).
+   * Default: false (allocates 2MB for network packet recording)
+   */
+  localOnly?: boolean;
+};
 
 export type MountOptions = {
   /**
@@ -149,15 +156,25 @@ export type MountResult = {
   sim: Sim;
 };
 
-function calculateMaxEvents(tape?: TapeOptions): number {
-  if (!tape) return 1024; // default
+function calculateTapeConfig(tape?: TapeOptions): {
+  maxEvents: number;
+  maxPacketBytes: number;
+} {
+  let maxEvents: number;
 
-  if ("maxEvents" in tape) {
-    return tape.maxEvents;
+  if (!tape) {
+    maxEvents = 1024; // default
+  } else if ("maxEvents" in tape) {
+    maxEvents = tape.maxEvents;
+  } else {
+    // duration-based: frames * average events per frame
+    // At 60fps, duration seconds = duration * 60 frames
+    const avgEvents = tape.averageEventsPerFrame ?? 2;
+    maxEvents = Math.ceil(tape.duration * 60 * avgEvents);
   }
 
-  // duration-based: frames * average events per frame
-  // At 60fps, duration seconds = duration * 60 frames
-  const avgEvents = tape.averageEventsPerFrame ?? 2;
-  return Math.ceil(tape.duration * 60 * avgEvents);
+  // Default to network mode (2MB), localOnly mode uses 0 bytes
+  const maxPacketBytes = tape?.localOnly ? 0 : Sim.NETWORK_MAX_PACKET_BYTES;
+
+  return { maxEvents, maxPacketBytes };
 }

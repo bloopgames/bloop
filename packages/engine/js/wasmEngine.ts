@@ -27,7 +27,11 @@ export type WasmEngine = {
   /**
    * Start recording inputs to tape
    */
-  start_recording: (data_len: number, max_events: number) => EngineOk;
+  start_recording: (
+    data_len: number,
+    max_events: number,
+    max_packet_bytes: number,
+  ) => EngineOk;
   /**
    * Stop recording inputs
    */
