@@ -240,6 +240,16 @@ pub const Sim = struct {
         const buf: [*]const u8 = @ptrFromInt(ptr);
         const slice = buf[0..len];
 
+        // Record packet to tape before processing (capture exact bytes received)
+        if (self.is_recording) {
+            if (self.tape) |*t| {
+                // peer_id is at byte[1] in the packet header
+                const peer_id: u8 = if (len > 1) slice[1] else 0;
+                // Record at current frame - during replay, inject at this frame
+                t.append_packet(self.time.frame, peer_id, slice) catch {};
+            }
+        }
+
         self.net.receivePacket(slice, self.rollback) catch |e| {
             switch (e) {
                 Net.Packets.DecodeError.BufferTooSmall => return 2,
@@ -285,6 +295,18 @@ pub const Sim = struct {
 
         var step_count: u32 = 0;
         while (self.accumulator >= hz) {
+            // Inject packets from tape before processing this frame (for replay)
+            // This populates rollback state with remote inputs from recorded packets
+            if (self.is_replaying) {
+                self.inject_tape_packets();
+            }
+
+            // During replay with a session, inject local tape events into rollback
+            // so sessionStep can handle them uniformly with remote inputs
+            if (self.is_replaying and self.in_session) {
+                self.inject_tape_events_to_rollback();
+            }
+
             // Notify host before each simulation step
             if (self.callbacks.before_frame) |before_frame| {
                 before_frame(self.time.frame);
@@ -393,8 +415,9 @@ pub const Sim = struct {
         self.time.dt_ms = hz;
         self.time.total_ms += hz;
 
-        // If replaying and not at end of tape, use tape events
-        if (self.is_replaying) {
+        // If replaying and not at end of tape, use tape events.
+        // But NOT when in a session - sessionStep handles all inputs via rollback/injectInputsForFrame.
+        if (self.is_replaying and !self.in_session) {
             if (self.tape) |*t| {
                 if (self.time.frame < t.frame_count() -| 1) {
                     self.use_tape_events();
@@ -454,6 +477,38 @@ pub const Sim = struct {
             };
             for (tape_events, 0..) |event, idx| {
                 self.events.events[idx] = event;
+            }
+        }
+    }
+
+    /// Inject packets from tape for the current frame during replay
+    fn inject_tape_packets(self: *Sim) void {
+        if (self.tape) |*t| {
+            var iter = t.get_packets_for_frame(self.time.frame);
+            while (iter.next()) |packet| {
+                // Process the packet as if it was just received
+                // This will trigger rollback if needed, just like during the original session
+                self.net.receivePacket(packet.data, self.rollback) catch {};
+            }
+        }
+    }
+
+    /// Inject tape events into rollback state for the local peer during replay.
+    /// This ensures sessionStep can handle local inputs uniformly with remote inputs.
+    fn inject_tape_events_to_rollback(self: *Sim) void {
+        if (self.tape) |*t| {
+            // Get the match frame we're about to process (same calculation as sessionStep)
+            const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1;
+            const tape_events = t.get_events(self.time.frame);
+
+            // Filter out FrameStart markers and inject input events into rollback
+            for (tape_events) |event| {
+                if (event.kind != .FrameStart) {
+                    // Set peer_id to local peer for proper routing
+                    var local_event = event;
+                    local_event.peer_id = self.net.local_peer_id;
+                    self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});
+                }
             }
         }
     }
@@ -589,8 +644,19 @@ pub const Sim = struct {
 
     /// Start recording to a new tape
     pub fn start_recording(self: *Sim, user_data_len: u32, max_events: u32) RecordingError!void {
+        return self.start_recording_ex(user_data_len, max_events, Tapes.Tape.DEFAULT_MAX_PACKET_BYTES);
+    }
+
+    /// Start recording to a new tape with custom packet buffer size
+    pub fn start_recording_ex(self: *Sim, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
         if (self.is_recording) {
             return RecordingError.AlreadyRecording;
+        }
+
+        // Free existing tape if any (allows restart after stop_recording)
+        if (self.tape) |*t| {
+            t.free(self.allocator);
+            self.tape = null;
         }
 
         const snapshot = self.take_snapshot(user_data_len) catch {
@@ -598,7 +664,7 @@ pub const Sim = struct {
         };
         defer snapshot.deinit(self.allocator);
 
-        self.tape = Tapes.Tape.init(self.allocator, snapshot, max_events) catch {
+        self.tape = Tapes.Tape.initWithPackets(self.allocator, snapshot, max_events, max_packet_bytes) catch {
             return RecordingError.OutOfMemory;
         };
         self.is_recording = true;

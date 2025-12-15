@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Bloop, mount } from "../src/mod";
+import { assert, Bloop, mount } from "../src/mod";
 
 describe("tapes", () => {
   describe("tape overflow", () => {
@@ -296,6 +296,109 @@ describe("tapes", () => {
 
       sim1.step();
       expect(bloop.bag.score).toEqual(10);
+    });
+  });
+
+  describe("networked session recording", () => {
+    it("records and replays networked session with delayed packets", async () => {
+      // Game where clicks increment player scores
+      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game0.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      game1.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+
+      const { sim: sim0 } = await mount(game0);
+      const { sim: sim1 } = await mount(game1);
+
+      // Setup session - sim0 is player 0, sim1 is player 1
+      sim0.sessionInit(2);
+      sim0.net.setLocalPeer(0);
+      sim0.net.connectPeer(1);
+      sim1.sessionInit(2);
+      sim1.net.setLocalPeer(1);
+      sim1.net.connectPeer(0);
+
+      // Frame 0: Player 0 clicks locally, Player 1 clicks on sim1
+      sim0.emit.mousedown("Left", 0);
+      sim1.emit.mousedown("Left", 1);
+      sim0.step();
+      sim1.step();
+      // p0 click registered locally, p1 click not received yet
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 1: No new clicks, p1 packet still delayed
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 2: Still delayed
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 3: Now sim0 receives the delayed packet from frame 0
+      const packet = sim1.net.getOutboundPacket(0);
+      assert(packet, "Packet from sim1 to sim0 should not be null");
+      sim0.net.receivePacket(packet); // triggers rollback to frame 0
+      sim0.step();
+      sim1.step();
+      // After rollback and resimulation, p1 click is now counted
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
+
+      // Frame 4: Continue
+      sim0.step();
+      sim1.step();
+      expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
+
+      // Save tape from sim0's perspective
+      const tapeBytes = sim0.saveTape();
+      expect(tapeBytes.length).toBeGreaterThan(0);
+
+      // Create fresh game instance for replay
+      const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      replayGame.system("score", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Score++;
+          if (players[1]?.mouse.left.down) bag.p1Score++;
+        },
+      });
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+
+      // Initialize session on replay sim - needed for rollback to work
+      replaySim.sessionInit(2);
+      replaySim.net.setLocalPeer(0);
+      replaySim.net.connectPeer(1);
+
+      // Load tape and replay - verify same progression
+      replaySim.loadTape(tapeBytes);
+
+      replaySim.step(); // frame 0 -> 1
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 1 -> 2
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 2 -> 3
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      replaySim.step(); // frame 3 -> 4 - packet replay should trigger same result
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
+
+      replaySim.step(); // frame 4 -> 5
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
   });
 });

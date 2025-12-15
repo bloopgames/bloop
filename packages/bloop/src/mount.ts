@@ -18,6 +18,7 @@ export async function mount(
   const wasmUrl = options?.wasmUrl ?? opts.wasmUrl ?? DEFAULT_WASM_URL;
   const startRecording = options?.startRecording ?? opts.startRecording ?? true;
   const maxEvents = calculateMaxEvents(options?.tape);
+  const maxPacketBytes = options?.tape?.maxPacketBytes;
 
   // https://github.com/oven-sh/bun/issues/12434
   const bytes = await fetch(wasmUrl)
@@ -100,7 +101,7 @@ export async function mount(
   });
 
   if (startRecording) {
-    sim.record(maxEvents);
+    sim.record(maxEvents, maxPacketBytes);
   }
 
   opts.hooks.setBuffer(memory.buffer);
@@ -111,9 +112,17 @@ export async function mount(
   };
 }
 
-export type TapeOptions =
+export type TapeOptions = (
   | { maxEvents: number }
-  | { duration: number; averageEventsPerFrame?: number };
+  | { duration: number; averageEventsPerFrame?: number }
+) & {
+  /**
+   * Maximum packet buffer size in bytes
+   * Default: 64KB (sufficient for local recording)
+   * For network sessions, use Sim.NETWORK_MAX_PACKET_BYTES (2MB)
+   */
+  maxPacketBytes?: number;
+};
 
 export type MountOptions = {
   /**
