@@ -59,6 +59,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   const advantage = debugState.advantage.value ?? 0;
   const frameTime = debugState.frameTime.value;
   const snapshotSize = debugState.snapshotSize.value;
+  const hmrFlash = debugState.hmrFlash.value;
 
   // Left bar: frame advantage (online) or frame time % (offline)
   const leftValue = isOnline ? Math.abs(advantage) : frameTime;
@@ -78,6 +79,8 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   const rightMax = isOnline ? 10 : 10000; // 10 frames rollback or 10KB
   const rightLabel = isOnline ? "RB" : "KB";
 
+  const gameClassName = hmrFlash ? "letterboxed-game hmr-flash" : "letterboxed-game";
+
   return (
     <main className="layout-letterboxed">
       <TopBar leftLabel={leftLabel} rightLabel={rightLabel} />
@@ -87,7 +90,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
         side="left"
         color={leftColor}
       />
-      <div className="letterboxed-game">
+      <div className={gameClassName}>
         <GameCanvas canvas={canvas} />
       </div>
       <VerticalBar

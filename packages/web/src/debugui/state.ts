@@ -37,6 +37,8 @@ export type DebugState = {
   frameTime: Signal<number>; // ms per frame
   snapshotSize: Signal<number>; // bytes
   frameNumber: Signal<number>;
+  // HMR flash indicator
+  hmrFlash: Signal<boolean>;
 };
 
 const layoutMode = signal<LayoutMode>("off");
@@ -51,6 +53,7 @@ const fps = signal(0);
 const frameTime = signal(0);
 const snapshotSize = signal(0);
 const frameNumber = signal(0);
+const hmrFlash = signal(false);
 
 export const debugState: DebugState = {
   /** Layout mode: off, letterboxed, or full */
@@ -79,6 +82,9 @@ export const debugState: DebugState = {
   frameTime,
   snapshotSize,
   frameNumber,
+
+  /** HMR flash indicator */
+  hmrFlash,
 };
 
 /** Cycle through layout modes: off -> letterboxed -> full -> off */
@@ -91,6 +97,39 @@ export function cycleLayout(): void {
   } else {
     layoutMode.value = "off";
   }
+}
+
+let hmrFlashQueued = false;
+
+/** Trigger HMR flash (only when debug UI is visible) */
+export function triggerHmrFlash(): void {
+  if (!debugState.isVisible.value) return;
+
+  // If window doesn't have focus, queue the flash for when focus returns
+  if (!document.hasFocus()) {
+    if (!hmrFlashQueued) {
+      hmrFlashQueued = true;
+      window.addEventListener("focus", onWindowFocus);
+    }
+    return;
+  }
+
+  doFlash();
+}
+
+function onWindowFocus(): void {
+  if (hmrFlashQueued) {
+    hmrFlashQueued = false;
+    window.removeEventListener("focus", onWindowFocus);
+    doFlash();
+  }
+}
+
+function doFlash(): void {
+  debugState.hmrFlash.value = true;
+  setTimeout(() => {
+    debugState.hmrFlash.value = false;
+  }, 300);
 }
 
 export function addLog(log: Log): void {
@@ -161,4 +200,5 @@ export function resetState(): void {
   debugState.frameTime.value = 0;
   debugState.snapshotSize.value = 0;
   debugState.frameNumber.value = 0;
+  debugState.hmrFlash.value = false;
 }

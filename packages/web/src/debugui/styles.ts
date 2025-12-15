@@ -256,6 +256,23 @@ export const styles = /*css*/ `
   display: block;
 }
 
+.letterboxed-game {
+  position: relative;
+}
+
+.letterboxed-game.hmr-flash::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: hmr-pulse 0.3s ease-out forwards;
+}
+
+@keyframes hmr-pulse {
+  0% { box-shadow: inset 0 0 0 36px #7b3fa0; }
+  100% { box-shadow: inset 0 0 0 0 #7b3fa0; }
+}
+
 .game {
   grid-area: game;
   border-radius: 8px;
