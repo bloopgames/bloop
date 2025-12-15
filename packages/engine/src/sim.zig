@@ -679,7 +679,7 @@ pub const Sim = struct {
         };
         defer snapshot.deinit(self.allocator);
 
-        self.tape = Tapes.Tape.initWithPackets(self.allocator, snapshot, max_events, max_packet_bytes) catch {
+        self.tape = Tapes.Tape.init(self.allocator, snapshot, max_events, max_packet_bytes) catch {
             return RecordingError.OutOfMemory;
         };
         self.is_recording = true;
