@@ -13,6 +13,9 @@ async function main() {
   const app = await start({
     game,
     engineWasmUrl: wasmUrl,
+    debugUi: {
+      initiallyVisible: false,
+    },
   });
 
   const canvas = app.canvas;
