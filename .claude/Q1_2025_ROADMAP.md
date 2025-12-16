@@ -16,9 +16,10 @@ Public launch of Bloop during birthday week (Jan 5-10, 2026) with:
 ### Build
 - [x] Frame counter UI
 - [x] Wire HMR → CA pulse trigger
-- [ ] Record network packets to tape / replay online matches
-- [ ] Fix cmd+s not working on deployed site
-- [ ] Fix stuck inputs bug
+- [x] Record network packets to tape / replay online matches
+- [x] Fix cmd+s not working on deployed site
+- [x] Fix stuck inputs bug
+- [x] Fix recording desync bug for player submitting inputs
 - [ ] Add player-player collisions to mario game
 - [ ] Sprite animations for mario game
 - [ ] Add inputs UI to mario game (match https://bymuno.com/post/rollback)

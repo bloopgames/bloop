@@ -100,7 +100,7 @@ PhaseSystem("playing", "inputs", {
     if (players[1].keys.a.held) p2.x -= cfg.MOVE_SPEED;
     if (players[1].keys.d.held) p2.x += cfg.MOVE_SPEED;
     // Jump
-    if (players[1].keys.w.down && p2.grounded) {
+    if ((players[1].keys.w.down || players[1].mouse.left.down) && p2.grounded) {
       p2.vy = cfg.JUMP_VELOCITY;
       p2.grounded = false;
     }

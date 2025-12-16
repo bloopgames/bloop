@@ -62,10 +62,6 @@ pub const PeerNetState = struct {
     pub fn trimAcked(self: *PeerNetState, ack_frame: u16) void {
         // Advance start to one past the acked frame
         if (ack_frame >= self.unacked_start) {
-            Log.log("PeerNetState.trimAcked: ack_frame={}, old_unacked_start={}", .{
-                ack_frame,
-                self.unacked_start,
-            });
             self.unacked_start = ack_frame + 1;
         }
     }

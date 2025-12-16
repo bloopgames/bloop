@@ -52,6 +52,8 @@ pub const Sim = struct {
     net_ctx: *NetCtx,
     /// Whether a multiplayer session is active
     in_session: bool = false,
+    /// Whether we're currently resimulating during rollback (don't advance tape)
+    is_resimulating: bool = false,
 
     /// Initialize a new simulation with allocated contexts
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
@@ -394,12 +396,15 @@ pub const Sim = struct {
             // 2. Resim confirmed frames with all peer inputs
             var f = r.confirmed_frame + 1;
             while (f <= next_confirm) : (f += 1) {
+                // Only mark as resimulating if this is NOT the current frame
+                self.is_resimulating = (f < target_match_frame);
                 self.injectInputsForFrame(f);
                 self.tick();
                 if (f < target_match_frame) {
                     r.stats.frames_resimulated += 1;
                 }
             }
+            self.is_resimulating = false;
 
             // 3. Update confirmed snapshot (get current user_data_len dynamically)
             if (r.confirmed_snapshot) |old_snap| {
@@ -412,12 +417,15 @@ pub const Sim = struct {
             if (next_confirm < target_match_frame) {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
+                    // Only mark as resimulating if this is NOT the current frame
+                    self.is_resimulating = (f < target_match_frame);
                     self.injectInputsForFrame(f);
                     self.tick();
                     if (f < target_match_frame) {
                         r.stats.frames_resimulated += 1;
                     }
                 }
+                self.is_resimulating = false;
             }
         } else {
             // No rollback needed - just tick with current frame's inputs
@@ -472,8 +480,8 @@ pub const Sim = struct {
         self.time.frame += 1;
         self.flush_events();
 
-        // Advance tape frame if recording (not replaying)
-        if (self.is_recording and !self.is_replaying) {
+        // Advance tape frame if recording (not replaying, not resimulating during rollback)
+        if (self.is_recording and !self.is_replaying and !self.is_resimulating) {
             if (self.tape) |*t| {
                 t.start_frame() catch {
                     // Tape is full - stop recording gracefully
@@ -556,6 +564,7 @@ pub const Sim = struct {
                 if (self.in_session) {
                     // Route through rollback for proper multiplayer handling
                     const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1;
+
                     var local_event = event;
                     local_event.peer_id = self.net.local_peer_id;
                     self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});

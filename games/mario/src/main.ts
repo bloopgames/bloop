@@ -66,11 +66,13 @@ async function main() {
   });
 
   game.system("title-input", {
-    keydown({ bag, event }) {
+    update({ bag, inputs }) {
       if (bag.phase !== "title") return;
 
-      // todo - do this in the game logic to keep tapes working for online sessions
-      if (event.key === "Enter" && !networkJoined) {
+      if (
+        (inputs.keys.enter.down || inputs.mouse.left.down) &&
+        !networkJoined
+      ) {
         // Online multiplayer - wait for connection
         bag.mode = "online";
         bag.phase = "waiting";
