@@ -34,6 +34,7 @@ export const game = Bloop.create({
     coin: {
       visible: true as boolean,
       hitTime: 0,
+      winner: null as 1 | 2 | null,
       x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2,
       y: 0,
     },
@@ -49,6 +50,7 @@ export function resetGameState(bag: typeof game.bag) {
     x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2,
     y: 0,
     hitTime: 0,
+    winner: null,
   };
 }
 
@@ -119,20 +121,18 @@ PhaseSystem("playing", "inputs", {
   },
 });
 
-// Physics for both players (Y+ is up)
+// Physics for both players
 PhaseSystem("playing", "physics", {
   update({ bag }) {
     for (const p of [bag.p1, bag.p2]) {
-      // Apply gravity (pulls down, so subtract)
+      // Gravity i in the air
       if (!p.grounded) {
         p.vy -= cfg.GRAVITY;
         p.vy = Math.max(p.vy, -cfg.MAX_FALL_SPEED);
       }
 
-      // Apply velocity
       p.y += p.vy;
 
-      // Ground collision (ground is below, so check <=)
       if (p.y <= cfg.GROUND_Y) {
         p.y = cfg.GROUND_Y;
         p.vy = 0;
@@ -158,7 +158,7 @@ PhaseSystem("playing", "block", {
   },
 });
 
-// Collision: player head hits block from below (Y+ is up)
+// Collision: player head hits block from below
 PhaseSystem("playing", "collision", {
   update({ bag, time }) {
     const block = bag.block;
@@ -183,7 +183,7 @@ PhaseSystem("playing", "collision", {
       const hitY =
         playerTop > blockBottom && playerTop < blockBottom + cfg.BLOCK_SIZE;
 
-      if (hitX && hitY) {
+      if (hitX && hitY && bag.coin.visible === false) {
         // Bonk! Stop upward movement
         p.vy = 0;
         p.y = blockBottom - cfg.PLAYER_HEIGHT;
@@ -192,6 +192,7 @@ PhaseSystem("playing", "collision", {
 
         bag.coin.hitTime = time.time;
         bag.coin.visible = true;
+        bag.coin.winner = p === bag.p1 ? 1 : 2;
       }
     }
   },

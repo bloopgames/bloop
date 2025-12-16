@@ -25,7 +25,7 @@ export interface DrawState {
   // Game elements (under gameScreen)
   ground: QuadNode;
   block: SceneNode;
-  coin: SceneNode;
+  coin: QuadNode;
   p1: QuadNode;
   p2: QuadNode;
   viewport: SceneNode;
@@ -155,8 +155,16 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
       y: bag.coin.y,
     };
     state.coin.isActive = bag.coin.visible;
-
-    state.p1.position = { x: bag.p1.x, y: bag.p1.y + PLAYER_HEIGHT / 2 }; // sprite is 16x16, center at +8
+    state.coin.color =
+      bag.coin.winner === 1
+        ? MARIO_COLOR
+        : bag.coin.winner === 2
+          ? LUIGI_COLOR
+          : COIN_COLOR;
+    state.p1.position = {
+      x: bag.p1.x,
+      y: bag.p1.y + PLAYER_HEIGHT / 2,
+    }; // sprite is 16x16, center at +8
     state.p2.position = { x: bag.p2.x, y: bag.p2.y + PLAYER_HEIGHT / 2 };
 
     state.p2.flipX = true;
