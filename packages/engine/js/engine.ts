@@ -27,7 +27,7 @@ export const DEFAULT_WASM_URL: URL = new URL(
   import.meta.url,
 );
 
-export const MAX_ROLLBACK_FRAMES = 30;
+export const MAX_ROLLBACK_FRAMES = 500;
 
 export const TIME_CTX_OFFSET = 0;
 export const INPUT_CTX_OFFSET = TIME_CTX_OFFSET + 4;

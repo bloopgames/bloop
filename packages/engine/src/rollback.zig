@@ -4,7 +4,7 @@ const Events = @import("events.zig");
 const Event = Events.Event;
 const Log = @import("log.zig");
 
-pub const MAX_ROLLBACK_FRAMES = 30;
+pub const MAX_ROLLBACK_FRAMES = 500;
 pub const MAX_PEERS = 12;
 pub const MAX_EVENTS_PER_FRAME = 16;
 

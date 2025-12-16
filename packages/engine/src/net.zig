@@ -213,13 +213,6 @@ pub const NetState = struct {
             }
         }
 
-        Log.log("Built outbound packet for peer {}: unacked_start={}, unacked_end={}, events_written={}", .{
-            target_peer,
-            peer.unacked_start,
-            peer.unacked_end,
-            events_written,
-        });
-
         self.outbound_len = @intCast(offset);
 
         // Update local_seq for this peer
@@ -396,12 +389,12 @@ test "PeerNetState getUnackedFrame rejects stale data after wraparound" {
     peer.trimAcked(4);
 
     const events35 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
-    peer.addUnacked(35, &events35);
+    peer.addUnacked(5 + MAX_ROLLBACK_FRAMES, &events35);
 
     // Frame 5 should return null (stale data - slot reused by frame 35)
     try std.testing.expectEqual(@as(?[]const Event, null), peer.getUnackedFrame(5));
     // Frame 35 should return data
-    const retrieved = peer.getUnackedFrame(35);
+    const retrieved = peer.getUnackedFrame(5 + MAX_ROLLBACK_FRAMES);
     try std.testing.expect(retrieved != null);
     try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
 }
