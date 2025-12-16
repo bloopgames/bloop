@@ -587,6 +587,64 @@ describe("tapes", () => {
     });
   });
 
+  describe("network input handling", () => {
+    it("regress: processes two events on the same frame through a rollback session", async () => {
+      // If keydown and keyup happen on the same frame, both should be processed
+      const game = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
+      game.system("track-keys", {
+        update({ bag, players }) {
+          if (players[0]?.keys.a.down) bag.aCount++;
+          if (players[0]?.keys.b.down) bag.bCount++;
+        },
+      });
+
+      const game1 = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
+      game1.system("track-keys", {
+        update({ bag, players }) {
+          if (players[0]?.keys.a.down) bag.aCount++;
+          if (players[0]?.keys.b.down) bag.bCount++;
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+      // Initialize session
+      sim.sessionInit(2);
+      sim.net.setLocalPeer(0);
+      sim.net.connectPeer(1);
+      sim1.sessionInit(2);
+      sim1.net.setLocalPeer(1);
+      sim1.net.connectPeer(0);
+
+      // Emit both keydown and keyup before stepping (same frame)
+      sim.emit.keydown("KeyA", 0);
+      sim.emit.keydown("KeyB", 0);
+      sim.step();
+      sim1.step();
+
+      // Both events should be processed during prediction
+      expect(game.bag.aCount).toBe(1);
+      expect(game.bag.bCount).toBe(1);
+
+      // send and receive packets to trigger rollback
+      const packet = sim.net.getOutboundPacket(1);
+      assert(packet);
+      sim1.net.receivePacket(packet);
+      const packet1 = sim1.net.getOutboundPacket(0);
+      assert(packet1);
+      sim.net.receivePacket(packet1);
+
+      sim.step();
+      sim1.step();
+
+      expect(game.bag.bCount).toEqual(1);
+      expect(game.bag.aCount).toEqual(1);
+      expect(game1.bag.bCount).toEqual(1);
+      expect(game1.bag.aCount).toEqual(1);
+    });
+  });
+
   describe("tape loading from file", () => {
     it("replays keydown events at correct frame", async () => {
       // Load tape recorded from mario game

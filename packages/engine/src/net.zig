@@ -42,10 +42,14 @@ pub const PeerNetState = struct {
     /// Add a frame's inputs to the unacked buffer
     pub fn addUnacked(self: *PeerNetState, match_frame: u16, events: []const Event) void {
         const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        var frame = &self.unacked_frames[slot];
-        frame.clear();
+        var input_frame = &self.unacked_frames[slot];
+        // Only clear if this slot was for a different frame (preserves multiple events per frame)
+        if (input_frame.frame != match_frame) {
+            input_frame.clear();
+            input_frame.setFrame(match_frame);
+        }
         for (events) |event| {
-            frame.add(event);
+            input_frame.add(event);
         }
         // Update end pointer
         if (match_frame >= self.unacked_end) {
