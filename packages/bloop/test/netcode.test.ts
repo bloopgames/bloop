@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop, mount } from "../src/mod";
+import { MAX_ROLLBACK_FRAMES } from "@bloopjs/engine";
+import { assert, Bloop, mount, type Sim, unwrap } from "../src/mod";
 
 describe("netcode integration", () => {
   it("should route remote peer events to correct player", async () => {
@@ -20,14 +21,7 @@ describe("netcode integration", () => {
     const { sim: sim0 } = await mount(game0);
     const { sim: sim1 } = await mount(game1);
 
-    // Initialize sessions - peer 0 on sim0, peer 1 on sim1
-    sim0.sessionInit(2);
-    sim0.net.setLocalPeer(0);
-    sim0.net.connectPeer(1);
-
-    sim1.sessionInit(2);
-    sim1.net.setLocalPeer(1);
-    sim1.net.connectPeer(0);
+    setupSession(sim0, sim1);
 
     // Step both sims to start
     sim0.step();
@@ -70,13 +64,7 @@ describe("netcode integration", () => {
     const { sim: sim0 } = await mount(game0);
     const { sim: sim1 } = await mount(game1);
 
-    sim0.sessionInit(2);
-    sim0.net.setLocalPeer(0);
-    sim0.net.connectPeer(1);
-
-    sim1.sessionInit(2);
-    sim1.net.setLocalPeer(1);
-    sim1.net.connectPeer(0);
+    setupSession(sim0, sim1);
 
     sim0.step();
     sim1.step();
@@ -101,4 +89,124 @@ describe("netcode integration", () => {
     expect(game0.bag.p0Clicks).toBe(0);
     expect(game0.bag.p1Clicks).toBe(1);
   });
+
+  // TODO: this test passed when it should have failed - see getUnackedFrame in net.zig
+  it("regress: does not send stale events after ring buffer wrap", async () => {
+    const receivedEvents = new Map<number, string>();
+
+    const game0 = Bloop.create({ bag: {} });
+    const game1 = Bloop.create({ bag: {} });
+    game1.system("track", {
+      keydown({ event, net }) {
+        console.log("received event");
+        receivedEvents.set(net.matchFrame, event.key);
+      },
+      update({ net, time }) {
+        console.log("checking match frame", net.matchFrame, time.frame);
+      },
+    });
+
+    const { sim: sim0 } = await mount(game0, { startRecording: false });
+    const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+    // Setup session
+    setupSession(sim0, sim1);
+
+    // Frame 1: peer0 KeyA
+    stepBoth(sim0, sim1);
+    sim0.emit.keydown("KeyA", 0);
+    sim0.step();
+
+    const peerState = sim0.net.getPeerState(1);
+    expect(peerState).toEqual({ seq: 0, ack: 0 });
+
+    for (let i = 0; i < MAX_ROLLBACK_FRAMES + 10; i++) {
+      // TODO: why does this cause changes in test behavior??
+      // sim0.emit.mousemove(100, 100);
+      sim1.net.receivePacket(unwrap(sim0.net.getOutboundPacket(1)));
+      sim0.step();
+    }
+
+    for (let i = 0; i < MAX_ROLLBACK_FRAMES + 10; i++) {
+      sim1.step();
+    }
+
+    // we should not receive the stale KeyA event on a future frame
+    expect(receivedEvents.size).toEqual(1);
+    expect(receivedEvents.get(1)).toEqual("KeyA");
+  });
+
+  it("regress: processes two events on the same frame through a rollback session", async () => {
+    // If keydown and keyup happen on the same frame, both should be processed
+    const game = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
+    game.system("track-keys", {
+      update({ bag, players }) {
+        if (players[0]?.keys.a.down) bag.aCount++;
+        if (players[0]?.keys.b.down) bag.bCount++;
+      },
+    });
+
+    const game1 = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
+    game1.system("track-keys", {
+      update({ bag, players }) {
+        if (players[0]?.keys.a.down) bag.aCount++;
+        if (players[0]?.keys.b.down) bag.bCount++;
+      },
+    });
+
+    const { sim: sim0 } = await mount(game, { startRecording: false });
+    const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+    // Initialize session
+    setupSession(sim0, sim1);
+    sim0.sessionInit(2);
+    sim0.net.setLocalPeer(0);
+    sim0.net.connectPeer(1);
+    sim1.sessionInit(2);
+    sim1.net.setLocalPeer(1);
+    sim1.net.connectPeer(0);
+
+    // Emit both keydown and keyup before stepping (same frame)
+    sim0.emit.keydown("KeyA", 0);
+    sim0.emit.keydown("KeyB", 0);
+    sim0.step();
+    sim1.step();
+
+    // Both events should be processed during prediction
+    expect(game.bag.aCount).toBe(1);
+    expect(game.bag.bCount).toBe(1);
+
+    // send and receive packets to trigger rollback
+    const packet = sim0.net.getOutboundPacket(1);
+    assert(packet);
+    sim1.net.receivePacket(packet);
+    const packet1 = sim1.net.getOutboundPacket(0);
+    assert(packet1);
+    sim0.net.receivePacket(packet1);
+
+    sim0.step();
+    sim1.step();
+
+    expect(game.bag.bCount).toEqual(1);
+    expect(game.bag.aCount).toEqual(1);
+    expect(game1.bag.bCount).toEqual(1);
+    expect(game1.bag.aCount).toEqual(1);
+  });
 });
+
+function setupSession(sim0: Sim, sim1: Sim) {
+  sim0.sessionInit(2);
+  sim0.net.setLocalPeer(0);
+  sim0.net.connectPeer(1);
+
+  sim1.sessionInit(2);
+  sim1.net.setLocalPeer(1);
+  sim1.net.connectPeer(0);
+}
+
+function stepBoth(sim0: Sim, sim1: Sim) {
+  sim0.net.receivePacket(unwrap(sim1.net.getOutboundPacket(0)));
+  sim1.net.receivePacket(unwrap(sim0.net.getOutboundPacket(1)));
+  sim0.step();
+  sim1.step();
+}

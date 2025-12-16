@@ -489,10 +489,7 @@ describe("tapes", () => {
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
-    it("recording before session init - session state not captured (expected to fail)", async () => {
-      // This test demonstrates the limitation: if recording starts before session init,
-      // the initial snapshot won't have session state, so replay won't work correctly.
-
+    it("allows recording before session init", async () => {
       const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       game0.system("score", {
         update({ bag, players }) {
@@ -581,8 +578,6 @@ describe("tapes", () => {
       replaySim.step(); // frame 4 -> 5
       replaySim.step(); // frame 5 -> 6 - packet should replay but session not active
 
-      // This assertion will likely FAIL because session wasn't auto-initialized
-      // The packet is recorded but won't be processed correctly without session state
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
   });
@@ -623,6 +618,7 @@ describe("tapes", () => {
       sim.seek(95);
       expect(sim.time.frame).toBe(95);
       expect(spaceDownFrame).toBe(94);
+      expect(keydownCount).toEqual(7);
     });
 
     it("replays events when stepping forward with step()", async () => {

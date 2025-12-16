@@ -90,7 +90,8 @@ PhaseSystem("playing", "inputs", {
     if (players[0].keys.a.held) p1.x -= cfg.MOVE_SPEED;
     if (players[0].keys.d.held) p1.x += cfg.MOVE_SPEED;
     // Jump
-    if (players[0].keys.w.down && p1.grounded) {
+    const wantsJump = players[0].keys.w.down || players[0].mouse.left.down;
+    if (wantsJump && p1.grounded) {
       p1.vy = cfg.JUMP_VELOCITY;
       p1.grounded = false;
     }

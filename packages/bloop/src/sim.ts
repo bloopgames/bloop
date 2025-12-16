@@ -140,7 +140,9 @@ export class Sim {
    * @param source
    */
   cloneSession(source: Sim): void {
-    this.loadTape(source.saveTape());
+    if (source.isRecording) {
+      this.loadTape(source.saveTape());
+    }
     this.restore(source.snapshot());
   }
 
@@ -220,7 +222,10 @@ export class Sim {
    * @param maxEvents Maximum number of events to record
    * @param maxPacketBytes Maximum packet buffer size (0 for local-only, 2MB default for network)
    */
-  record(maxEvents: number, maxPacketBytes: number) {
+  record(
+    maxEvents: number = 1024,
+    maxPacketBytes: number = Sim.NETWORK_MAX_PACKET_BYTES,
+  ) {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
     const result = this.wasm.start_recording(size, maxEvents, maxPacketBytes);
@@ -375,35 +380,5 @@ export class Sim {
    */
   sessionEnd(): void {
     this.wasm.session_end();
-  }
-
-  /**
-   * Emit inputs for a peer at a given match frame.
-   * This is the unified API - works for any peer (local or remote).
-   *
-   * @param peer Peer ID (0-indexed)
-   * @param matchFrame Frame number relative to session start
-   * @param events Array of raw event bytes (12 bytes per event)
-   */
-  emitInputs(peer: number, matchFrame: number, events: Uint8Array): void {
-    if (events.length === 0) {
-      // Empty events array - still need to call to update peer confirmed frame
-      this.wasm.session_emit_inputs(peer, matchFrame, 0, 0);
-      return;
-    }
-
-    // Allocate memory for events and copy
-    const ptr = this.wasm.alloc(events.byteLength);
-    assert(ptr > 0, `failed to allocate ${events.byteLength} bytes for events`);
-
-    const memoryView = new Uint8Array(this.buffer, ptr, events.byteLength);
-    memoryView.set(events);
-
-    // Each event is 12 bytes (kind: u8, source: u8, padding: 2, payload: 8)
-    const eventCount = events.byteLength / 12;
-    this.wasm.session_emit_inputs(peer, matchFrame, ptr, eventCount);
-
-    // Free the allocated memory
-    this.wasm.free(ptr, events.byteLength);
   }
 }

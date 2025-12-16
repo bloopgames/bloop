@@ -2,8 +2,9 @@ const std = @import("std");
 const Tapes = @import("tapes.zig");
 const Events = @import("events.zig");
 const Event = Events.Event;
+const Log = @import("log.zig");
 
-pub const MAX_ROLLBACK_FRAMES = 1000;
+pub const MAX_ROLLBACK_FRAMES = 30;
 pub const MAX_PEERS = 12;
 pub const MAX_EVENTS_PER_FRAME = 16;
 
@@ -88,9 +89,11 @@ pub const RollbackState = struct {
         const slot = match_frame % MAX_ROLLBACK_FRAMES;
         var input_frame = &self.peer_inputs[peer][slot];
 
-        // Clear, set frame, and add new events
-        input_frame.clear();
-        input_frame.setFrame(match_frame);
+        // Only clear if this slot was for a different frame (preserves multiple events per frame)
+        if (input_frame.frame != match_frame) {
+            input_frame.clear();
+            input_frame.setFrame(match_frame);
+        }
         for (events) |event| {
             input_frame.add(event);
         }

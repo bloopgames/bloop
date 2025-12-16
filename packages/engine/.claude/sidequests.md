@@ -77,4 +77,4 @@ const fack: System<typeof game0> = { ... }
 
 ## Put git version hash in tape metadata
 
-## bug - debugUi initiallyVisible required for start to work
+## Match frame should not be u16!
