@@ -260,7 +260,8 @@ pub const Sim = struct {
         else
             @intCast(self.time.frame);
         self.net.buildOutboundPacket(target_peer, match_frame) catch {
-            // Silently fail - caller can check outbound_len
+            Log.log("Failed to build outbound packet for peer {}", .{target_peer});
+            @panic("Failed to build outbound packet");
         };
     }
 

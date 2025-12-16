@@ -3,6 +3,7 @@ const Events = @import("events.zig");
 pub const Packets = @import("packets.zig");
 const rollback = @import("rollback.zig");
 const Event = Events.Event;
+const Log = @import("log.zig");
 
 // Re-export from rollback for convenience
 pub const MAX_ROLLBACK_FRAMES = rollback.MAX_ROLLBACK_FRAMES;
@@ -61,6 +62,10 @@ pub const PeerNetState = struct {
     pub fn trimAcked(self: *PeerNetState, ack_frame: u16) void {
         // Advance start to one past the acked frame
         if (ack_frame >= self.unacked_start) {
+            Log.log("PeerNetState.trimAcked: ack_frame={}, old_unacked_start={}", .{
+                ack_frame,
+                self.unacked_start,
+            });
             self.unacked_start = ack_frame + 1;
         }
     }
@@ -77,7 +82,12 @@ pub const PeerNetState = struct {
             return null;
         }
         const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        return self.unacked_frames[slot].slice();
+        const input_frame = &self.unacked_frames[slot];
+
+        if (input_frame.frame != match_frame) {
+            return null;
+        }
+        return input_frame.slice();
     }
 };
 
@@ -202,6 +212,13 @@ pub const NetState = struct {
                 }
             }
         }
+
+        Log.log("Built outbound packet for peer {}: unacked_start={}, unacked_end={}, events_written={}", .{
+            target_peer,
+            peer.unacked_start,
+            peer.unacked_end,
+            events_written,
+        });
 
         self.outbound_len = @intCast(offset);
 
@@ -368,6 +385,23 @@ test "PeerNetState ring buffer wraparound" {
 
     // Frame MAX_ROLLBACK_FRAMES should be accessible at slot 0
     const retrieved = peer.getUnackedFrame(@intCast(MAX_ROLLBACK_FRAMES));
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
+}
+
+test "PeerNetState getUnackedFrame rejects stale data after wraparound" {
+    var peer = PeerNetState{};
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
+    peer.addUnacked(5, &events);
+    peer.trimAcked(4);
+
+    const events35 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
+    peer.addUnacked(35, &events35);
+
+    // Frame 5 should return null (stale data - slot reused by frame 35)
+    try std.testing.expectEqual(@as(?[]const Event, null), peer.getUnackedFrame(5));
+    // Frame 35 should return data
+    const retrieved = peer.getUnackedFrame(35);
     try std.testing.expect(retrieved != null);
     try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
 }
