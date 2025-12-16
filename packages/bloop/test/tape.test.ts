@@ -580,6 +580,17 @@ describe("tapes", () => {
 
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
+
+    it.skip("regress - retains match frames when rollback happens", () => {
+      // fixed with is_resimulating change
+      // run 100 frames
+      // start connection
+      // start recording
+      // peer a is consistently 2 frames behind peer b
+      // peer a inputs a jump on match frame 50 and 100
+      // dump tape
+      // replay tape and ensure that the jump inputs are on the correct match frames
+    });
   });
 
   describe("tape loading from file", () => {
