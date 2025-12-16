@@ -220,7 +220,10 @@ export class Sim {
    * @param maxEvents Maximum number of events to record
    * @param maxPacketBytes Maximum packet buffer size (0 for local-only, 2MB default for network)
    */
-  record(maxEvents: number, maxPacketBytes: number) {
+  record(
+    maxEvents: number = 1024,
+    maxPacketBytes: number = Sim.NETWORK_MAX_PACKET_BYTES,
+  ) {
     const serializer = this.#serialize ? this.#serialize() : null;
     const size = serializer ? serializer.size : 0;
     const result = this.wasm.start_recording(size, maxEvents, maxPacketBytes);

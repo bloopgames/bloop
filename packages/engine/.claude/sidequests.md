@@ -76,5 +76,3 @@ const fack: System<typeof game0> = { ... }
 ## Save tape as .png
 
 ## Put git version hash in tape metadata
-
-## bug - debugUi initiallyVisible required for start to work

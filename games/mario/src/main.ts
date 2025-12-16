@@ -13,6 +13,7 @@ async function main() {
   const app = await start({
     game,
     engineWasmUrl: wasmUrl,
+    startRecording: false,
     debugUi: {
       initiallyVisible: false,
     },
@@ -54,6 +55,14 @@ async function main() {
 
   let networkJoined = false;
 
+  // Debug: Press R to start recording mid-game
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "r" && !app.sim.isRecording) {
+      app.sim.record();
+      console.log("Started recording at frame", app.sim.time.frame);
+    }
+  });
+
   game.system("title-input", {
     keydown({ bag, event }) {
       if (bag.phase !== "title") return;
@@ -67,6 +76,15 @@ async function main() {
 
         // Phase transitions are handled by the session-watcher system
         joinRollbackRoom("mario-demo", app, {
+          onSessionStart() {
+            bag.phase = "playing";
+
+            app.sim.record(100_000);
+            console.log(
+              "Network session started, recording at frame",
+              app.sim.time.frame,
+            );
+          },
           onSessionEnd() {
             networkJoined = false;
           },

@@ -17,6 +17,7 @@ Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
 - [x] Frame counter UI
 - [x] Wire HMR → CA pulse trigger
 - [ ] Record network packets to tape / replay online matches
+- [ ] Fix cmd+s not working on deployed site
 - [ ] Fix stuck inputs bug
 - [ ] Add player-player collisions to mario game
 - [ ] Sprite animations for mario game
