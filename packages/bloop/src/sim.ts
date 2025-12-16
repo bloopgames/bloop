@@ -140,7 +140,9 @@ export class Sim {
    * @param source
    */
   cloneSession(source: Sim): void {
-    this.loadTape(source.saveTape());
+    if (source.isRecording) {
+      this.loadTape(source.saveTape());
+    }
     this.restore(source.snapshot());
   }
 

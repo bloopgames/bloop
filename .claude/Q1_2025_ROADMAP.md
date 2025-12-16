@@ -1,8 +1,8 @@
-# Bloop Roadmap: December 2024 → January 2025
+# Bloop Roadmap: December 2025 → January 2026
 
 ## The Goal
 
-Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
+Public launch of Bloop during birthday week (Jan 5-10, 2026) with:
 - A polished [GIF](GIF_STORYBOARD.md) on the README
 - A 45-60 second video
 - Posts to web gamedev discord, Zig discord, Bun discord, and beyond
@@ -81,7 +81,7 @@ Public launch of Bloop during birthday week (Jan 5-10, 2025) with:
 
 ---
 
-## Phase 3: Public Launch (Jan 5-10, 2025)
+## Phase 3: Public Launch (Jan 5-10, 2026)
 
 **Goal:** Get Bloop in front of real game developers
 
@@ -156,4 +156,4 @@ These are important but come after public feedback:
 
 ---
 
-*Last updated: Dec 13, 2024*
+*Last updated: Dec 13, 2025*

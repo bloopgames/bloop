@@ -23,11 +23,12 @@ export interface DrawState {
   titleScreen: SceneNode;
   gameScreen: SceneNode;
   // Game elements (under gameScreen)
-  ground: SceneNode;
+  ground: QuadNode;
   block: SceneNode;
   coin: SceneNode;
   p1: QuadNode;
-  p2: SceneNode;
+  p2: QuadNode;
+  viewport: SceneNode;
   p1Score: Text.TextNode;
   p2Score: Text.TextNode;
   // Title elements (under titleScreen)
@@ -83,20 +84,21 @@ export function createDrawState(toodle: Toodle): DrawState {
 
   const p1 = gameScreen.add(
     toodle.Quad("marioWalk", {
-      size: { width: 16, height: 16 },
-      region: { x: 0, y: 0, width: 16, height: 16 },
+      size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+      region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
     }),
   );
 
   const p2 = gameScreen.add(
-    toodle.shapes.Rect({
+    toodle.Quad("marioWalk", {
       size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+      region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
       color: LUIGI_COLOR,
     }),
   );
 
   const p1Score = gameScreen.add(
-    toodle.Text("ComicNeue", "P1: 0", {
+    toodle.Text("ComicNeue", "P9: 0", {
       fontSize: 16,
       color: MARIO_COLOR,
     }),
@@ -108,6 +110,10 @@ export function createDrawState(toodle: Toodle): DrawState {
       color: LUIGI_COLOR,
     }),
   );
+
+  const viewport = toodle.Node({
+    size: { width: toodle.resolution.width, height: toodle.resolution.height },
+  });
 
   return {
     root,
@@ -122,6 +128,7 @@ export function createDrawState(toodle: Toodle): DrawState {
     p2Score,
     titleText,
     subtitleText,
+    viewport,
   };
 }
 
@@ -149,14 +156,32 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
     };
     state.coin.isActive = bag.coin.visible;
 
-    state.p1.position = { x: bag.p1.x, y: bag.p1.y + 8 }; // sprite is 16x16, center at +8
+    state.p1.position = { x: bag.p1.x, y: bag.p1.y + PLAYER_HEIGHT / 2 }; // sprite is 16x16, center at +8
     state.p2.position = { x: bag.p2.x, y: bag.p2.y + PLAYER_HEIGHT / 2 };
 
-    state.p1Score.text = `P1: ${bag.p1.score}`;
-    state.p1Score.position = { x: -40, y: 40 };
+    state.p2.flipX = true;
 
+    const padding = 20;
+
+    state.p1Score.text = `P1: ${bag.p1.score}`;
     state.p2Score.text = `P2: ${bag.p2.score}`;
-    state.p2Score.position = { x: 25, y: 40 };
+
+    state.viewport.size = {
+      width: toodle.resolution.width,
+      height: toodle.resolution.height,
+    };
+
+    state.ground.size.width = state.viewport.size.width;
+
+    state.p1Score.setBounds({
+      left: state.viewport.bounds.left + padding,
+      top: state.viewport.bounds.top - padding,
+    });
+
+    state.p2Score.setBounds({
+      right: state.viewport.bounds.right - padding,
+      top: state.viewport.bounds.top - padding,
+    });
   }
 
   toodle.startFrame();
