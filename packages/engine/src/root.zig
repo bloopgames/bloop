@@ -4,9 +4,11 @@
 comptime {
     // Core modules
     _ = @import("sim.zig");
-    _ = @import("tapes.zig");
-    _ = @import("vcr.zig");
     _ = @import("input_buffer.zig");
+
+    // Tapes modules
+    _ = @import("tapes/tapes.zig");
+    _ = @import("tapes/vcr.zig");
 
     // Netcode modules
     _ = @import("netcode/transport.zig");

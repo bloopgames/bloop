@@ -1,8 +1,8 @@
 const std = @import("std");
 const Tapes = @import("tapes.zig");
-const Events = @import("events.zig");
-const Log = @import("log.zig");
-const IB = @import("input_buffer.zig");
+const Events = @import("../events.zig");
+const Log = @import("../log.zig");
+const IB = @import("../input_buffer.zig");
 const Event = Events.Event;
 
 /// VCR (Video Cassette Recorder) manages tape recording and replay state.

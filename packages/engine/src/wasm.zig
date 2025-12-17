@@ -1,6 +1,6 @@
 const std = @import("std");
 const Events = @import("events.zig");
-const Tapes = @import("tapes.zig");
+const Tapes = @import("tapes/tapes.zig");
 const Log = @import("log.zig");
 const Sim = @import("sim.zig").Sim;
 

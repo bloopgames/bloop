@@ -1,11 +1,11 @@
 const std = @import("std");
 const Ctx = @import("context.zig");
 const Events = @import("events.zig");
-const Tapes = @import("tapes.zig");
+const Tapes = @import("tapes/tapes.zig");
 const Transport = @import("netcode/transport.zig");
 const Log = @import("log.zig");
 const IB = @import("input_buffer.zig");
-const VCR = @import("vcr.zig").VCR;
+const VCR = @import("tapes/vcr.zig").VCR;
 const Ses = @import("netcode/session.zig");
 const Session = Ses.Session;
 
