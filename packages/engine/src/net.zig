@@ -1,16 +1,13 @@
 const std = @import("std");
 const Events = @import("events.zig");
 pub const Packets = @import("packets.zig");
-const rollback = @import("rollback.zig");
-const InputBuffer = @import("input_buffer.zig");
+const IB = @import("input_buffer.zig");
 const Event = Events.Event;
 const Log = @import("log.zig");
 
-// Re-export from rollback for convenience
-pub const MAX_ROLLBACK_FRAMES = rollback.MAX_ROLLBACK_FRAMES;
-pub const MAX_PEERS = rollback.MAX_PEERS;
-pub const InputFrame = rollback.InputFrame;
-pub const RollbackState = rollback.RollbackState;
+// Re-export from input_buffer for convenience
+pub const MAX_ROLLBACK_FRAMES = IB.MAX_FRAMES;
+pub const MAX_PEERS = IB.MAX_PEERS;
 
 /// Per-peer network state for packet management
 pub const PeerNetState = struct {
@@ -75,7 +72,7 @@ pub const NetState = struct {
     /// Length of current outbound packet
     outbound_len: u32 = 0,
     /// Reference to canonical InputBuffer (for reading unacked events)
-    input_buffer: ?*InputBuffer.InputBuffer = null,
+    input_buffer: ?*IB.InputBuffer = null,
 
     pub fn deinit(self: *NetState) void {
         if (self.outbound_buffer) |buf| {
@@ -196,8 +193,8 @@ pub const NetState = struct {
         peer.local_seq = current_match_frame;
     }
 
-    /// Process a received packet, updating state and storing events in rollback state
-    pub fn receivePacket(self: *NetState, buf: []const u8, rb: *RollbackState) Packets.DecodeError!void {
+    /// Process a received packet, updating state and storing events in input buffer
+    pub fn receivePacket(self: *NetState, buf: []const u8, input_buffer: *IB.InputBuffer) Packets.DecodeError!void {
         const header = try Packets.PacketHeader.decode(buf);
 
         if (header.peer_id >= MAX_PEERS) return;
@@ -219,7 +216,7 @@ pub const NetState = struct {
         // Trim our unacked buffer up to the acked frame
         peer.trimAcked(header.frame_ack);
 
-        // Decode and store events via RollbackState (which delegates to InputBuffer)
+        // Decode and store events in InputBuffer
         var offset: usize = Packets.HEADER_SIZE;
         var i: usize = 0;
         while (i < header.event_count) : (i += 1) {
@@ -235,8 +232,7 @@ pub const NetState = struct {
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
             if (wire_event.frame > old_remote_seq) {
-                // Use RollbackState's emitInputs which delegates to InputBuffer
-                rb.emitInputs(header.peer_id, wire_event.frame, &[_]Event{event});
+                input_buffer.emit(header.peer_id, wire_event.frame, &[_]Event{event});
             }
 
             offset += Packets.WIRE_EVENT_SIZE;
@@ -245,8 +241,8 @@ pub const NetState = struct {
         // Update peer_confirmed even if there were no events.
         // The frame_seq tells us the peer has reached this frame,
         // which is sufficient for confirmation regardless of input activity.
-        if (header.frame_seq > rb.input_buffer.peer_confirmed[header.peer_id]) {
-            rb.input_buffer.peer_confirmed[header.peer_id] = header.frame_seq;
+        if (header.frame_seq > input_buffer.peer_confirmed[header.peer_id]) {
+            input_buffer.peer_confirmed[header.peer_id] = header.frame_seq;
         }
     }
 };
@@ -389,7 +385,7 @@ test "NetState extendUnackedWindow" {
 
 test "NetState buildOutboundPacket" {
     // Create InputBuffer first
-    const input_buffer = try std.testing.allocator.create(InputBuffer.InputBuffer);
+    const input_buffer = try std.testing.allocator.create(IB.InputBuffer);
     input_buffer.* = .{};
     input_buffer.init(2, 0);
     defer std.testing.allocator.destroy(input_buffer);
@@ -427,8 +423,8 @@ test "NetState buildOutboundPacket" {
 }
 
 test "NetState receivePacket" {
-    // Create InputBuffer for both RollbackState and NetState
-    const input_buffer = try std.testing.allocator.create(InputBuffer.InputBuffer);
+    // Create InputBuffer for NetState
+    const input_buffer = try std.testing.allocator.create(IB.InputBuffer);
     input_buffer.* = .{};
     input_buffer.init(2, 0);
     defer std.testing.allocator.destroy(input_buffer);
@@ -438,17 +434,6 @@ test "NetState receivePacket" {
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
-    }
-
-    const rb = try std.testing.allocator.create(RollbackState);
-    rb.* = .{
-        .peer_count = 2,
-        .input_buffer = input_buffer,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        rb.deinit();
-        std.testing.allocator.destroy(rb);
     }
 
     net.connectPeer(1);
@@ -474,7 +459,7 @@ test "NetState receivePacket" {
     try std.testing.expectEqual(@as(u16, 5), net.peer_states[1].unackedCount());
 
     // Receive the packet
-    try net.receivePacket(&buf, rb);
+    try net.receivePacket(&buf, input_buffer);
 
     // Check seq/ack updated
     try std.testing.expectEqual(@as(u16, 5), net.peer_states[1].remote_seq);
@@ -482,11 +467,11 @@ test "NetState receivePacket" {
     // Check unacked trimmed (frames 0-3 acked)
     try std.testing.expectEqual(@as(u16, 1), net.peer_states[1].unackedCount());
 
-    // Check event stored in rollback (via InputBuffer)
-    const stored = rb.getInputs(1, 5);
+    // Check event stored in InputBuffer
+    const stored = input_buffer.get(1, 5);
     try std.testing.expectEqual(@as(usize, 1), stored.len);
     try std.testing.expectEqual(Events.Key.KeyW, stored[0].payload.key);
 
-    // Check peer confirmed frame updated (via InputBuffer)
-    try std.testing.expectEqual(@as(u32, 5), rb.getPeerConfirmedFrame(1));
+    // Check peer confirmed frame updated
+    try std.testing.expectEqual(@as(u32, 5), input_buffer.peer_confirmed[1]);
 }

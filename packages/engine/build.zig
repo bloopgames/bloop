@@ -94,15 +94,6 @@ pub fn build(b: *std.Build) void {
     });
     const run_snapshot_tests = b.addRunArtifact(snapshot_tests);
 
-    const rollback_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/rollback.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
-    });
-    const run_rollback_tests = b.addRunArtifact(rollback_tests);
-
     const sim_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/sim.zig"),
@@ -132,7 +123,6 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_snapshot_tests.step);
-    test_step.dependOn(&run_rollback_tests.step);
     test_step.dependOn(&run_sim_tests.step);
     test_step.dependOn(&run_packets_tests.step);
     test_step.dependOn(&run_net_tests.step);

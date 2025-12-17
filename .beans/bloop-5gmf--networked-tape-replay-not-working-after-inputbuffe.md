@@ -1,11 +1,11 @@
 ---
 # bloop-5gmf
 title: Networked tape replay not working after InputBuffer refactor
-status: todo
+status: completed
 type: bug
 priority: high
 created_at: 2025-12-17T00:17:15Z
-updated_at: 2025-12-17T00:17:15Z
+updated_at: 2025-12-17T18:42:04Z
 parent: bloop-u3h8
 ---
 
