@@ -1,13 +1,202 @@
 const std = @import("std");
-const Events = @import("events.zig");
-pub const Packets = @import("packets.zig");
-const IB = @import("input_buffer.zig");
+const Events = @import("../events.zig");
+const IB = @import("../input_buffer.zig");
+const Log = @import("../log.zig");
 const Event = Events.Event;
-const Log = @import("log.zig");
+const EventType = Events.EventType;
+const InputSource = Events.InputSource;
+const Key = Events.Key;
+const MouseButton = Events.MouseButton;
 
 // Re-export from input_buffer for convenience
 pub const MAX_ROLLBACK_FRAMES = IB.MAX_FRAMES;
 pub const MAX_PEERS = IB.MAX_PEERS;
+
+// ─────────────────────────────────────────────────────────────
+// Wire Format
+// ─────────────────────────────────────────────────────────────
+
+/// Wire format version
+pub const WIRE_VERSION: u8 = 1;
+
+/// Packet header size in bytes
+pub const HEADER_SIZE: usize = 8;
+
+/// Wire event size in bytes
+pub const WIRE_EVENT_SIZE: usize = 9;
+
+/// Maximum events per packet (255 fits in u8 event_count)
+pub const MAX_EVENTS_PER_PACKET: usize = 255;
+
+pub const DecodeError = error{
+    BufferTooSmall,
+    UnsupportedVersion,
+    InvalidEventCount,
+};
+
+/// Packet header (8 bytes)
+/// Layout:
+///   [0]    version      - Wire format version
+///   [1]    peer_id      - Sender's peer ID (0-11)
+///   [2-3]  frame_ack    - Highest frame received from recipient (little-endian)
+///   [4-5]  frame_seq    - Sender's current match frame (little-endian)
+///   [6]    event_count  - Number of events in packet
+///   [7]    flags        - Reserved for future use
+pub const PacketHeader = struct {
+    version: u8,
+    peer_id: u8,
+    frame_ack: u16,
+    frame_seq: u16,
+    event_count: u8,
+    flags: u8,
+
+    pub fn encode(self: PacketHeader, buf: []u8) void {
+        std.debug.assert(buf.len >= HEADER_SIZE);
+        buf[0] = self.version;
+        buf[1] = self.peer_id;
+        std.mem.writeInt(u16, buf[2..4], self.frame_ack, .little);
+        std.mem.writeInt(u16, buf[4..6], self.frame_seq, .little);
+        buf[6] = self.event_count;
+        buf[7] = self.flags;
+    }
+
+    pub fn decode(buf: []const u8) DecodeError!PacketHeader {
+        if (buf.len < HEADER_SIZE) return DecodeError.BufferTooSmall;
+        const version = buf[0];
+        if (version != WIRE_VERSION) return DecodeError.UnsupportedVersion;
+        return PacketHeader{
+            .version = version,
+            .peer_id = buf[1],
+            .frame_ack = std.mem.readInt(u16, buf[2..4], .little),
+            .frame_seq = std.mem.readInt(u16, buf[4..6], .little),
+            .event_count = buf[6],
+            .flags = buf[7],
+        };
+    }
+};
+
+/// Wire event (9 bytes, packed)
+/// Layout:
+///   [0-1]  frame        - Match frame this event occurred (little-endian)
+///   [2]    kind         - EventType enum
+///   [3]    device       - InputSource enum (device that generated the input)
+///   [4-8]  payload      - Compact payload (5 bytes)
+///
+/// Note: peer_id is not stored per event - it comes from the packet header.
+/// The receiver sets peer_id based on who sent the packet.
+///
+/// Payload formats:
+///   KeyDown/KeyUp:    [u8 key_code][4 unused]
+///   MouseDown/Up:     [u8 button][4 unused]
+///   MouseMove:        [i16 x][i16 y][1 unused]
+///   MouseWheel:       [i16 dx][i16 dy][1 unused]
+pub const WireEvent = struct {
+    frame: u16,
+    kind: EventType,
+    device: InputSource,
+    payload: [5]u8,
+
+    pub fn encode(self: WireEvent, buf: []u8) void {
+        std.debug.assert(buf.len >= WIRE_EVENT_SIZE);
+        std.mem.writeInt(u16, buf[0..2], self.frame, .little);
+        buf[2] = @intFromEnum(self.kind);
+        buf[3] = @intFromEnum(self.device);
+        @memcpy(buf[4..9], &self.payload);
+    }
+
+    pub fn decode(buf: []const u8) DecodeError!WireEvent {
+        if (buf.len < WIRE_EVENT_SIZE) return DecodeError.BufferTooSmall;
+        return WireEvent{
+            .frame = std.mem.readInt(u16, buf[0..2], .little),
+            .kind = @enumFromInt(buf[2]),
+            .device = @enumFromInt(buf[3]),
+            .payload = buf[4..9].*,
+        };
+    }
+
+    /// Create a WireEvent from an engine Event at a given frame
+    pub fn fromEvent(event: Event, frame: u16) WireEvent {
+        var payload: [5]u8 = .{ 0, 0, 0, 0, 0 };
+
+        switch (event.kind) {
+            .KeyDown, .KeyUp => {
+                payload[0] = @intFromEnum(event.payload.key);
+            },
+            .MouseDown, .MouseUp => {
+                payload[0] = @intFromEnum(event.payload.mouse_button);
+            },
+            .MouseMove => {
+                // Compress f32 to i16 (assuming screen coords fit in i16 range)
+                const x: i16 = @intFromFloat(std.math.clamp(event.payload.mouse_move.x, -32768.0, 32767.0));
+                const y: i16 = @intFromFloat(std.math.clamp(event.payload.mouse_move.y, -32768.0, 32767.0));
+                std.mem.writeInt(i16, payload[0..2], x, .little);
+                std.mem.writeInt(i16, payload[2..4], y, .little);
+            },
+            .MouseWheel => {
+                const dx: i16 = @intFromFloat(std.math.clamp(event.payload.delta.delta_x, -32768.0, 32767.0));
+                const dy: i16 = @intFromFloat(std.math.clamp(event.payload.delta.delta_y, -32768.0, 32767.0));
+                std.mem.writeInt(i16, payload[0..2], dx, .little);
+                std.mem.writeInt(i16, payload[2..4], dy, .little);
+            },
+            else => {},
+        }
+
+        return WireEvent{
+            .frame = frame,
+            .kind = event.kind,
+            .device = event.device,
+            .payload = payload,
+        };
+    }
+
+    /// Convert back to an engine Event (peer_id will be LOCAL_PEER; caller should set it)
+    pub fn toEvent(self: WireEvent) Event {
+        var event = Event{
+            .kind = self.kind,
+            .device = self.device,
+            .payload = undefined,
+        };
+
+        switch (self.kind) {
+            .KeyDown, .KeyUp => {
+                event.payload = .{ .key = @enumFromInt(self.payload[0]) };
+            },
+            .MouseDown, .MouseUp => {
+                event.payload = .{ .mouse_button = @enumFromInt(self.payload[0]) };
+            },
+            .MouseMove => {
+                const x = std.mem.readInt(i16, self.payload[0..2], .little);
+                const y = std.mem.readInt(i16, self.payload[2..4], .little);
+                event.payload = .{ .mouse_move = .{
+                    .x = @floatFromInt(x),
+                    .y = @floatFromInt(y),
+                } };
+            },
+            .MouseWheel => {
+                const dx = std.mem.readInt(i16, self.payload[0..2], .little);
+                const dy = std.mem.readInt(i16, self.payload[2..4], .little);
+                event.payload = .{ .delta = .{
+                    .delta_x = @floatFromInt(dx),
+                    .delta_y = @floatFromInt(dy),
+                } };
+            },
+            else => {
+                event.payload = .{ .key = .None };
+            },
+        }
+
+        return event;
+    }
+};
+
+/// Calculate the packet size for a given number of events
+pub fn packetSize(event_count: usize) usize {
+    return HEADER_SIZE + (event_count * WIRE_EVENT_SIZE);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Peer State
+// ─────────────────────────────────────────────────────────────
 
 /// Per-peer network state for packet management
 pub const PeerNetState = struct {
@@ -58,6 +247,10 @@ pub const PeerNetState = struct {
         return self.unacked_end - self.unacked_start;
     }
 };
+
+// ─────────────────────────────────────────────────────────────
+// Network State
+// ─────────────────────────────────────────────────────────────
 
 /// Network state for all peers in a session
 pub const NetState = struct {
@@ -144,12 +337,12 @@ pub const NetState = struct {
         }
 
         // Clamp to max events per packet
-        if (total_events > Packets.MAX_EVENTS_PER_PACKET) {
-            total_events = Packets.MAX_EVENTS_PER_PACKET;
+        if (total_events > MAX_EVENTS_PER_PACKET) {
+            total_events = MAX_EVENTS_PER_PACKET;
         }
 
         // Calculate required buffer size
-        const required_size = Packets.packetSize(total_events);
+        const required_size = packetSize(total_events);
 
         // Ensure buffer is large enough
         if (self.outbound_buffer == null or self.outbound_buffer.?.len < required_size) {
@@ -162,27 +355,27 @@ pub const NetState = struct {
         const buf = self.outbound_buffer.?;
 
         // Write header
-        const header = Packets.PacketHeader{
-            .version = Packets.WIRE_VERSION,
+        const header = PacketHeader{
+            .version = WIRE_VERSION,
             .peer_id = self.local_peer_id,
             .frame_ack = peer.remote_seq,
             .frame_seq = current_match_frame,
             .event_count = @intCast(total_events),
             .flags = 0,
         };
-        header.encode(buf[0..Packets.HEADER_SIZE]);
+        header.encode(buf[0..HEADER_SIZE]);
 
         // Write events (reading from InputBuffer)
-        var offset: usize = Packets.HEADER_SIZE;
+        var offset: usize = HEADER_SIZE;
         var events_written: usize = 0;
         frame = peer.unacked_start;
         outer: while (frame < peer.unacked_end) : (frame += 1) {
             const events = ib.get(self.local_peer_id, frame);
             for (events) |event| {
                 if (events_written >= total_events) break :outer;
-                const wire_event = Packets.WireEvent.fromEvent(event, frame);
-                wire_event.encode(buf[offset .. offset + Packets.WIRE_EVENT_SIZE]);
-                offset += Packets.WIRE_EVENT_SIZE;
+                const wire_event = WireEvent.fromEvent(event, frame);
+                wire_event.encode(buf[offset .. offset + WIRE_EVENT_SIZE]);
+                offset += WIRE_EVENT_SIZE;
                 events_written += 1;
             }
         }
@@ -194,8 +387,8 @@ pub const NetState = struct {
     }
 
     /// Process a received packet, updating state and storing events in input buffer
-    pub fn receivePacket(self: *NetState, buf: []const u8, input_buffer: *IB.InputBuffer) Packets.DecodeError!void {
-        const header = try Packets.PacketHeader.decode(buf);
+    pub fn receivePacket(self: *NetState, buf: []const u8, input_buffer: *IB.InputBuffer) DecodeError!void {
+        const header = try PacketHeader.decode(buf);
 
         if (header.peer_id >= MAX_PEERS) return;
         const peer = &self.peer_states[header.peer_id];
@@ -217,13 +410,13 @@ pub const NetState = struct {
         peer.trimAcked(header.frame_ack);
 
         // Decode and store events in InputBuffer
-        var offset: usize = Packets.HEADER_SIZE;
+        var offset: usize = HEADER_SIZE;
         var i: usize = 0;
         while (i < header.event_count) : (i += 1) {
-            if (offset + Packets.WIRE_EVENT_SIZE > buf.len) {
-                return Packets.DecodeError.BufferTooSmall;
+            if (offset + WIRE_EVENT_SIZE > buf.len) {
+                return DecodeError.BufferTooSmall;
             }
-            const wire_event = try Packets.WireEvent.decode(buf[offset .. offset + Packets.WIRE_EVENT_SIZE]);
+            const wire_event = try WireEvent.decode(buf[offset .. offset + WIRE_EVENT_SIZE]);
             var event = wire_event.toEvent();
             // Set peer_id from packet header so events are routed to correct player
             event.peer_id = header.peer_id;
@@ -235,7 +428,7 @@ pub const NetState = struct {
                 input_buffer.emit(header.peer_id, wire_event.frame, &[_]Event{event});
             }
 
-            offset += Packets.WIRE_EVENT_SIZE;
+            offset += WIRE_EVENT_SIZE;
         }
 
         // Update peer_confirmed even if there were no events.
@@ -246,6 +439,147 @@ pub const NetState = struct {
         }
     }
 };
+
+// ─────────────────────────────────────────────────────────────
+// Wire Format Tests
+// ─────────────────────────────────────────────────────────────
+
+test "PacketHeader encode/decode round-trip" {
+    const header = PacketHeader{
+        .version = WIRE_VERSION,
+        .peer_id = 3,
+        .frame_ack = 1234,
+        .frame_seq = 5678,
+        .event_count = 42,
+        .flags = 0,
+    };
+
+    var buf: [HEADER_SIZE]u8 = undefined;
+    header.encode(&buf);
+
+    const decoded = try PacketHeader.decode(&buf);
+    try std.testing.expectEqual(header.version, decoded.version);
+    try std.testing.expectEqual(header.peer_id, decoded.peer_id);
+    try std.testing.expectEqual(header.frame_ack, decoded.frame_ack);
+    try std.testing.expectEqual(header.frame_seq, decoded.frame_seq);
+    try std.testing.expectEqual(header.event_count, decoded.event_count);
+    try std.testing.expectEqual(header.flags, decoded.flags);
+}
+
+test "PacketHeader decode rejects wrong version" {
+    var buf: [HEADER_SIZE]u8 = .{ 99, 0, 0, 0, 0, 0, 0, 0 }; // version 99
+    try std.testing.expectError(DecodeError.UnsupportedVersion, PacketHeader.decode(&buf));
+}
+
+test "PacketHeader decode rejects small buffer" {
+    var buf: [4]u8 = undefined;
+    try std.testing.expectError(DecodeError.BufferTooSmall, PacketHeader.decode(&buf));
+}
+
+test "WireEvent encode/decode round-trip" {
+    const wire_event = WireEvent{
+        .frame = 12345,
+        .kind = .KeyDown,
+        .device = .LocalKeyboard,
+        .payload = .{ 42, 1, 2, 3, 4 },
+    };
+
+    var buf: [WIRE_EVENT_SIZE]u8 = undefined;
+    wire_event.encode(&buf);
+
+    const decoded = try WireEvent.decode(&buf);
+    try std.testing.expectEqual(wire_event.frame, decoded.frame);
+    try std.testing.expectEqual(wire_event.kind, decoded.kind);
+    try std.testing.expectEqual(wire_event.device, decoded.device);
+    try std.testing.expectEqualSlices(u8, &wire_event.payload, &decoded.payload);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: KeyDown" {
+    const event = Event.keyDown(.KeyA, 0, .LocalKeyboard);
+    const wire = WireEvent.fromEvent(event, 100);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    try std.testing.expectEqual(event.payload.key, back.payload.key);
+    try std.testing.expectEqual(@as(u16, 100), wire.frame);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: KeyUp" {
+    const event = Event.keyUp(.Space, 0, .LocalKeyboard);
+    const wire = WireEvent.fromEvent(event, 200);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    try std.testing.expectEqual(event.payload.key, back.payload.key);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: MouseDown" {
+    const event = Event.mouseDown(.Left, 0, .LocalMouse);
+    const wire = WireEvent.fromEvent(event, 50);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    try std.testing.expectEqual(event.payload.mouse_button, back.payload.mouse_button);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: MouseUp" {
+    const event = Event.mouseUp(.Right, 0, .LocalMouse);
+    const wire = WireEvent.fromEvent(event, 75);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    try std.testing.expectEqual(event.payload.mouse_button, back.payload.mouse_button);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: MouseMove" {
+    const event = Event.mouseMove(123.0, -456.0, 0, .LocalMouse);
+    const wire = WireEvent.fromEvent(event, 300);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    // f32 -> i16 -> f32 loses precision, but should be exact for integers
+    try std.testing.expectEqual(@as(f32, 123.0), back.payload.mouse_move.x);
+    try std.testing.expectEqual(@as(f32, -456.0), back.payload.mouse_move.y);
+}
+
+test "WireEvent fromEvent/toEvent round-trip: MouseWheel" {
+    const event = Event.mouseWheel(10.0, -20.0, 0, .LocalMouse);
+    const wire = WireEvent.fromEvent(event, 400);
+    const back = wire.toEvent();
+
+    try std.testing.expectEqual(event.kind, back.kind);
+    try std.testing.expectEqual(event.device, back.device);
+    try std.testing.expectEqual(@as(f32, 10.0), back.payload.delta.delta_x);
+    try std.testing.expectEqual(@as(f32, -20.0), back.payload.delta.delta_y);
+}
+
+test "WireEvent MouseMove clamps extreme values" {
+    // Test positive overflow
+    const event_big = Event.mouseMove(50000.0, 50000.0, 0, .LocalMouse);
+    const wire_big = WireEvent.fromEvent(event_big, 0);
+    const back_big = wire_big.toEvent();
+    try std.testing.expectEqual(@as(f32, 32767.0), back_big.payload.mouse_move.x);
+    try std.testing.expectEqual(@as(f32, 32767.0), back_big.payload.mouse_move.y);
+
+    // Test negative overflow
+    const event_small = Event.mouseMove(-50000.0, -50000.0, 0, .LocalMouse);
+    const wire_small = WireEvent.fromEvent(event_small, 0);
+    const back_small = wire_small.toEvent();
+    try std.testing.expectEqual(@as(f32, -32768.0), back_small.payload.mouse_move.x);
+    try std.testing.expectEqual(@as(f32, -32768.0), back_small.payload.mouse_move.y);
+}
+
+test "packetSize calculation" {
+    try std.testing.expectEqual(@as(usize, 8), packetSize(0)); // header only
+    try std.testing.expectEqual(@as(usize, 17), packetSize(1)); // 8 + 9
+    try std.testing.expectEqual(@as(usize, 548), packetSize(60)); // 8 + 540
+    try std.testing.expectEqual(@as(usize, 2303), packetSize(255)); // 8 + 2295
+}
 
 // ─────────────────────────────────────────────────────────────
 // PeerNetState Tests
@@ -416,7 +750,7 @@ test "NetState buildOutboundPacket" {
     try std.testing.expect(net.outbound_len > 0);
 
     // Decode and verify header
-    const header = try Packets.PacketHeader.decode(net.outbound_buffer.?[0..Packets.HEADER_SIZE]);
+    const header = try PacketHeader.decode(net.outbound_buffer.?[0..HEADER_SIZE]);
     try std.testing.expectEqual(@as(u8, 0), header.peer_id); // our local peer
     try std.testing.expectEqual(@as(u16, 5), header.frame_seq);
     try std.testing.expectEqual(@as(u8, 2), header.event_count); // 2 events (1 per frame)
@@ -439,20 +773,20 @@ test "NetState receivePacket" {
     net.connectPeer(1);
 
     // Build a packet manually
-    var buf: [Packets.HEADER_SIZE + Packets.WIRE_EVENT_SIZE]u8 = undefined;
+    var buf: [HEADER_SIZE + WIRE_EVENT_SIZE]u8 = undefined;
 
-    const header = Packets.PacketHeader{
-        .version = Packets.WIRE_VERSION,
+    const header = PacketHeader{
+        .version = WIRE_VERSION,
         .peer_id = 1, // from peer 1
         .frame_ack = 3, // they acked our frame 3
         .frame_seq = 5, // they're at frame 5
         .event_count = 1,
         .flags = 0,
     };
-    header.encode(buf[0..Packets.HEADER_SIZE]);
+    header.encode(buf[0..HEADER_SIZE]);
 
-    const wire_event = Packets.WireEvent.fromEvent(Event.keyDown(.KeyW, 0, .LocalKeyboard), 5);
-    wire_event.encode(buf[Packets.HEADER_SIZE..]);
+    const wire_event = WireEvent.fromEvent(Event.keyDown(.KeyW, 0, .LocalKeyboard), 5);
+    wire_event.encode(buf[HEADER_SIZE..]);
 
     // Extend unacked window for peer 1 (frames 0-4)
     net.peer_states[1].extendUnacked(4);

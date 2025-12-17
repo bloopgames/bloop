@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "bloop",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/engine.zig"),
+            .root_source_file = b.path("src/wasm.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -85,45 +85,15 @@ pub fn build(b: *std.Build) void {
 
     b.getInstallStep().dependOn(&install.step);
 
-    const snapshot_tests = b.addTest(.{
+    const tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tapes.zig"),
+            .root_source_file = b.path("src/root.zig"),
             .target = b.graph.host,
             .optimize = .Debug,
         }),
     });
-    const run_snapshot_tests = b.addRunArtifact(snapshot_tests);
-
-    const sim_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/sim.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
-    });
-    const run_sim_tests = b.addRunArtifact(sim_tests);
-
-    const packets_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/packets.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
-    });
-    const run_packets_tests = b.addRunArtifact(packets_tests);
-
-    const net_tests = b.addTest(.{
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/net.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        }),
-    });
-    const run_net_tests = b.addRunArtifact(net_tests);
+    const run_tests = b.addRunArtifact(tests);
 
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_snapshot_tests.step);
-    test_step.dependOn(&run_sim_tests.step);
-    test_step.dependOn(&run_packets_tests.step);
-    test_step.dependOn(&run_net_tests.step);
+    test_step.dependOn(&run_tests.step);
 }
