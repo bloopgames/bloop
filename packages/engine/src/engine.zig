@@ -181,10 +181,6 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
         }
     };
 
-    if (sim.?.time.frame != 0) {
-        wasm_log("Untested: started recording from non-zero frame");
-    }
-
     return 0;
 }
 

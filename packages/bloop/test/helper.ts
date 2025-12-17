@@ -1,6 +1,6 @@
 import type { Bloop } from "../src/bloop";
 import type { BloopSchema } from "../src/data/schema";
-import { mount } from "../src/mount";
+import { type MountOptions, type MountOpts, mount } from "../src/mount";
 import type { Sim } from "../src/sim";
 import { unwrap } from "../src/util";
 
@@ -8,15 +8,21 @@ export type GameMaker<S extends BloopSchema> = () => Bloop<S>;
 
 export async function startOnlineMatch<S extends BloopSchema>(
   maker: GameMaker<S>,
+  mountOpts?: MountOptions,
 ): Promise<[Sim, Sim, Bloop<S>, Bloop<S>]> {
-  const game0 = maker();
-  const game1 = maker();
+  const [game0, game1] = setupGames(maker);
 
-  const { sim: sim0 } = await mount(game0);
-  const { sim: sim1 } = await mount(game1);
+  const { sim: sim0 } = await mount(game0, mountOpts);
+  const { sim: sim1 } = await mount(game1, mountOpts);
 
   setupSession(sim0, sim1);
   return [sim0, sim1, game0, game1];
+}
+
+export function setupGames<S extends BloopSchema>(
+  maker: GameMaker<S>,
+): [Bloop<S>, Bloop<S>] {
+  return [maker(), maker()];
 }
 
 export function setupSession(sim0: Sim, sim1: Sim) {

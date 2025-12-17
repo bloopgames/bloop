@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { assert, Bloop, mount } from "../src/mod";
-import { setupSession } from "./helper";
+import {
+  type GameMaker,
+  setupGames,
+  setupSession,
+  startOnlineMatch,
+} from "./helper";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -97,7 +102,7 @@ describe("tapes", () => {
       });
 
       bloop.system("countClicks", {
-        update({ bag, inputs, time }) {
+        update({ bag, inputs }) {
           if (inputs.mouse.left.down) {
             bag.clicks++;
           }
@@ -361,28 +366,16 @@ describe("tapes", () => {
 
   describe("networked session recording", () => {
     it("records and replays networked session with delayed packets", async () => {
-      // Game where clicks increment player scores
-      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game0.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
+      const [sim0, sim1, game0] = await startOnlineMatch(() => {
+        const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+        game.system("score", {
+          update({ bag, players }) {
+            if (players[0]?.mouse.left.down) bag.p0Score++;
+            if (players[1]?.mouse.left.down) bag.p1Score++;
+          },
+        });
+        return game;
       });
-
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game1.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
-      });
-
-      const { sim: sim0 } = await mount(game0);
-      const { sim: sim1 } = await mount(game1);
-
-      // Setup session - sim0 is player 0, sim1 is player 1
-      setupSession(sim0, sim1);
 
       // Frame 0: Player 0 clicks locally, Player 1 clicks on sim1
       sim0.emit.mousedown("Left", 0);
@@ -418,7 +411,6 @@ describe("tapes", () => {
 
       // Save tape from sim0's perspective
       const tapeBytes = sim0.saveTape();
-      expect(tapeBytes.length).toBeGreaterThan(0);
 
       // Create fresh game instance for replay
       const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
@@ -452,8 +444,9 @@ describe("tapes", () => {
     });
 
     it("records session that starts after initial gameplay", async () => {
-      // Game where clicks increment player scores
       const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+
       game0.system("score", {
         update({ bag, players }) {
           if (players[0]?.mouse.left.down) bag.p0Score++;
@@ -461,7 +454,6 @@ describe("tapes", () => {
         },
       });
 
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       game1.system("score", {
         update({ bag, players }) {
           if (players[0]?.mouse.left.down) bag.p0Score++;
@@ -469,7 +461,6 @@ describe("tapes", () => {
         },
       });
 
-      // Start without recording
       const { sim: sim0 } = await mount(game0, { startRecording: false });
       const { sim: sim1 } = await mount(game1, { startRecording: false });
 
@@ -541,32 +532,27 @@ describe("tapes", () => {
     });
 
     it("allows recording before session init", async () => {
-      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game0.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
-      });
-
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game1.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
+      const [game0, game1] = setupGames(() => {
+        const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+        game.system("score", {
+          update({ bag, players }) {
+            if (players[0]?.mouse.left.down) bag.p0Score++;
+            if (players[1]?.mouse.left.down) bag.p1Score++;
+          },
+        });
+        return game;
       });
 
       // Start WITH recording at frame 0 (no session yet)
-      const { sim: sim0 } = await mount(game0);
+      const { sim: sim0 } = await mount(game0, { startRecording: true });
       const { sim: sim1 } = await mount(game1, { startRecording: false });
 
       // Run some frames before session (recording is active but no session)
-      sim0.step(); // frame 0 -> 1
+      sim0.step();
       sim1.step();
-      sim0.step(); // frame 1 -> 2
+      sim0.step();
       sim1.step();
-      sim0.step(); // frame 2 -> 3
+      sim0.step();
       sim1.step();
       expect(game0.context.time.frame).toBe(3);
 
