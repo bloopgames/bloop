@@ -421,7 +421,7 @@ pub const Sim = struct {
             if (self.in_session) {
                 self.sessionStep();
             } else {
-                self.tick(true); // Non-session: always confirmed
+                self.tick(false); // Non-session: not resimulating, always record
             }
 
             step_count += 1;
@@ -460,7 +460,7 @@ pub const Sim = struct {
             var f = r.confirmed_frame + 1;
             while (f <= next_confirm) : (f += 1) {
                 const is_current_frame = (f == target_match_frame);
-                self.tick(is_current_frame); // confirmed frames
+                self.tick(!is_current_frame); // resimulating unless this is the target frame
                 if (!is_current_frame) {
                     r.stats.frames_resimulated += 1;
                 }
@@ -478,15 +478,15 @@ pub const Sim = struct {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
                     const is_current_frame = (f == target_match_frame);
-                    self.tick(false); // predicted frames
+                    self.tick(!is_current_frame); // resimulating unless this is the target frame
                     if (!is_current_frame) {
                         r.stats.frames_resimulated += 1;
                     }
                 }
             }
         } else {
-            // No rollback needed - tick with confirmed=true if we have all peer inputs
-            self.tick(next_confirm >= target_match_frame);
+            // No rollback needed - this is the target frame, not resimulating
+            self.tick(false);
         }
 
         // Always advance local peer's confirmed frame, even if there's no input.
@@ -498,10 +498,9 @@ pub const Sim = struct {
     }
 
     /// Run a single simulation frame without accumulator management.
-    /// @param is_confirmed: true if all peer inputs are confirmed for this frame,
-    ///                      false if some inputs are predicted.
-    ///                      Only affects snapshot updates - tape writes via observer on emit.
-    pub fn tick(self: *Sim, is_confirmed: bool) void {
+    /// @param is_resimulating: true if this is a resim frame during rollback (don't record to tape),
+    ///                         false if this is a new frame being processed (record to tape).
+    pub fn tick(self: *Sim, is_resimulating: bool) void {
         // Age input states at the start of each frame (all players)
         self.inputs.age_all_states();
 
@@ -544,9 +543,9 @@ pub const Sim = struct {
         self.time.frame += 1;
         self.flush_events();
 
-        // Advance tape frame if recording and this is a confirmed frame (not replaying)
+        // Advance tape frame if recording a new frame (not replaying or resimulating)
         // Note: Input events are written via observer on emit, this just advances the frame marker
-        if (self.is_recording and !self.is_replaying and is_confirmed) {
+        if (self.is_recording and !self.is_replaying and !is_resimulating) {
             if (self.tape) |*t| {
                 t.start_frame() catch {
                     // Tape is full - stop recording gracefully
@@ -805,7 +804,7 @@ pub const Sim = struct {
         // Enable tape observer to record local inputs
         self.enableTapeObserver();
 
-        // Start the first frame
+        // Start the first frame marker so events are captured correctly
         self.tape.?.start_frame() catch {
             return RecordingError.TapeError;
         };
@@ -983,12 +982,12 @@ test "tick advances single frame" {
     try std.testing.expectEqual(0, sim.time.frame);
     try std.testing.expectEqual(0, sim.time.total_ms);
 
-    sim.tick(true);
+    sim.tick(false);
     try std.testing.expectEqual(1, sim.time.frame);
     try std.testing.expectEqual(hz, sim.time.dt_ms);
     try std.testing.expectEqual(hz, sim.time.total_ms);
 
-    sim.tick(true);
+    sim.tick(false);
     try std.testing.expectEqual(2, sim.time.frame);
     try std.testing.expectEqual(hz * 2, sim.time.total_ms);
 }
@@ -1015,11 +1014,11 @@ test "tick calls systems callback" {
     defer sim.deinit();
     sim.callbacks.systems = TestState.systems;
 
-    sim.tick(true);
+    sim.tick(false);
     try std.testing.expectEqual(1, TestState.call_count);
     try std.testing.expectEqual(hz, TestState.last_dt);
 
-    sim.tick(true);
+    sim.tick(false);
     try std.testing.expectEqual(2, TestState.call_count);
 }
 
@@ -1063,7 +1062,7 @@ test "tick processes events and updates input state" {
 
     // Emit keydown and tick
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Key should now be down (bit 0 set)
     try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
@@ -1078,14 +1077,14 @@ test "tick ages input states" {
 
     // Press key and tick
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Key state should be 0b1 (just pressed this frame)
     const state1 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
     try std.testing.expectEqual(0b1, state1);
 
     // Tick again (key still held - no new event, but held bit carries forward)
-    sim.tick(true);
+    sim.tick(false);
 
     // Key state should be 0b11 (held for 2 frames - aged once, still held)
     const state2 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
@@ -1093,7 +1092,7 @@ test "tick ages input states" {
 
     // Release key and tick
     sim.emit_keyup(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Key state should be 0b110 (was held for 2 frames, now released)
     const state3 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
@@ -1105,9 +1104,9 @@ test "take_snapshot captures time state" {
     defer sim.deinit();
 
     // Advance a few frames
-    sim.tick(true);
-    sim.tick(true);
-    sim.tick(true);
+    sim.tick(false);
+    sim.tick(false);
+    sim.tick(false);
 
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
@@ -1121,15 +1120,15 @@ test "restore restores time state" {
     defer sim.deinit();
 
     // Advance and snapshot
-    sim.tick(true);
-    sim.tick(true);
+    sim.tick(false);
+    sim.tick(false);
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Advance more
-    sim.tick(true);
-    sim.tick(true);
-    sim.tick(true);
+    sim.tick(false);
+    sim.tick(false);
+    sim.tick(false);
     try std.testing.expectEqual(5, sim.time.frame);
 
     // Restore
@@ -1145,7 +1144,7 @@ test "snapshot preserves input state" {
     // Set up some input state
     sim.emit_keydown(.KeyA, 0);
     sim.emit_mousemove(100.0, 200.0, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
@@ -1153,7 +1152,7 @@ test "snapshot preserves input state" {
     // Modify input state
     sim.emit_keyup(.KeyA, 0);
     sim.emit_mousemove(999.0, 999.0, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Verify state changed
     try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
@@ -1357,10 +1356,10 @@ test "recording captures events" {
     try sim.start_recording(0, 1024, 0);
 
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     sim.emit_keyup(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Tape should have recorded the events
     const tape_buf = sim.get_tape_buffer();
@@ -1384,12 +1383,12 @@ test "Sim.seek restores to target frame" {
 
     // Advance a few frames with input
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(true); // frame 1
-    sim.tick(true); // frame 2
+    sim.tick(false); // frame 1
+    sim.tick(false); // frame 2
     sim.emit_keyup(.KeyA, 0);
-    sim.tick(true); // frame 3
-    sim.tick(true); // frame 4
-    sim.tick(true); // frame 5
+    sim.tick(false); // frame 3
+    sim.tick(false); // frame 4
+    sim.tick(false); // frame 5
 
     try std.testing.expectEqual(5, sim.time.frame);
 
@@ -1409,14 +1408,14 @@ test "Sim.seek replays events correctly" {
 
     // Frame 0->1: press A
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // Frame 1->2: hold A
-    sim.tick(true);
+    sim.tick(false);
 
     // Frame 2->3: release A
     sim.emit_keyup(.KeyA, 0);
-    sim.tick(true);
+    sim.tick(false);
 
     // At frame 3, key A should be released
     try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);

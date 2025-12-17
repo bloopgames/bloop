@@ -650,20 +650,7 @@ describe("tapes", () => {
 
       const header = readTapeHeader(tape);
       expect(header.startFrame).toBe(0);
-      expect(header.frameCount).toBe(1000);
-    });
-
-    it("regress - retains match frames when rollback happens", () => {
-      // const [sim0, sim1, game0] = await startOnlineMatch(() => {
-      // });
-      // fixed with is_resimulating change
-      // run 100 frames
-      // start connection
-      // start recording
-      // peer a is consistently 2 frames behind peer b
-      // peer a inputs a jump on match frame 50 and 100
-      // dump tape
-      // replay tape and ensure that the jump inputs are on the correct match frames
+      expect(header.frameCount).toBe(1001); // 1 initial frame + 1000 steps
     });
   });
 });

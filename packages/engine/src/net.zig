@@ -242,7 +242,12 @@ pub const NetState = struct {
             offset += Packets.WIRE_EVENT_SIZE;
         }
 
-        // peer_confirmed is updated automatically by emitInputs -> InputBuffer.emit
+        // Update peer_confirmed even if there were no events.
+        // The frame_seq tells us the peer has reached this frame,
+        // which is sufficient for confirmation regardless of input activity.
+        if (header.frame_seq > rb.input_buffer.peer_confirmed[header.peer_id]) {
+            rb.input_buffer.peer_confirmed[header.peer_id] = header.frame_seq;
+        }
     }
 };
 
