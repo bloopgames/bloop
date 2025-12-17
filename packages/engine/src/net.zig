@@ -2,6 +2,7 @@ const std = @import("std");
 const Events = @import("events.zig");
 pub const Packets = @import("packets.zig");
 const rollback = @import("rollback.zig");
+const InputBuffer = @import("input_buffer.zig");
 const Event = Events.Event;
 const Log = @import("log.zig");
 
@@ -22,9 +23,7 @@ pub const PeerNetState = struct {
     /// Whether this peer is connected
     connected: bool = false,
 
-    /// Unacked input buffer - frames we sent but haven't been acked
-    /// Ring buffer indexed by frame % MAX_ROLLBACK_FRAMES
-    unacked_frames: [MAX_ROLLBACK_FRAMES]InputFrame = [_]InputFrame{.{}} ** MAX_ROLLBACK_FRAMES,
+    /// View window into InputBuffer for unacked frames
     /// Oldest unacked frame (in match frame space)
     unacked_start: u16 = 0,
     /// Next frame to be added (in match frame space)
@@ -40,19 +39,9 @@ pub const PeerNetState = struct {
         self.unacked_end = 0;
     }
 
-    /// Add a frame's inputs to the unacked buffer
-    pub fn addUnacked(self: *PeerNetState, match_frame: u16, events: []const Event) void {
-        const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        var input_frame = &self.unacked_frames[slot];
-        // Only clear if this slot was for a different frame (preserves multiple events per frame)
-        if (input_frame.frame != match_frame) {
-            input_frame.clear();
-            input_frame.setFrame(match_frame);
-        }
-        for (events) |event| {
-            input_frame.add(event);
-        }
-        // Update end pointer
+    /// Extend the unacked window to include a new frame.
+    /// Events are already in InputBuffer from append_event - this just tracks the window.
+    pub fn extendUnacked(self: *PeerNetState, match_frame: u16) void {
         if (match_frame >= self.unacked_end) {
             self.unacked_end = match_frame + 1;
         }
@@ -71,20 +60,6 @@ pub const PeerNetState = struct {
         if (self.unacked_end <= self.unacked_start) return 0;
         return self.unacked_end - self.unacked_start;
     }
-
-    /// Get events for a specific frame from unacked buffer
-    pub fn getUnackedFrame(self: *const PeerNetState, match_frame: u16) ?[]const Event {
-        if (match_frame < self.unacked_start or match_frame >= self.unacked_end) {
-            return null;
-        }
-        const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        const input_frame = &self.unacked_frames[slot];
-
-        if (input_frame.frame != match_frame) {
-            return null;
-        }
-        return input_frame.slice();
-    }
 };
 
 /// Network state for all peers in a session
@@ -99,6 +74,8 @@ pub const NetState = struct {
     outbound_buffer: ?[]u8 = null,
     /// Length of current outbound packet
     outbound_len: u32 = 0,
+    /// Reference to canonical InputBuffer (for reading unacked events)
+    input_buffer: ?*InputBuffer.InputBuffer = null,
 
     pub fn deinit(self: *NetState) void {
         if (self.outbound_buffer) |buf| {
@@ -136,17 +113,18 @@ pub const NetState = struct {
         }
     }
 
-    /// Record local inputs to unacked buffers for all connected peers
-    pub fn recordLocalInputs(self: *NetState, match_frame: u16, events: []const Event) void {
+    /// Extend unacked window for all connected peers.
+    /// Events are already in InputBuffer from append_event - this just tracks the window.
+    pub fn extendUnackedWindow(self: *NetState, match_frame: u16) void {
         for (&self.peer_states, 0..) |*peer, i| {
             if (peer.connected and i != self.local_peer_id) {
-                peer.addUnacked(match_frame, events);
+                peer.extendUnacked(match_frame);
             }
         }
     }
 
-    /// Build outbound packet for a target peer
-    /// Returns pointer to internal buffer (valid until next call)
+    /// Build outbound packet for a target peer.
+    /// Reads events from InputBuffer via the unacked window.
     pub fn buildOutboundPacket(self: *NetState, target_peer: u8, current_match_frame: u16) !void {
         if (target_peer >= MAX_PEERS) return;
         const peer = &self.peer_states[target_peer];
@@ -155,13 +133,17 @@ pub const NetState = struct {
             return;
         }
 
-        // Count events across all unacked frames
+        const ib = self.input_buffer orelse {
+            self.outbound_len = 0;
+            return;
+        };
+
+        // Count events across all unacked frames (reading from InputBuffer)
         var total_events: usize = 0;
         var frame = peer.unacked_start;
         while (frame < peer.unacked_end) : (frame += 1) {
-            if (peer.getUnackedFrame(frame)) |events| {
-                total_events += events.len;
-            }
+            const events = ib.get(self.local_peer_id, frame);
+            total_events += events.len;
         }
 
         // Clamp to max events per packet
@@ -193,19 +175,18 @@ pub const NetState = struct {
         };
         header.encode(buf[0..Packets.HEADER_SIZE]);
 
-        // Write events
+        // Write events (reading from InputBuffer)
         var offset: usize = Packets.HEADER_SIZE;
         var events_written: usize = 0;
         frame = peer.unacked_start;
         outer: while (frame < peer.unacked_end) : (frame += 1) {
-            if (peer.getUnackedFrame(frame)) |events| {
-                for (events) |event| {
-                    if (events_written >= total_events) break :outer;
-                    const wire_event = Packets.WireEvent.fromEvent(event, frame);
-                    wire_event.encode(buf[offset .. offset + Packets.WIRE_EVENT_SIZE]);
-                    offset += Packets.WIRE_EVENT_SIZE;
-                    events_written += 1;
-                }
+            const events = ib.get(self.local_peer_id, frame);
+            for (events) |event| {
+                if (events_written >= total_events) break :outer;
+                const wire_event = Packets.WireEvent.fromEvent(event, frame);
+                wire_event.encode(buf[offset .. offset + Packets.WIRE_EVENT_SIZE]);
+                offset += Packets.WIRE_EVENT_SIZE;
+                events_written += 1;
             }
         }
 
@@ -238,7 +219,7 @@ pub const NetState = struct {
         // Trim our unacked buffer up to the acked frame
         peer.trimAcked(header.frame_ack);
 
-        // Decode and store events
+        // Decode and store events via RollbackState (which delegates to InputBuffer)
         var offset: usize = Packets.HEADER_SIZE;
         var i: usize = 0;
         while (i < header.event_count) : (i += 1) {
@@ -254,24 +235,14 @@ pub const NetState = struct {
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
             if (wire_event.frame > old_remote_seq) {
-                const slot = wire_event.frame % MAX_ROLLBACK_FRAMES;
-                var input_frame = &rb.peer_inputs[header.peer_id][slot];
-
-                // If this slot was for a different frame, clear it first
-                if (input_frame.frame != wire_event.frame) {
-                    input_frame.clear();
-                    input_frame.setFrame(wire_event.frame);
-                }
-                input_frame.add(event);
+                // Use RollbackState's emitInputs which delegates to InputBuffer
+                rb.emitInputs(header.peer_id, wire_event.frame, &[_]Event{event});
             }
 
             offset += Packets.WIRE_EVENT_SIZE;
         }
 
-        // Update peer confirmed frame in rollback state
-        if (header.frame_seq > rb.peer_confirmed_frame[header.peer_id]) {
-            rb.peer_confirmed_frame[header.peer_id] = header.frame_seq;
-        }
+        // peer_confirmed is updated automatically by emitInputs -> InputBuffer.emit
     }
 };
 
@@ -298,23 +269,17 @@ test "PeerNetState init and reset" {
     try std.testing.expectEqual(false, peer.connected);
 }
 
-test "PeerNetState addUnacked and getUnackedFrame" {
+test "PeerNetState extendUnacked" {
     var peer = PeerNetState{};
 
-    const events = [_]Event{
-        Event.keyDown(.KeyA, 0, .LocalKeyboard),
-        Event.keyDown(.KeyW, 0, .LocalKeyboard),
-    };
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_start);
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_end);
 
-    peer.addUnacked(5, &events);
+    peer.extendUnacked(5);
 
     try std.testing.expectEqual(@as(u16, 0), peer.unacked_start);
     try std.testing.expectEqual(@as(u16, 6), peer.unacked_end);
-
-    const retrieved = peer.getUnackedFrame(5);
-    try std.testing.expect(retrieved != null);
-    try std.testing.expectEqual(@as(usize, 2), retrieved.?.len);
-    try std.testing.expectEqual(Events.Key.KeyA, retrieved.?[0].payload.key);
+    try std.testing.expectEqual(@as(u16, 6), peer.unackedCount());
 }
 
 test "PeerNetState unackedCount" {
@@ -322,77 +287,25 @@ test "PeerNetState unackedCount" {
 
     try std.testing.expectEqual(@as(u16, 0), peer.unackedCount());
 
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-
-    peer.addUnacked(0, &events);
+    peer.extendUnacked(0);
     try std.testing.expectEqual(@as(u16, 1), peer.unackedCount());
 
-    peer.addUnacked(1, &events);
-    peer.addUnacked(2, &events);
+    peer.extendUnacked(1);
+    peer.extendUnacked(2);
     try std.testing.expectEqual(@as(u16, 3), peer.unackedCount());
 }
 
 test "PeerNetState trimAcked" {
     var peer = PeerNetState{};
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
-    // Add frames 0-4
-    for (0..5) |i| {
-        peer.addUnacked(@intCast(i), &events);
-    }
+    // Extend to frames 0-4
+    peer.extendUnacked(4);
     try std.testing.expectEqual(@as(u16, 5), peer.unackedCount());
 
     // Ack frame 2 (trims 0, 1, 2)
     peer.trimAcked(2);
     try std.testing.expectEqual(@as(u16, 3), peer.unacked_start);
     try std.testing.expectEqual(@as(u16, 2), peer.unackedCount());
-
-    // Frame 2 should no longer be accessible
-    try std.testing.expectEqual(@as(?[]const Event, null), peer.getUnackedFrame(2));
-
-    // Frame 3 should still be accessible
-    try std.testing.expect(peer.getUnackedFrame(3) != null);
-}
-
-test "PeerNetState ring buffer wraparound" {
-    var peer = PeerNetState{};
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-
-    // Add frames 0 to MAX_ROLLBACK_FRAMES-1 (fills buffer)
-    for (0..MAX_ROLLBACK_FRAMES) |i| {
-        peer.addUnacked(@intCast(i), &events);
-    }
-    try std.testing.expectEqual(@as(u16, MAX_ROLLBACK_FRAMES), peer.unackedCount());
-
-    // Ack all but last 5
-    peer.trimAcked(@intCast(MAX_ROLLBACK_FRAMES - 6));
-    try std.testing.expectEqual(@as(u16, 5), peer.unackedCount());
-
-    // Add frame MAX_ROLLBACK_FRAMES (wraps to slot 0)
-    const eventsWrap = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
-    peer.addUnacked(@intCast(MAX_ROLLBACK_FRAMES), &eventsWrap);
-
-    // Frame MAX_ROLLBACK_FRAMES should be accessible at slot 0
-    const retrieved = peer.getUnackedFrame(@intCast(MAX_ROLLBACK_FRAMES));
-    try std.testing.expect(retrieved != null);
-    try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
-}
-
-test "PeerNetState getUnackedFrame rejects stale data after wraparound" {
-    var peer = PeerNetState{};
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    peer.addUnacked(5, &events);
-    peer.trimAcked(4);
-
-    const events35 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
-    peer.addUnacked(5 + MAX_ROLLBACK_FRAMES, &events35);
-
-    // Frame 5 should return null (stale data - slot reused by frame 35)
-    try std.testing.expectEqual(@as(?[]const Event, null), peer.getUnackedFrame(5));
-    // Frame 35 should return data
-    const retrieved = peer.getUnackedFrame(5 + MAX_ROLLBACK_FRAMES);
-    try std.testing.expect(retrieved != null);
-    try std.testing.expectEqual(Events.Key.KeyB, retrieved.?[0].payload.key);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -443,7 +356,7 @@ test "NetState disconnectPeer" {
     try std.testing.expectEqual(@as(u16, 0), net.peer_states[1].local_seq);
 }
 
-test "NetState recordLocalInputs" {
+test "NetState extendUnackedWindow" {
     const net = try std.testing.allocator.create(NetState);
     net.* = .{ .allocator = std.testing.allocator };
     defer {
@@ -455,24 +368,29 @@ test "NetState recordLocalInputs" {
     net.connectPeer(1);
     net.connectPeer(2);
 
-    // Add frames sequentially starting from 0
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    net.recordLocalInputs(0, &events);
+    // Extend window to frame 0
+    net.extendUnackedWindow(0);
 
-    // Should be recorded for peer 1 and 2, not peer 0 (self)
+    // Should be extended for peer 1 and 2, not peer 0 (self)
     try std.testing.expectEqual(@as(u16, 0), net.peer_states[0].unackedCount());
     try std.testing.expectEqual(@as(u16, 1), net.peer_states[1].unackedCount());
     try std.testing.expectEqual(@as(u16, 1), net.peer_states[2].unackedCount());
 
-    // Add more frames
-    net.recordLocalInputs(1, &events);
-    net.recordLocalInputs(2, &events);
+    // Extend to more frames
+    net.extendUnackedWindow(1);
+    net.extendUnackedWindow(2);
     try std.testing.expectEqual(@as(u16, 3), net.peer_states[1].unackedCount());
 }
 
 test "NetState buildOutboundPacket" {
+    // Create InputBuffer first
+    const input_buffer = try std.testing.allocator.create(InputBuffer.InputBuffer);
+    input_buffer.* = .{};
+    input_buffer.init(2, 0);
+    defer std.testing.allocator.destroy(input_buffer);
+
     const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
+    net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
@@ -481,10 +399,14 @@ test "NetState buildOutboundPacket" {
     net.setLocalPeer(0);
     net.connectPeer(1);
 
-    // Record some inputs
+    // Emit events to InputBuffer (local peer = 0)
     const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    net.recordLocalInputs(0, &events);
-    net.recordLocalInputs(1, &events);
+    input_buffer.emit(0, 0, &events);
+    input_buffer.emit(0, 1, &events);
+
+    // Extend unacked window for peer 1
+    net.extendUnackedWindow(0);
+    net.extendUnackedWindow(1);
 
     // Build packet for peer 1
     try net.buildOutboundPacket(1, 5);
@@ -500,8 +422,14 @@ test "NetState buildOutboundPacket" {
 }
 
 test "NetState receivePacket" {
+    // Create InputBuffer for both RollbackState and NetState
+    const input_buffer = try std.testing.allocator.create(InputBuffer.InputBuffer);
+    input_buffer.* = .{};
+    input_buffer.init(2, 0);
+    defer std.testing.allocator.destroy(input_buffer);
+
     const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
+    net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
@@ -510,6 +438,7 @@ test "NetState receivePacket" {
     const rb = try std.testing.allocator.create(RollbackState);
     rb.* = .{
         .peer_count = 2,
+        .input_buffer = input_buffer,
         .allocator = std.testing.allocator,
     };
     defer {
@@ -535,13 +464,8 @@ test "NetState receivePacket" {
     const wire_event = Packets.WireEvent.fromEvent(Event.keyDown(.KeyW, 0, .LocalKeyboard), 5);
     wire_event.encode(buf[Packets.HEADER_SIZE..]);
 
-    // Add some unacked frames to peer 1 that will be trimmed
-    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    net.peer_states[1].addUnacked(0, &events);
-    net.peer_states[1].addUnacked(1, &events);
-    net.peer_states[1].addUnacked(2, &events);
-    net.peer_states[1].addUnacked(3, &events);
-    net.peer_states[1].addUnacked(4, &events);
+    // Extend unacked window for peer 1 (frames 0-4)
+    net.peer_states[1].extendUnacked(4);
     try std.testing.expectEqual(@as(u16, 5), net.peer_states[1].unackedCount());
 
     // Receive the packet
@@ -553,11 +477,11 @@ test "NetState receivePacket" {
     // Check unacked trimmed (frames 0-3 acked)
     try std.testing.expectEqual(@as(u16, 1), net.peer_states[1].unackedCount());
 
-    // Check event stored in rollback
+    // Check event stored in rollback (via InputBuffer)
     const stored = rb.getInputs(1, 5);
     try std.testing.expectEqual(@as(usize, 1), stored.len);
     try std.testing.expectEqual(Events.Key.KeyW, stored[0].payload.key);
 
-    // Check peer confirmed frame updated
-    try std.testing.expectEqual(@as(u32, 5), rb.peer_confirmed_frame[1]);
+    // Check peer confirmed frame updated (via InputBuffer)
+    try std.testing.expectEqual(@as(u32, 5), rb.getPeerConfirmedFrame(1));
 }

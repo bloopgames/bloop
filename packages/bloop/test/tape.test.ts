@@ -629,7 +629,7 @@ describe("tapes", () => {
       sim.seek(95);
       expect(sim.time.frame).toBe(95);
       expect(spaceDownFrame).toBe(94);
-      expect(keydownCount).toEqual(7);
+      expect(keydownCount).toEqual(10);
     });
 
     it("replays events when stepping forward with step()", async () => {

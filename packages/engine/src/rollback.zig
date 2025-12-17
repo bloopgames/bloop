@@ -3,10 +3,11 @@ const Tapes = @import("tapes.zig");
 const Events = @import("events.zig");
 const Event = Events.Event;
 const Log = @import("log.zig");
+const InputBuffer = @import("input_buffer.zig");
 
-pub const MAX_ROLLBACK_FRAMES = 500;
-pub const MAX_PEERS = 12;
-pub const MAX_EVENTS_PER_FRAME = 16;
+pub const MAX_ROLLBACK_FRAMES = InputBuffer.MAX_FRAMES;
+pub const MAX_PEERS = InputBuffer.MAX_PEERS;
+pub const MAX_EVENTS_PER_FRAME = InputBuffer.MAX_EVENTS_PER_FRAME;
 
 /// Stores events for a single frame from a single peer.
 /// Tracks which frame the data belongs to, preventing stale reads when the ring buffer wraps.
@@ -55,12 +56,9 @@ pub const RollbackState = struct {
     // Confirmed state snapshot (engine allocates/manages)
     confirmed_snapshot: ?*Tapes.Snapshot = null,
 
-    // Input history ring buffers - indexed by frame % MAX_ROLLBACK_FRAMES
-    // peer_inputs[peer][f % 30] = inputs for frame f from that peer
-    peer_inputs: [MAX_PEERS][MAX_ROLLBACK_FRAMES]InputFrame = [_][MAX_ROLLBACK_FRAMES]InputFrame{[_]InputFrame{.{}} ** MAX_ROLLBACK_FRAMES} ** MAX_PEERS,
-
-    // Highest confirmed frame per peer (inputs received up to this frame)
-    peer_confirmed_frame: [MAX_PEERS]u32 = [_]u32{0} ** MAX_PEERS,
+    // Canonical input buffer - single source of truth for all inputs
+    // Replaces the old peer_inputs ring buffer
+    input_buffer: *InputBuffer.InputBuffer,
 
     // Stats for introspection
     stats: RollbackStats = .{},
@@ -81,59 +79,34 @@ pub const RollbackState = struct {
         return current_frame - self.session_start_frame;
     }
 
-    /// Emit inputs for a peer at a given match frame
-    /// This is the unified API - works for any peer (local or remote)
+    /// Emit inputs for a peer at a given match frame.
+    /// Delegates to canonical InputBuffer.
     pub fn emitInputs(self: *RollbackState, peer: u8, match_frame: u32, events: []const Event) void {
-        if (peer >= self.peer_count) return;
-
-        const slot = match_frame % MAX_ROLLBACK_FRAMES;
-        var input_frame = &self.peer_inputs[peer][slot];
-
-        // Only clear if this slot was for a different frame (preserves multiple events per frame)
-        if (input_frame.frame != match_frame) {
-            input_frame.clear();
-            input_frame.setFrame(match_frame);
-        }
-        for (events) |event| {
-            input_frame.add(event);
-        }
-
-        // Update confirmed frame for this peer
-        if (match_frame > self.peer_confirmed_frame[peer]) {
-            self.peer_confirmed_frame[peer] = match_frame;
-        }
+        self.input_buffer.emit(peer, match_frame, events);
     }
 
     /// Get inputs for a peer at a given match frame.
-    /// Returns empty if the slot doesn't contain data for the requested frame.
+    /// Delegates to canonical InputBuffer.
     pub fn getInputs(self: *const RollbackState, peer: u8, match_frame: u32) []const Event {
-        if (peer >= self.peer_count) return &[_]Event{};
-
-        const slot = match_frame % MAX_ROLLBACK_FRAMES;
-
-        const input_frame = &self.peer_inputs[peer][slot];
-        if (input_frame.frame != match_frame) {
-            return &[_]Event{};
-        }
-        return input_frame.slice();
+        return self.input_buffer.get(peer, match_frame);
     }
 
-    /// Calculate the next confirmable frame (minimum across all peers)
+    /// Calculate the next confirmable frame (minimum across all peers).
+    /// Delegates to canonical InputBuffer.
     pub fn calculateNextConfirmFrame(self: *const RollbackState, current_match_frame: u32) u32 {
-        var min_frame = current_match_frame;
-        for (0..self.peer_count) |i| {
-            const peer_frame = self.peer_confirmed_frame[i];
-            if (peer_frame < min_frame) {
-                min_frame = peer_frame;
-            }
-        }
-        return min_frame;
+        return self.input_buffer.calculateNextConfirmFrame(current_match_frame);
     }
 
     /// Check if rollback is needed (new confirmed frames available)
     pub fn needsRollback(self: *const RollbackState, current_match_frame: u32) bool {
         const next_confirm = self.calculateNextConfirmFrame(current_match_frame);
         return next_confirm > self.confirmed_frame;
+    }
+
+    /// Get peer confirmed frame (from InputBuffer)
+    pub fn getPeerConfirmedFrame(self: *const RollbackState, peer: u8) u32 {
+        if (peer >= MAX_PEERS) return 0;
+        return self.input_buffer.peer_confirmed[peer];
     }
 
     /// Get stats for introspection
@@ -145,175 +118,148 @@ pub const RollbackState = struct {
 // Tests
 // Note: Tests use heap allocation to mirror production usage and avoid stack issues
 
-test "RollbackState init and deinit" {
+/// Helper to create RollbackState with InputBuffer for tests
+fn createTestState(peer_count: u8, session_start_frame: u32) !struct { state: *RollbackState, buffer: *InputBuffer.InputBuffer } {
+    const buffer = try std.testing.allocator.create(InputBuffer.InputBuffer);
+    buffer.* = .{};
+    buffer.init(peer_count, session_start_frame);
+
     const state = try std.testing.allocator.create(RollbackState);
     state.* = .{
-        .session_start_frame = 100,
-        .peer_count = 2,
+        .session_start_frame = session_start_frame,
+        .peer_count = peer_count,
+        .input_buffer = buffer,
         .allocator = std.testing.allocator,
     };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    return .{ .state = state, .buffer = buffer };
+}
 
-    try std.testing.expectEqual(@as(u32, 100), state.session_start_frame);
-    try std.testing.expectEqual(@as(u32, 0), state.confirmed_frame);
-    try std.testing.expectEqual(@as(u8, 2), state.peer_count);
-    try std.testing.expectEqual(@as(?*Tapes.Snapshot, null), state.confirmed_snapshot);
+fn destroyTestState(state: *RollbackState, buffer: *InputBuffer.InputBuffer) void {
+    state.deinit();
+    std.testing.allocator.destroy(state);
+    std.testing.allocator.destroy(buffer);
+}
+
+test "RollbackState init and deinit" {
+    const result = try createTestState(2, 100);
+    defer destroyTestState(result.state, result.buffer);
+
+    try std.testing.expectEqual(@as(u32, 100), result.state.session_start_frame);
+    try std.testing.expectEqual(@as(u32, 0), result.state.confirmed_frame);
+    try std.testing.expectEqual(@as(u8, 2), result.state.peer_count);
+    try std.testing.expectEqual(@as(?*Tapes.Snapshot, null), result.state.confirmed_snapshot);
 }
 
 test "RollbackState getMatchFrame" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .session_start_frame = 100,
-        .peer_count = 2,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(2, 100);
+    defer destroyTestState(result.state, result.buffer);
 
-    try std.testing.expectEqual(@as(u32, 0), state.getMatchFrame(100));
-    try std.testing.expectEqual(@as(u32, 5), state.getMatchFrame(105));
-    try std.testing.expectEqual(@as(u32, 30), state.getMatchFrame(130));
+    try std.testing.expectEqual(@as(u32, 0), result.state.getMatchFrame(100));
+    try std.testing.expectEqual(@as(u32, 5), result.state.getMatchFrame(105));
+    try std.testing.expectEqual(@as(u32, 30), result.state.getMatchFrame(130));
 }
 
 test "RollbackState emitInputs and getInputs" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .peer_count = 2,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(2, 0);
+    defer destroyTestState(result.state, result.buffer);
 
     // Emit some inputs for peer 0 at frame 5
     const events = [_]Event{
         Event.keyDown(.KeyA, 0, .LocalKeyboard),
         Event.keyDown(.KeyW, 0, .LocalKeyboard),
     };
-    state.emitInputs(0, 5, &events);
+    result.state.emitInputs(0, 5, &events);
 
     // Verify we can retrieve them
-    const retrieved = state.getInputs(0, 5);
+    const retrieved = result.state.getInputs(0, 5);
     try std.testing.expectEqual(@as(usize, 2), retrieved.len);
     try std.testing.expectEqual(Events.Key.KeyA, retrieved[0].payload.key);
     try std.testing.expectEqual(Events.Key.KeyW, retrieved[1].payload.key);
 
-    // Verify peer_confirmed_frame was updated
-    try std.testing.expectEqual(@as(u32, 5), state.peer_confirmed_frame[0]);
+    // Verify peer_confirmed was updated (via InputBuffer)
+    try std.testing.expectEqual(@as(u32, 5), result.state.getPeerConfirmedFrame(0));
 }
 
 test "RollbackState ring buffer wraparound" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .peer_count = 1,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(1, 0);
+    defer destroyTestState(result.state, result.buffer);
 
     // Emit at frame 0
     const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    state.emitInputs(0, 0, &events0);
+    result.state.emitInputs(0, 0, &events0);
 
-    // Emit at frame 30 (should wrap to same slot)
-    const events30 = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
-    state.emitInputs(0, 30, &events30);
+    // Emit at frame MAX_FRAMES (should wrap to same slot)
+    const eventsWrap = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
+    result.state.emitInputs(0, MAX_ROLLBACK_FRAMES, &eventsWrap);
 
-    // Frame 0's slot should now have frame 30's data
-    const retrieved = state.getInputs(0, 30);
+    // Frame 0's slot should now have frame MAX_FRAMES's data
+    const retrieved = result.state.getInputs(0, MAX_ROLLBACK_FRAMES);
     try std.testing.expectEqual(@as(usize, 1), retrieved.len);
     try std.testing.expectEqual(Events.Key.KeyB, retrieved[0].payload.key);
 }
 
 test "RollbackState getInputs returns empty for frames without events" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .peer_count = 2,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(2, 0);
+    defer destroyTestState(result.state, result.buffer);
 
     // Emit event for peer 1 at frame 109
     const events = [_]Event{Event.mouseDown(.Left, 1, .LocalMouse)};
-    state.emitInputs(1, 109, &events);
+    result.state.emitInputs(1, 109, &events);
 
     // Should get the event for frame 109
-    const retrieved109 = state.getInputs(1, 109);
+    const retrieved109 = result.state.getInputs(1, 109);
     try std.testing.expectEqual(@as(usize, 1), retrieved109.len);
 
-    // Frame 139 maps to same slot (139 % 30 = 19 = 109 % 30)
-    // But we never emitted events for frame 139, so should get empty
-    const retrieved139 = state.getInputs(1, 139);
-    try std.testing.expectEqual(@as(usize, 0), retrieved139.len);
+    // Frame 109 + MAX_FRAMES maps to same slot
+    // But we never emitted events for that frame, so should get empty
+    const retrievedWrap = result.state.getInputs(1, 109 + MAX_ROLLBACK_FRAMES);
+    try std.testing.expectEqual(@as(usize, 0), retrievedWrap.len);
 
     // Frame 110 also has no events
-    const retrieved110 = state.getInputs(1, 110);
+    const retrieved110 = result.state.getInputs(1, 110);
     try std.testing.expectEqual(@as(usize, 0), retrieved110.len);
 }
 
 test "RollbackState calculateNextConfirmFrame" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .peer_count = 3,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(3, 0);
+    defer destroyTestState(result.state, result.buffer);
 
     // All peers at frame 0 initially
-    try std.testing.expectEqual(@as(u32, 0), state.calculateNextConfirmFrame(10));
+    try std.testing.expectEqual(@as(u32, 0), result.state.calculateNextConfirmFrame(10));
 
-    // Peer 0 advances to frame 5
-    state.peer_confirmed_frame[0] = 5;
-    try std.testing.expectEqual(@as(u32, 0), state.calculateNextConfirmFrame(10));
+    // Peer 0 advances to frame 5 (emit events to update peer_confirmed)
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
+    result.state.emitInputs(0, 5, &events);
+    try std.testing.expectEqual(@as(u32, 0), result.state.calculateNextConfirmFrame(10));
 
     // Peer 1 advances to frame 3
-    state.peer_confirmed_frame[1] = 3;
-    try std.testing.expectEqual(@as(u32, 0), state.calculateNextConfirmFrame(10));
+    result.state.emitInputs(1, 3, &events);
+    try std.testing.expectEqual(@as(u32, 0), result.state.calculateNextConfirmFrame(10));
 
     // Peer 2 advances to frame 7 - now min is 3
-    state.peer_confirmed_frame[2] = 7;
-    try std.testing.expectEqual(@as(u32, 3), state.calculateNextConfirmFrame(10));
+    result.state.emitInputs(2, 7, &events);
+    try std.testing.expectEqual(@as(u32, 3), result.state.calculateNextConfirmFrame(10));
 }
 
 test "RollbackState needsRollback" {
-    const state = try std.testing.allocator.create(RollbackState);
-    state.* = .{
-        .peer_count = 2,
-        .allocator = std.testing.allocator,
-    };
-    defer {
-        state.deinit();
-        std.testing.allocator.destroy(state);
-    }
+    const result = try createTestState(2, 0);
+    defer destroyTestState(result.state, result.buffer);
+    const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
 
     // Initially no rollback needed (both peers at 0, confirmed at 0)
-    try std.testing.expectEqual(false, state.needsRollback(5));
+    try std.testing.expectEqual(false, result.state.needsRollback(5));
 
     // Peer 0 advances to frame 3
-    state.peer_confirmed_frame[0] = 3;
-    try std.testing.expectEqual(false, state.needsRollback(5)); // peer 1 still at 0
+    result.state.emitInputs(0, 3, &events);
+    try std.testing.expectEqual(false, result.state.needsRollback(5)); // peer 1 still at 0
 
     // Peer 1 advances to frame 2 - now min is 2, which is > confirmed (0)
-    state.peer_confirmed_frame[1] = 2;
-    try std.testing.expectEqual(true, state.needsRollback(5));
+    result.state.emitInputs(1, 2, &events);
+    try std.testing.expectEqual(true, result.state.needsRollback(5));
 
     // Update confirmed frame
-    state.confirmed_frame = 2;
-    try std.testing.expectEqual(false, state.needsRollback(5));
+    result.state.confirmed_frame = 2;
+    try std.testing.expectEqual(false, result.state.needsRollback(5));
 }
 
 test "InputFrame add and slice" {
