@@ -1,19 +1,20 @@
 const std = @import("std");
 const Ctx = @import("context.zig");
 const Events = @import("events.zig");
-const Tapes = @import("tapes.zig");
-const Rollback = @import("rollback.zig");
-const Net = @import("net.zig");
+const Tapes = @import("tapes/tapes.zig");
+const Transport = @import("netcode/transport.zig");
 const Log = @import("log.zig");
 const IB = @import("input_buffer.zig");
+const VCR = @import("tapes/vcr.zig").VCR;
+const Ses = @import("netcode/session.zig");
+const Session = Ses.Session;
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const NetCtx = Ctx.NetCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
-const RollbackState = Rollback.RollbackState;
-const NetState = Net.NetState;
+const NetState = Transport.NetState;
 const InputBuffer = IB.InputBuffer;
 
 pub const hz = 1000 / 60;
@@ -34,28 +35,32 @@ pub const Callbacks = struct {
     on_tape_full: ?*const fn () void = null,
 };
 
+// Re-export RollbackStats for external access
+pub const RollbackStats = Ses.RollbackStats;
+
 pub const Sim = struct {
     time: *TimeCtx,
     inputs: *InputCtx,
     events: *EventBuffer,
-    tape: ?Tapes.Tape = null,
+    vcr: VCR,
     accumulator: u32 = 0,
-    is_recording: bool = false,
-    is_replaying: bool = false,
     callbacks: Callbacks = .{},
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
     /// Canonical input buffer - single source of truth for all inputs
     input_buffer: *InputBuffer,
-    /// Rollback state for multiplayer sessions (heap-allocated due to ~67KB size)
-    rollback: *RollbackState,
     /// Network state for packet management (heap-allocated due to ~68KB size)
     net: *NetState,
     /// Network context exposed to game systems via DataView
     net_ctx: *NetCtx,
-    /// Whether a multiplayer session is active
-    in_session: bool = false,
+
+    // ─────────────────────────────────────────────────────────────
+    // Session state
+    // ─────────────────────────────────────────────────────────────
+    session: Session = .{},
+    /// Confirmed snapshot for rollback (requires allocator, so stays in Sim)
+    confirmed_snapshot: ?*Tapes.Snapshot = null,
 
     // ─────────────────────────────────────────────────────────────
     // Tape Observer
@@ -67,21 +72,19 @@ pub const Sim = struct {
         const self: *Sim = @ptrCast(@alignCast(ctx));
 
         // Only record local peer's inputs - remote inputs come from packet replay
-        if (peer != self.net.local_peer_id) return;
+        if (peer != self.session.local_peer_id) return;
 
         // Only record if we're recording and not replaying
-        if (!self.is_recording or self.is_replaying) return;
+        if (!self.vcr.is_recording or self.vcr.is_replaying) return;
 
-        if (self.tape) |*t| {
-            t.append_event(event) catch {
-                // Tape is full - stop recording gracefully
-                self.stop_recording();
-                if (self.callbacks.on_tape_full) |on_tape_full| {
-                    on_tape_full();
-                } else {
-                    Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
-                }
-            };
+        if (!self.vcr.recordEvent(event)) {
+            // Tape is full - stop recording gracefully
+            self.stop_recording();
+            if (self.callbacks.on_tape_full) |on_tape_full| {
+                on_tape_full();
+            } else {
+                Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+            }
         }
     }
 
@@ -118,13 +121,6 @@ pub const Sim = struct {
         // Default: MAX_PEERS to support local multiplayer testing (session mode will reinit)
         input_buffer.init(IB.MAX_PEERS, 0);
 
-        // Allocate RollbackState on heap (~reduced size, now references InputBuffer)
-        const rollback = try allocator.create(RollbackState);
-        rollback.* = .{
-            .input_buffer = input_buffer,
-            .allocator = allocator,
-        };
-
         // Allocate NetState on heap (now much smaller - no unacked_frames copies)
         const net = try allocator.create(NetState);
         net.* = .{ .allocator = allocator, .input_buffer = input_buffer };
@@ -137,8 +133,8 @@ pub const Sim = struct {
             .time = time,
             .inputs = inputs,
             .events = events,
+            .vcr = VCR.init(allocator),
             .input_buffer = input_buffer,
-            .rollback = rollback,
             .net = net,
             .net_ctx = net_ctx,
             .allocator = allocator,
@@ -148,15 +144,15 @@ pub const Sim = struct {
 
     /// Free all simulation resources
     pub fn deinit(self: *Sim) void {
-        self.rollback.deinit();
-        self.allocator.destroy(self.rollback);
+        // Clean up confirmed snapshot if any
+        if (self.confirmed_snapshot) |snap| {
+            snap.deinit(self.allocator);
+            self.confirmed_snapshot = null;
+        }
         self.allocator.destroy(self.input_buffer);
         self.net.deinit();
         self.allocator.destroy(self.net);
-        if (self.tape) |*t| {
-            t.free(self.allocator);
-            self.tape = null;
-        }
+        self.vcr.deinit();
         self.allocator.destroy(self.time);
         self.allocator.destroy(self.inputs);
         self.allocator.destroy(self.events);
@@ -169,46 +165,40 @@ pub const Sim = struct {
 
     /// Initialize a multiplayer session with rollback support
     /// Captures current frame as session_start_frame
-    pub fn sessionInit(self: *Sim, peer_count: u8, user_data_len: u32) !void {
+    pub fn sessionInit(self: *Sim, peer_count_arg: u8, user_data_len: u32) !void {
         // Record session event to tape if recording (but not replaying)
-        if (self.is_recording and !self.is_replaying) {
-            if (self.tape) |*t| {
-                t.append_event(Event.sessionInit(peer_count)) catch {};
-            }
+        if (self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(Event.sessionInit(peer_count_arg));
         }
 
-        // Reset existing state
-        self.rollback.deinit();
+        // Clean up existing confirmed snapshot if any
+        if (self.confirmed_snapshot) |snap| {
+            snap.deinit(self.allocator);
+            self.confirmed_snapshot = null;
+        }
         self.net.deinit();
 
         // Reinitialize InputBuffer for the new session
         // Preserve observer (tape recording) across session init
         const saved_observer = self.input_buffer.observer;
         self.input_buffer.* = .{};
-        self.input_buffer.init(peer_count, self.time.frame);
+        self.input_buffer.init(peer_count_arg, self.time.frame);
         self.input_buffer.observer = saved_observer;
 
-        // Reinitialize rollback state (references the same InputBuffer)
-        self.rollback.* = .{
-            .session_start_frame = self.time.frame,
-            .peer_count = peer_count,
-            .input_buffer = self.input_buffer,
-            .allocator = self.allocator,
-        };
+        // Initialize session state
+        self.session.start(self.time.frame, peer_count_arg);
 
         // Reinitialize net state (references the same InputBuffer)
         self.net.* = .{ .allocator = self.allocator, .input_buffer = self.input_buffer };
 
         // Update net_ctx for snapshots (captured in take_snapshot)
-        self.net_ctx.peer_count = peer_count;
+        self.net_ctx.peer_count = peer_count_arg;
         self.net_ctx.in_session = 1;
         self.net_ctx.session_start_frame = self.time.frame;
 
-        self.in_session = true;
-
-        // Take initial confirmed snapshot (after in_session is set so it's captured)
+        // Take initial confirmed snapshot (after session is active so it's captured)
         const snap = try self.take_snapshot(user_data_len);
-        self.rollback.confirmed_snapshot = snap;
+        self.confirmed_snapshot = snap;
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
@@ -222,26 +212,28 @@ pub const Sim = struct {
     /// End the current session
     pub fn sessionEnd(self: *Sim) void {
         // Record session event to tape if recording (but not replaying)
-        if (self.is_recording and !self.is_replaying) {
-            if (self.tape) |*t| {
-                t.append_event(Event.sessionEnd()) catch {};
-            }
+        if (self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(Event.sessionEnd());
         }
 
-        self.rollback.deinit();
+        // Clean up confirmed snapshot
+        if (self.confirmed_snapshot) |snap| {
+            snap.deinit(self.allocator);
+            self.confirmed_snapshot = null;
+        }
+
         // Reinitialize InputBuffer for non-session mode
         // Preserve observer (tape recording) across session end
         const saved_observer = self.input_buffer.observer;
         self.input_buffer.* = .{};
         self.input_buffer.init(1, 0);
         self.input_buffer.observer = saved_observer;
-        self.rollback.* = .{
-            .input_buffer = self.input_buffer,
-            .allocator = self.allocator,
-        };
+
+        // Reset session state
+        self.session.end();
+
         self.net.deinit();
         self.net.* = .{ .allocator = self.allocator, .input_buffer = self.input_buffer };
-        self.in_session = false;
         self.net_ctx.in_session = 0;
         self.net_ctx.peer_count = 0;
         self.net_ctx.session_start_frame = 0;
@@ -249,32 +241,34 @@ pub const Sim = struct {
 
     /// Emit inputs for a peer at a given match frame
     pub fn sessionEmitInputs(self: *Sim, peer: u8, match_frame: u32, events: []const Event) void {
-        self.rollback.emitInputs(peer, match_frame, events);
+        self.input_buffer.emit(peer, match_frame, events);
     }
 
     /// Get current match frame (0 if no session)
     pub fn getMatchFrame(self: *const Sim) u32 {
-        if (!self.in_session) return 0;
-        return self.rollback.getMatchFrame(self.time.frame);
+        return self.session.getMatchFrame(self.time.frame);
     }
 
     /// Get confirmed frame (0 if no session)
     pub fn getConfirmedFrame(self: *const Sim) u32 {
-        if (!self.in_session) return 0;
-        return self.rollback.confirmed_frame;
+        return self.session.getConfirmedFrame();
     }
 
     /// Get confirmed frame for a specific peer
     pub fn getPeerFrame(self: *const Sim, peer: u8) u32 {
-        if (!self.in_session) return 0;
-        return self.rollback.getPeerConfirmedFrame(peer);
+        if (!self.session.active) return 0;
+        if (peer >= IB.MAX_PEERS) return 0;
+        return self.input_buffer.peer_confirmed[peer];
     }
 
     /// Get rollback depth (match_frame - confirmed_frame)
     pub fn getRollbackDepth(self: *const Sim) u32 {
-        if (!self.in_session) return 0;
-        const match_frame = self.rollback.getMatchFrame(self.time.frame);
-        return match_frame - self.rollback.confirmed_frame;
+        return self.session.getRollbackDepth(self.time.frame);
+    }
+
+    /// Check if session is active
+    pub fn inSession(self: *const Sim) bool {
+        return self.session.active;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -284,12 +278,11 @@ pub const Sim = struct {
     /// Set local peer ID for packet encoding
     pub fn setLocalPeer(self: *Sim, peer_id: u8) void {
         // Record session event to tape if recording (but not replaying)
-        if (self.is_recording and !self.is_replaying) {
-            if (self.tape) |*t| {
-                t.append_event(Event.sessionSetLocalPeer(peer_id)) catch {};
-            }
+        if (self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(Event.sessionSetLocalPeer(peer_id));
         }
 
+        self.session.setLocalPeer(peer_id);
         self.net.setLocalPeer(peer_id);
         self.net_ctx.local_peer_id = peer_id;
     }
@@ -297,10 +290,8 @@ pub const Sim = struct {
     /// Connect a peer for packet management
     pub fn connectPeer(self: *Sim, peer_id: u8) void {
         // Record session event to tape if recording (but not replaying)
-        if (self.is_recording and !self.is_replaying) {
-            if (self.tape) |*t| {
-                t.append_event(Event.sessionConnectPeer(peer_id)) catch {};
-            }
+        if (self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(Event.sessionConnectPeer(peer_id));
         }
 
         self.net.connectPeer(peer_id);
@@ -309,10 +300,8 @@ pub const Sim = struct {
     /// Disconnect a peer
     pub fn disconnectPeer(self: *Sim, peer_id: u8) void {
         // Record session event to tape if recording (but not replaying)
-        if (self.is_recording and !self.is_replaying) {
-            if (self.tape) |*t| {
-                t.append_event(Event.sessionDisconnectPeer(peer_id)) catch {};
-            }
+        if (self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(Event.sessionDisconnectPeer(peer_id));
         }
 
         self.net.disconnectPeer(peer_id);
@@ -320,8 +309,8 @@ pub const Sim = struct {
 
     /// Build outbound packet for a target peer
     pub fn buildOutboundPacket(self: *Sim, target_peer: u8) void {
-        const match_frame: u16 = if (self.in_session)
-            @intCast(self.rollback.getMatchFrame(self.time.frame))
+        const match_frame: u16 = if (self.session.active)
+            @intCast(self.session.getMatchFrame(self.time.frame))
         else
             @intCast(self.time.frame);
         self.net.buildOutboundPacket(target_peer, match_frame) catch {
@@ -345,26 +334,24 @@ pub const Sim = struct {
 
     /// Process a received packet
     pub fn receivePacket(self: *Sim, ptr: usize, len: u32) u8 {
-        if (!self.in_session) return 1;
+        if (!self.session.active) return 1;
 
         const buf: [*]const u8 = @ptrFromInt(ptr);
         const slice = buf[0..len];
 
         // Record packet to tape before processing (capture exact bytes received)
-        if (self.is_recording) {
-            if (self.tape) |*t| {
-                // peer_id is at byte[1] in the packet header
-                const peer_id: u8 = if (len > 1) slice[1] else 0;
-                // Record at current frame - during replay, inject at this frame
-                t.append_packet(self.time.frame, peer_id, slice) catch {};
-            }
+        if (self.vcr.is_recording) {
+            // peer_id is at byte[1] in the packet header
+            const peer_id: u8 = if (len > 1) slice[1] else 0;
+            // Record at current frame - during replay, inject at this frame
+            self.vcr.recordPacket(self.time.frame, peer_id, slice);
         }
 
-        self.net.receivePacket(slice, self.rollback) catch |e| {
+        self.net.receivePacket(slice, self.input_buffer) catch |e| {
             switch (e) {
-                Net.Packets.DecodeError.BufferTooSmall => return 2,
-                Net.Packets.DecodeError.UnsupportedVersion => return 3,
-                Net.Packets.DecodeError.InvalidEventCount => return 4,
+                Transport.DecodeError.BufferTooSmall => return 2,
+                Transport.DecodeError.UnsupportedVersion => return 3,
+                Transport.DecodeError.InvalidEventCount => return 4,
             }
         };
         return 0;
@@ -372,7 +359,7 @@ pub const Sim = struct {
 
     /// Get seq for a peer (latest frame received from them)
     pub fn getPeerSeq(self: *const Sim, peer: u8) u16 {
-        if (peer < Net.MAX_PEERS) {
+        if (peer < Transport.MAX_PEERS) {
             return self.net.peer_states[peer].remote_seq;
         }
         return 0;
@@ -380,7 +367,7 @@ pub const Sim = struct {
 
     /// Get ack for a peer (latest frame they acked from us)
     pub fn getPeerAck(self: *const Sim, peer: u8) u16 {
-        if (peer < Net.MAX_PEERS) {
+        if (peer < Transport.MAX_PEERS) {
             return self.net.peer_states[peer].remote_ack;
         }
         return 0;
@@ -388,7 +375,7 @@ pub const Sim = struct {
 
     /// Get unacked count for a peer
     pub fn getUnackedCount(self: *const Sim, peer: u8) u16 {
-        if (peer < Net.MAX_PEERS) {
+        if (peer < Transport.MAX_PEERS) {
             return self.net.peer_states[peer].unackedCount();
         }
         return 0;
@@ -406,7 +393,7 @@ pub const Sim = struct {
         var step_count: u32 = 0;
         while (self.accumulator >= hz) {
             // Replay tape data during replay mode
-            if (self.is_replaying) {
+            if (self.vcr.is_replaying) {
                 self.replay_tape_session_events(); // Process session events first
                 self.replay_tape_packets(); // Then packets (populates rollback state)
                 self.replay_tape_inputs(); // Then input events
@@ -418,7 +405,7 @@ pub const Sim = struct {
             }
 
             // If in a session, handle rollback
-            if (self.in_session) {
+            if (self.session.active) {
                 self.sessionStep();
             } else {
                 self.tick(false); // Non-session: not resimulating, always record
@@ -432,46 +419,41 @@ pub const Sim = struct {
 
     /// Session-aware step that handles rollback when late inputs arrive
     fn sessionStep(self: *Sim) void {
-        const r = self.rollback;
-
         // The frame we're about to process (after this tick, match_frame will be this value)
-        const target_match_frame = r.getMatchFrame(self.time.frame) + 1;
+        const target_match_frame = self.session.getMatchFrame(self.time.frame) + 1;
 
         // Calculate how many frames can be confirmed based on received inputs
-        const next_confirm = r.calculateNextConfirmFrame(target_match_frame);
+        const next_confirm = self.input_buffer.calculateNextConfirmFrame(target_match_frame);
+        const current_confirmed = self.session.confirmed_frame;
 
-        if (next_confirm > r.confirmed_frame) {
+        if (next_confirm > current_confirmed) {
             // New confirmed frames available - need to rollback and resim
-            const rollback_depth = target_match_frame - 1 - r.confirmed_frame;
-            if (rollback_depth > Net.MAX_ROLLBACK_FRAMES) {
+            const rollback_depth = target_match_frame - 1 - current_confirmed;
+            if (rollback_depth > Transport.MAX_ROLLBACK_FRAMES) {
                 @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
-            }
-            if (rollback_depth > 0) {
-                r.stats.last_rollback_depth = rollback_depth;
-                r.stats.total_rollbacks += 1;
             }
 
             // 1. Restore to confirmed state
-            if (r.confirmed_snapshot) |snap| {
+            if (self.confirmed_snapshot) |snap| {
                 self.restore(snap);
             }
 
             // 2. Resim confirmed frames with all peer inputs
-            var f = r.confirmed_frame + 1;
+            var frames_resimmed: u32 = 0;
+            var f = current_confirmed + 1;
             while (f <= next_confirm) : (f += 1) {
                 const is_current_frame = (f == target_match_frame);
                 self.tick(!is_current_frame); // resimulating unless this is the target frame
                 if (!is_current_frame) {
-                    r.stats.frames_resimulated += 1;
+                    frames_resimmed += 1;
                 }
             }
 
             // 3. Update confirmed snapshot (get current user_data_len dynamically)
-            if (r.confirmed_snapshot) |old_snap| {
+            if (self.confirmed_snapshot) |old_snap| {
                 old_snap.deinit(self.allocator);
             }
-            r.confirmed_snapshot = self.take_snapshot(self.getUserDataLen()) catch null;
-            r.confirmed_frame = next_confirm;
+            self.confirmed_snapshot = self.take_snapshot(self.getUserDataLen()) catch null;
 
             // 4. If we haven't reached target_match_frame yet, predict forward
             if (next_confirm < target_match_frame) {
@@ -480,10 +462,13 @@ pub const Sim = struct {
                     const is_current_frame = (f == target_match_frame);
                     self.tick(!is_current_frame); // resimulating unless this is the target frame
                     if (!is_current_frame) {
-                        r.stats.frames_resimulated += 1;
+                        frames_resimmed += 1;
                     }
                 }
             }
+
+            // Update session with new confirmed frame and stats
+            self.session.confirmFrame(next_confirm, frames_resimmed);
         } else {
             // No rollback needed - this is the target frame, not resimulating
             self.tick(false);
@@ -492,8 +477,8 @@ pub const Sim = struct {
         // Always advance local peer's confirmed frame, even if there's no input.
         // Without this, confirmed_frame can't advance if the local player is idle,
         // causing rollback depth to grow unbounded.
-        if (target_match_frame > self.input_buffer.peer_confirmed[self.net.local_peer_id]) {
-            self.input_buffer.peer_confirmed[self.net.local_peer_id] = target_match_frame;
+        if (target_match_frame > self.input_buffer.peer_confirmed[self.session.local_peer_id]) {
+            self.input_buffer.peer_confirmed[self.session.local_peer_id] = target_match_frame;
         }
     }
 
@@ -508,15 +493,15 @@ pub const Sim = struct {
         self.time.total_ms += hz;
 
         // Calculate match_frame for the frame we're about to process
-        const match_frame = if (self.in_session)
-            self.rollback.getMatchFrame(self.time.frame) + 1
+        const match_frame = if (self.session.active)
+            self.session.getMatchFrame(self.time.frame) + 1
         else
             self.time.frame + 1;
 
         // Read events from canonical InputBuffer for all peers
-        // In session mode, use rollback peer_count; in non-session mode, use InputBuffer peer_count
-        const peer_count = if (self.in_session) self.rollback.peer_count else self.input_buffer.peer_count;
-        for (0..peer_count) |peer_idx| {
+        // In session mode, use session peer_count; in non-session mode, use InputBuffer peer_count
+        const peer_count_for_tick = if (self.session.active) self.session.peer_count else self.input_buffer.peer_count;
+        for (0..peer_count_for_tick) |peer_idx| {
             const peer: u8 = @intCast(peer_idx);
             const events = self.input_buffer.get(peer, match_frame);
             for (events) |event| {
@@ -532,7 +517,7 @@ pub const Sim = struct {
         self.process_events();
 
         // Update net context for game systems to read
-        self.net_ctx.peer_count = if (self.in_session) self.rollback.peer_count else 0;
+        self.net_ctx.peer_count = if (self.session.active) self.session.peer_count else 0;
         self.net_ctx.match_frame = self.getMatchFrame();
 
         // Call game systems
@@ -545,17 +530,15 @@ pub const Sim = struct {
 
         // Advance tape frame if recording a new frame (not replaying or resimulating)
         // Note: Input events are written via observer on emit, this just advances the frame marker
-        if (self.is_recording and !self.is_replaying and !is_resimulating) {
-            if (self.tape) |*t| {
-                t.start_frame() catch {
-                    // Tape is full - stop recording gracefully
-                    self.stop_recording();
-                    if (self.callbacks.on_tape_full) |on_tape_full| {
-                        on_tape_full();
-                    } else {
-                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
-                    }
-                };
+        if (self.vcr.is_recording and !self.vcr.is_replaying and !is_resimulating) {
+            if (!self.vcr.advanceFrame()) {
+                // Tape is full - stop recording gracefully
+                self.stop_recording();
+                if (self.callbacks.on_tape_full) |on_tape_full| {
+                    on_tape_full();
+                } else {
+                    Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+                }
             }
         }
     }
@@ -577,68 +560,62 @@ pub const Sim = struct {
     /// Replay session lifecycle events from tape for the current frame.
     /// Must be called before replay_tape_packets and replay_tape_inputs.
     fn replay_tape_session_events(self: *Sim) void {
-        if (self.tape) |*t| {
-            const tape_events = t.get_events(self.time.frame);
-            for (tape_events) |event| {
-                switch (event.kind) {
-                    .SessionInit => {
-                        self.sessionInit(event.payload.peer_id, self.getUserDataLen()) catch {};
-                    },
-                    .SessionSetLocalPeer => {
-                        self.setLocalPeer(event.payload.peer_id);
-                    },
-                    .SessionConnectPeer => {
-                        self.connectPeer(event.payload.peer_id);
-                    },
-                    .SessionDisconnectPeer => {
-                        self.disconnectPeer(event.payload.peer_id);
-                    },
-                    .SessionEnd => {
-                        self.sessionEnd();
-                    },
-                    else => {},
-                }
+        const tape_events = self.vcr.getEventsForFrame(self.time.frame);
+        for (tape_events) |event| {
+            switch (event.kind) {
+                .SessionInit => {
+                    self.sessionInit(event.payload.peer_id, self.getUserDataLen()) catch {};
+                },
+                .SessionSetLocalPeer => {
+                    self.setLocalPeer(event.payload.peer_id);
+                },
+                .SessionConnectPeer => {
+                    self.connectPeer(event.payload.peer_id);
+                },
+                .SessionDisconnectPeer => {
+                    self.disconnectPeer(event.payload.peer_id);
+                },
+                .SessionEnd => {
+                    self.sessionEnd();
+                },
+                else => {},
             }
         }
     }
 
     /// Replay packets from tape for the current frame
     fn replay_tape_packets(self: *Sim) void {
-        if (self.tape) |*t| {
-            var iter = t.get_packets_for_frame(self.time.frame);
-            while (iter.next()) |packet| {
-                // Process the packet as if it was just received
-                // This will trigger rollback if needed, just like during the original session
-                self.net.receivePacket(packet.data, self.rollback) catch |e| {
-                    std.debug.panic("Failed to replay packet at frame {}: {any}", .{ self.time.frame, e });
-                };
-            }
+        var iter = self.vcr.getPacketsForFrame(self.time.frame) orelse return;
+        while (iter.next()) |packet| {
+            // Process the packet as if it was just received
+            // This will trigger rollback if needed, just like during the original session
+            self.net.receivePacket(packet.data, self.input_buffer) catch |e| {
+                std.debug.panic("Failed to replay packet at frame {}: {any}", .{ self.time.frame, e });
+            };
         }
     }
 
     /// Replay input events from tape for the current frame.
     /// Routes inputs to InputBuffer (tick reads from there).
     fn replay_tape_inputs(self: *Sim) void {
-        if (self.tape) |*t| {
-            const tape_events = t.get_events(self.time.frame);
-            for (tape_events) |event| {
-                // Skip FrameStart markers and session events
-                if (event.kind == .FrameStart or event.kind.isSessionEvent()) continue;
+        const tape_events = self.vcr.getEventsForFrame(self.time.frame);
+        for (tape_events) |event| {
+            // Skip FrameStart markers and session events
+            if (event.kind == .FrameStart or event.kind.isSessionEvent()) continue;
 
-                // Calculate match_frame for the upcoming tick
-                const match_frame = if (self.in_session)
-                    self.rollback.getMatchFrame(self.time.frame) + 1
-                else
-                    self.time.frame + 1;
+            // Calculate match_frame for the upcoming tick
+            const match_frame = if (self.session.active)
+                self.session.getMatchFrame(self.time.frame) + 1
+            else
+                self.time.frame + 1;
 
-                const peer_id = if (self.in_session) self.net.local_peer_id else 0;
+            const peer_id = if (self.session.active) self.session.local_peer_id else 0;
 
-                var local_event = event;
-                local_event.peer_id = peer_id;
+            var local_event = event;
+            local_event.peer_id = peer_id;
 
-                // Write to InputBuffer - tick will read from there
-                self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
-            }
+            // Write to InputBuffer - tick will read from there
+            self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
         }
     }
 
@@ -679,14 +656,14 @@ pub const Sim = struct {
     /// Use this for events from live user input (emit_* functions).
     fn append_event(self: *Sim, event: Event) void {
         // Calculate match_frame for the upcoming tick
-        const match_frame = if (self.in_session)
-            self.rollback.getMatchFrame(self.time.frame) + 1
+        const match_frame = if (self.session.active)
+            self.session.getMatchFrame(self.time.frame) + 1
         else
             self.time.frame + 1; // Non-session: match_frame = time.frame
 
         // In session mode, use local_peer_id for network consistency
         // In non-session mode, preserve the event's peer_id for local multiplayer
-        const peer_id = if (self.in_session) self.net.local_peer_id else event.peer_id;
+        const peer_id = if (self.session.active) self.session.local_peer_id else event.peer_id;
 
         // Tag the event with the resolved peer ID
         var local_event = event;
@@ -697,7 +674,7 @@ pub const Sim = struct {
 
         // If in a session, extend unacked window for packet sending to peers
         // (events are already in InputBuffer - no copy needed)
-        if (self.in_session) {
+        if (self.session.active) {
             const match_frame_u16: u16 = @intCast(match_frame);
             self.net.extendUnackedWindow(match_frame_u16);
         }
@@ -740,10 +717,13 @@ pub const Sim = struct {
         }
 
         // Auto-initialize session if snapshot was taken during a session
-        if (snapshot.net.in_session == 1 and !self.in_session) {
-            // Initialize rollback/net state directly with session_start_frame from snapshot
+        if (snapshot.net.in_session == 1 and !self.session.active) {
+            // Initialize session state directly with session_start_frame from snapshot
             // (don't use sessionInit which would set session_start_frame = current frame)
-            self.rollback.deinit();
+            if (self.confirmed_snapshot) |snap| {
+                snap.deinit(self.allocator);
+                self.confirmed_snapshot = null;
+            }
             self.net.deinit();
 
             // Reinitialize InputBuffer with session state from snapshot
@@ -753,19 +733,19 @@ pub const Sim = struct {
             self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
             self.input_buffer.observer = saved_observer;
 
-            self.rollback.* = .{
-                .session_start_frame = snapshot.net.session_start_frame,
-                .peer_count = snapshot.net.peer_count,
-                .input_buffer = self.input_buffer,
-                .allocator = self.allocator,
-            };
-            self.net.* = .{ .allocator = self.allocator };
+            // Initialize session state directly from snapshot
+            self.session.start_frame = snapshot.net.session_start_frame;
+            self.session.peer_count = snapshot.net.peer_count;
+            self.session.local_peer_id = snapshot.net.local_peer_id;
+            self.session.confirmed_frame = 0;
+            self.session.stats = .{};
+            self.session.active = true;
+
+            self.net.* = .{ .allocator = self.allocator, .input_buffer = self.input_buffer };
             self.net.setLocalPeer(snapshot.net.local_peer_id);
 
-            self.in_session = true;
-
             // Take initial confirmed snapshot for rollback
-            self.rollback.confirmed_snapshot = self.take_snapshot(snapshot.user_data_len) catch null;
+            self.confirmed_snapshot = self.take_snapshot(snapshot.user_data_len) catch null;
         }
     }
 
@@ -773,74 +753,48 @@ pub const Sim = struct {
     // Recording / Playback
     // ─────────────────────────────────────────────────────────────
 
-    pub const RecordingError = error{
-        AlreadyRecording,
-        OutOfMemory,
-        TapeError,
-    };
+    pub const RecordingError = VCR.RecordingError;
 
     /// Start recording to a new tape
     pub fn start_recording(self: *Sim, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
-        if (self.is_recording) {
-            return RecordingError.AlreadyRecording;
-        }
-
-        // Free existing tape if any (allows restart after stop_recording)
-        if (self.tape) |*t| {
-            t.free(self.allocator);
-            self.tape = null;
-        }
-
         const snapshot = self.take_snapshot(user_data_len) catch {
             return RecordingError.OutOfMemory;
         };
         defer snapshot.deinit(self.allocator);
 
-        self.tape = Tapes.Tape.init(self.allocator, snapshot, max_events, max_packet_bytes) catch {
-            return RecordingError.OutOfMemory;
-        };
-        self.is_recording = true;
+        try self.vcr.startRecording(snapshot, max_events, max_packet_bytes);
 
         // Enable tape observer to record local inputs
         self.enableTapeObserver();
-
-        // Start the first frame marker so events are captured correctly
-        self.tape.?.start_frame() catch {
-            return RecordingError.TapeError;
-        };
     }
 
     /// Stop recording
     pub fn stop_recording(self: *Sim) void {
-        self.is_recording = false;
+        self.vcr.stopRecording();
         self.disableTapeObserver();
     }
 
     /// Load a tape from raw bytes (enters replay mode)
     /// Restores the initial snapshot which will auto-init session if needed
     pub fn load_tape(self: *Sim, tape_buf: []u8) !void {
-        if (self.is_recording) {
-            return error.CurrentlyRecording;
-        }
-
-        // Make a copy of the tape buffer
-        const copy = try self.allocator.alloc(u8, tape_buf.len);
-        @memcpy(copy, tape_buf);
-
-        self.tape = try Tapes.Tape.load(copy);
-        self.is_replaying = true;
-
+        const snapshot = try self.vcr.loadTape(tape_buf);
         // Restore initial snapshot from tape - this will auto-init session if net_ctx.in_session is set
-        const snapshot = self.tape.?.closest_snapshot(0);
         self.restore(snapshot);
     }
 
     /// Get the current tape buffer (for serialization)
     pub fn get_tape_buffer(self: *Sim) ?[]u8 {
-        if (self.tape) |*t| {
-            return t.get_buffer();
-        }
-        return null;
+        return self.vcr.getTapeBuffer();
+    }
+
+    /// Check if recording is active
+    pub fn isRecording(self: *const Sim) bool {
+        return self.vcr.is_recording;
+    }
+
+    /// Check if replay is active
+    pub fn isReplaying(self: *const Sim) bool {
+        return self.vcr.is_replaying;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -849,18 +803,18 @@ pub const Sim = struct {
 
     /// Seek to the start of a given frame (requires tape)
     pub fn seek(self: *Sim, frame: u32) void {
-        if (self.tape == null) {
+        if (!self.vcr.hasTape()) {
             @panic("Tried to seek to frame without an active tape");
         }
 
-        const snapshot = self.tape.?.closest_snapshot(frame);
+        const snapshot = self.vcr.closestSnapshot(frame) orelse @panic("No snapshot found for seek");
         self.restore(snapshot);
 
         // Remember if we were already replaying (from load_tape)
-        const was_replaying = self.is_replaying;
+        const was_replaying = self.vcr.is_replaying;
 
         // Enter replay mode for resimulation
-        self.is_replaying = true;
+        self.vcr.enterReplayMode();
 
         // Advance to the desired frame
         // step() handles tape event replay via replay_tape_inputs()
@@ -874,7 +828,7 @@ pub const Sim = struct {
         // Preserve replay state if we were replaying before (e.g., from load_tape)
         // Only reset if we weren't in replay mode before this seek
         if (!was_replaying) {
-            self.is_replaying = false;
+            self.vcr.exitReplayMode();
         }
     }
 };
@@ -888,9 +842,9 @@ test "Sim init and deinit" {
     try std.testing.expectEqual(0, sim.time.dt_ms);
     try std.testing.expectEqual(0, sim.time.total_ms);
     try std.testing.expectEqual(0, sim.events.count);
-    try std.testing.expectEqual(false, sim.is_recording);
-    try std.testing.expectEqual(false, sim.is_replaying);
-    try std.testing.expectEqual(null, sim.tape);
+    try std.testing.expectEqual(false, sim.vcr.is_recording);
+    try std.testing.expectEqual(false, sim.vcr.is_replaying);
+    try std.testing.expectEqual(false, sim.vcr.hasTape());
 }
 
 test "Sim contexts are zeroed" {
@@ -922,11 +876,11 @@ test "sessionInit creates rollback state" {
     try sim.sessionInit(2, 0);
 
     // Verify session is active and rollback state was initialized
-    try std.testing.expect(sim.in_session);
-    try std.testing.expectEqual(@as(u32, 2), sim.rollback.session_start_frame);
-    try std.testing.expectEqual(@as(u8, 2), sim.rollback.peer_count);
-    try std.testing.expectEqual(@as(u32, 0), sim.rollback.confirmed_frame);
-    try std.testing.expect(sim.rollback.confirmed_snapshot != null);
+    try std.testing.expect(sim.session.active);
+    try std.testing.expectEqual(@as(u32, 2), sim.session.start_frame);
+    try std.testing.expectEqual(@as(u8, 2), sim.session.peer_count);
+    try std.testing.expectEqual(@as(u32, 0), sim.session.confirmed_frame);
+    try std.testing.expect(sim.confirmed_snapshot != null);
 }
 
 test "session step without rollback (inputs in sync)" {
@@ -947,7 +901,7 @@ test "session step without rollback (inputs in sync)" {
     try std.testing.expectEqual(@as(u32, 1), sim.getMatchFrame());
     try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
     try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expectEqual(@as(u32, 0), sim.rollback.stats.total_rollbacks);
+    try std.testing.expectEqual(@as(u32, 0), sim.session.stats.total_rollbacks);
 }
 
 test "step advances frames based on accumulator" {
@@ -1201,7 +1155,7 @@ test "session step with rollback (late inputs)" {
     try std.testing.expectEqual(@as(u32, 4), sim.getMatchFrame());
     try std.testing.expectEqual(@as(u32, 4), sim.getConfirmedFrame());
     try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expect(sim.rollback.stats.total_rollbacks > 0);
+    try std.testing.expect(sim.session.stats.total_rollbacks > 0);
 }
 
 test "sessionEnd cleans up rollback state" {
@@ -1209,10 +1163,10 @@ test "sessionEnd cleans up rollback state" {
     defer sim.deinit();
 
     try sim.sessionInit(2, 0);
-    try std.testing.expect(sim.in_session);
+    try std.testing.expect(sim.session.active);
 
     sim.sessionEnd();
-    try std.testing.expect(!sim.in_session);
+    try std.testing.expect(!sim.session.active);
 }
 
 test "emit_keydown adds event to InputBuffer" {
@@ -1288,7 +1242,7 @@ test "session uses dynamic user_data_len for snapshots" {
     try sim.sessionInit(2, TestState.getUserDataLen());
 
     // Initial snapshot should have size 8
-    try std.testing.expectEqual(@as(u32, 8), sim.rollback.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 8), sim.confirmed_snapshot.?.user_data_len);
 
     // Emit inputs for frame 1
     sim.sessionEmitInputs(0, 1, &[_]Event{});
@@ -1301,7 +1255,7 @@ test "session uses dynamic user_data_len for snapshots" {
     _ = sim.step(16);
 
     // The new confirmed snapshot should have the new size
-    try std.testing.expectEqual(@as(u32, 16), sim.rollback.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 16), sim.confirmed_snapshot.?.user_data_len);
 
     // Change size to 32
     TestState.current_size = 32;
@@ -1312,20 +1266,20 @@ test "session uses dynamic user_data_len for snapshots" {
     _ = sim.step(16);
 
     // Snapshot should now have size 32
-    try std.testing.expectEqual(@as(u32, 32), sim.rollback.confirmed_snapshot.?.user_data_len);
+    try std.testing.expectEqual(@as(u32, 32), sim.confirmed_snapshot.?.user_data_len);
 }
 
 test "start_recording enables recording" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    try std.testing.expectEqual(false, sim.is_recording);
-    try std.testing.expectEqual(null, sim.tape);
+    try std.testing.expectEqual(false, sim.vcr.is_recording);
+    try std.testing.expectEqual(false, sim.vcr.hasTape());
 
     try sim.start_recording(0, 1024, 0);
 
-    try std.testing.expectEqual(true, sim.is_recording);
-    try std.testing.expect(sim.tape != null);
+    try std.testing.expectEqual(true, sim.vcr.is_recording);
+    try std.testing.expect(sim.vcr.hasTape());
 }
 
 test "start_recording fails if already recording" {
@@ -1343,10 +1297,10 @@ test "stop_recording disables recording" {
     defer sim.deinit();
 
     try sim.start_recording(0, 1024, 0);
-    try std.testing.expectEqual(true, sim.is_recording);
+    try std.testing.expectEqual(true, sim.vcr.is_recording);
 
     sim.stop_recording();
-    try std.testing.expectEqual(false, sim.is_recording);
+    try std.testing.expectEqual(false, sim.vcr.is_recording);
 }
 
 test "recording captures events" {

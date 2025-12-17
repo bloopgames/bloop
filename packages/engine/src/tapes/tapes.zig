@@ -1,11 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const Ctx = @import("context.zig");
-const Events = @import("events.zig");
+const Ctx = @import("../context.zig");
+const Events = @import("../events.zig");
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const MAX_EVENTS = Events.MAX_EVENTS;
-const log = @import("log.zig").log;
+const log = @import("../log.zig").log;
 
 const EnginePointer = if (builtin.target.cpu.arch.isWasm()) u32 else usize;
 

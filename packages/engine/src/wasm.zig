@@ -1,6 +1,6 @@
 const std = @import("std");
 const Events = @import("events.zig");
-const Tapes = @import("tapes.zig");
+const Tapes = @import("tapes/tapes.zig");
 const Log = @import("log.zig");
 const Sim = @import("sim.zig").Sim;
 
@@ -185,7 +185,7 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
 }
 
 pub export fn stop_recording() u8 {
-    if (!sim.?.is_recording) {
+    if (!sim.?.isRecording()) {
         wasm_log("Not currently recording");
         return 2;
     }
@@ -194,11 +194,11 @@ pub export fn stop_recording() u8 {
 }
 
 pub export fn is_recording() bool {
-    return sim.?.is_recording;
+    return sim.?.isRecording();
 }
 
 pub export fn is_replaying() bool {
-    return sim.?.is_replaying;
+    return sim.?.isReplaying();
 }
 
 pub export fn get_tape_ptr() wasmPointer {
