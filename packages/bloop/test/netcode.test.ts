@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { MAX_ROLLBACK_FRAMES } from "@bloopjs/engine";
-import { assert, Bloop, mount, type Sim, unwrap } from "../src/mod";
+import { assert, Bloop, mount, unwrap } from "../src/mod";
+import { setupSession, stepBoth } from "./helper";
 
 describe("netcode integration", () => {
   it("should route remote peer events to correct player", async () => {
@@ -193,20 +194,3 @@ describe("netcode integration", () => {
     expect(game1.bag.aCount).toEqual(1);
   });
 });
-
-function setupSession(sim0: Sim, sim1: Sim) {
-  sim0.sessionInit(2);
-  sim0.net.setLocalPeer(0);
-  sim0.net.connectPeer(1);
-
-  sim1.sessionInit(2);
-  sim1.net.setLocalPeer(1);
-  sim1.net.connectPeer(0);
-}
-
-function stepBoth(sim0: Sim, sim1: Sim) {
-  sim0.net.receivePacket(unwrap(sim1.net.getOutboundPacket(0)));
-  sim1.net.receivePacket(unwrap(sim0.net.getOutboundPacket(1)));
-  sim0.step();
-  sim1.step();
-}
