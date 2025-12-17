@@ -160,12 +160,6 @@ describe("netcode integration", () => {
 
     // Initialize session
     setupSession(sim0, sim1);
-    sim0.sessionInit(2);
-    sim0.net.setLocalPeer(0);
-    sim0.net.connectPeer(1);
-    sim1.sessionInit(2);
-    sim1.net.setLocalPeer(1);
-    sim1.net.connectPeer(0);
 
     // Emit both keydown and keyup before stepping (same frame)
     sim0.emit.keydown("KeyA", 0);

@@ -88,7 +88,7 @@ describe("tapes", () => {
     });
   });
 
-  describe("playback", () => {
+  describe("local recording and playback", () => {
     it("can step back", async () => {
       const bloop = Bloop.create({
         bag: {
@@ -128,7 +128,7 @@ describe("tapes", () => {
       expect(bloop.bag.clicks).toEqual(0);
     });
 
-    it("regression - steps back after one frame", async () => {
+    it("regress - steps back after one frame", async () => {
       const game = Bloop.create({});
       const { sim } = await mount(game);
 
@@ -137,6 +137,57 @@ describe("tapes", () => {
       sim.stepBack();
 
       expect(game.context.time.frame).toEqual(1);
+    });
+
+    it("can start recording mid-game", async () => {
+      const game = Bloop.create({
+        bag: { score: 0 },
+      });
+
+      game.system("scorer", {
+        keydown({ event, bag }) {
+          if (event.key === "Space") {
+            bag.score += 10;
+          }
+        },
+      });
+
+      // Start without recording
+      const { sim } = await mount(game, { startRecording: false });
+      expect(sim.isRecording).toBe(false);
+
+      // Play for a bit without recording (frames 0->1, 1->2, 2->3)
+      sim.step();
+      sim.step();
+      sim.emit.keydown("Space");
+      sim.step();
+      expect(game.bag.score).toBe(10);
+      expect(game.context.time.frame).toBe(3);
+
+      // Now start recording mid-game at frame 3 (local only)
+      sim.record(100, 0);
+      expect(sim.isRecording).toBe(true);
+
+      // Score more points while recording (frames 3->4, 4->5)
+      sim.emit.keyup("Space");
+      sim.step();
+      sim.emit.keydown("Space");
+      sim.step();
+      expect(game.bag.score).toBe(20);
+      expect(game.context.time.frame).toBe(5);
+
+      // Save tape and load into replay sim
+      const tape = sim.saveTape();
+      const { sim: replay } = await mount(game);
+      replay.loadTape(tape);
+
+      // Recording should start at score 10, frame 3
+      replay.seek(3);
+      expect(game.bag.score).toBe(10);
+
+      // Recording should replay space events
+      replay.seek(5);
+      expect(game.bag.score).toBe(20);
     });
   });
 
@@ -185,117 +236,6 @@ describe("tapes", () => {
       sim1.step();
       expect(bloop.bag.score).toEqual(10);
     });
-  });
-
-  describe("tape overflow", () => {
-    it("should stop recording gracefully when tape is full", async () => {
-      const game = Bloop.create({ bag: { count: 0 } });
-      let tapeFull = false;
-      let savedTape: Uint8Array | null = null;
-
-      const { sim } = await mount(game, {
-        tape: { maxEvents: 10 },
-      });
-
-      sim.onTapeFull = (tape) => {
-        tapeFull = true;
-        savedTape = tape;
-      };
-
-      for (let i = 0; i < 20; i++) {
-        sim.emit.keydown("KeyA");
-        sim.step();
-        sim.emit.keyup("KeyA");
-      }
-
-      // Should not crash - game continues
-      expect(tapeFull).toBe(true);
-      expect(savedTape).not.toBeNull();
-      expect(sim.isRecording).toBe(false);
-      expect(game.context.time.frame).toBeGreaterThan(5);
-    });
-
-    it("can restart recording from within onTapeFull callback", async () => {
-      const game = Bloop.create({ bag: { count: 0 } });
-      let restartCount = 0;
-
-      const { sim } = await mount(game, {
-        tape: { maxEvents: 10 },
-      });
-
-      sim.onTapeFull = () => {
-        restartCount++;
-        sim.record(10, 0);
-      };
-
-      for (let i = 0; i < 50; i++) {
-        sim.emit.keydown("KeyA");
-        sim.step();
-        sim.emit.keyup("KeyA");
-      }
-
-      // Should have restarted recording multiple times
-      expect(restartCount).toBeGreaterThan(0);
-      expect(sim.isRecording).toBe(true);
-    });
-  });
-
-  describe("local recording and playback", () => {
-    it("can start recording mid-game", async () => {
-      const game = Bloop.create({
-        bag: { score: 0 },
-      });
-
-      game.system("scorer", {
-        keydown({ event, bag }) {
-          if (event.key === "Space") {
-            bag.score += 10;
-          }
-        },
-      });
-
-      // start without recording
-      const { sim } = await mount(game, { startRecording: false });
-      expect(sim.isRecording).toBe(false);
-
-      // Play for a bit without recording (frames 0->1, 1->2, 2->3)
-      sim.step();
-      sim.step();
-      sim.emit.keydown("Space");
-      sim.step();
-      expect(game.bag.score).toBe(10);
-      expect(game.context.time.frame).toBe(3);
-
-      // Now start recording mid-game at frame 3 (local only)
-      sim.record(100, 0);
-      expect(sim.isRecording).toBe(true);
-
-      // Score more points while recording (frames 3->4, 4->5)
-      sim.emit.keyup("Space");
-      sim.step();
-      sim.emit.keydown("Space");
-      sim.step();
-      expect(game.bag.score).toBe(20);
-      expect(game.context.time.frame).toBe(5);
-
-      // Can save tape successfully
-      const tape = sim.saveTape();
-      expect(tape.length).toBeGreaterThan(0);
-
-      // Verify tape can be loaded in a fresh sim and replayed correctly
-      const { sim: sim2 } = await mount(game);
-      sim2.loadTape(tape);
-
-      // At frame 3 (start of recording), score should be 10
-      sim2.seek(3);
-      expect(game.bag.score).toBe(10);
-
-      // At frame 5 (end of recording), score should be 20
-      sim2.seek(5);
-      expect(game.bag.score).toBe(20);
-    });
-
-    it.skip("restarted recordings have valid tape data (TODO - write this)", async () => {});
 
     it("replays keydown events from file at correct frame", async () => {
       // Load tape recorded from mario game
@@ -363,6 +303,59 @@ describe("tapes", () => {
 
       expect(sim.time.frame).toBe(100);
       expect(spaceDownFrame).toBe(94);
+    });
+  });
+
+  describe("tape overflow", () => {
+    it("stops recording gracefully when tape is full", async () => {
+      const game = Bloop.create({ bag: { count: 0 } });
+      let tapeFull = false;
+      let savedTape: Uint8Array | null = null;
+
+      const { sim } = await mount(game, {
+        tape: { maxEvents: 10 },
+      });
+
+      sim.onTapeFull = (tape) => {
+        tapeFull = true;
+        savedTape = tape;
+      };
+
+      for (let i = 0; i < 20; i++) {
+        sim.emit.keydown("KeyA");
+        sim.step();
+        sim.emit.keyup("KeyA");
+      }
+
+      // Should not crash - game continues
+      expect(tapeFull).toBe(true);
+      expect(savedTape).not.toBeNull();
+      expect(sim.isRecording).toBe(false);
+      expect(game.context.time.frame).toBeGreaterThan(5);
+    });
+
+    it("can restart recording from within onTapeFull callback", async () => {
+      const game = Bloop.create({ bag: { count: 0 } });
+      let restartCount = 0;
+
+      const { sim } = await mount(game, {
+        tape: { maxEvents: 10 },
+      });
+
+      sim.onTapeFull = () => {
+        restartCount++;
+        sim.record(10, 0);
+      };
+
+      for (let i = 0; i < 50; i++) {
+        sim.emit.keydown("KeyA");
+        sim.step();
+        sim.emit.keyup("KeyA");
+      }
+
+      // Should have restarted recording multiple times
+      expect(restartCount).toBeGreaterThan(0);
+      expect(sim.isRecording).toBe(true);
     });
   });
 
