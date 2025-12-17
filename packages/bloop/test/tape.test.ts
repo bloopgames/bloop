@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop, mount } from "../src/mod";
-import {
-  type GameMaker,
-  setupGames,
-  setupSession,
-  startOnlineMatch,
-} from "./helper";
+import { readTapeHeader } from "@bloopjs/engine";
+import { assert, Bloop, mount, unwrap } from "../src/mod";
+import { setupGames, setupSession, startOnlineMatch } from "./helper";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -613,7 +609,53 @@ describe("tapes", () => {
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
-    it.skip("regress - retains match frames when rollback happens", () => {
+    it("regress - captures tape with online session and no input events", async () => {
+      const [sim0, sim1] = await startOnlineMatch(() => {
+        return Bloop.create();
+      });
+
+      const outbound0: Uint8Array[] = [];
+      const outbound1: Uint8Array[] = [];
+
+      for (let i = 0; i < 1000; i++) {
+        // Capture outgoing packets to simulate network delay
+        const packet0 = unwrap(sim0.net.getOutboundPacket(1));
+        outbound0.push(packet0);
+        const packet1 = unwrap(sim1.net.getOutboundPacket(0));
+        outbound1.push(packet1);
+
+        // Step both sims
+        sim0.step();
+        sim1.step();
+
+        // 2 frame delay on receiving packets
+        if (i > 1) {
+          const packet0 = unwrap(
+            outbound0.shift(),
+            `Expected packet on tick ${i}`,
+          );
+          sim1.net.receivePacket(packet0);
+
+          const packet1 = unwrap(
+            outbound1.shift(),
+            `Expected packet on tick ${i}`,
+          );
+          sim0.net.receivePacket(packet1);
+        }
+      }
+
+      expect(sim0.time.frame).toEqual(1000);
+
+      const tape = sim0.saveTape();
+
+      const header = readTapeHeader(tape);
+      expect(header.startFrame).toBe(0);
+      expect(header.frameCount).toBe(1000);
+    });
+
+    it("regress - retains match frames when rollback happens", () => {
+      // const [sim0, sim1, game0] = await startOnlineMatch(() => {
+      // });
       // fixed with is_resimulating change
       // run 100 frames
       // start connection
