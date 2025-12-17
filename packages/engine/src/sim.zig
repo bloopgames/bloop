@@ -5,6 +5,7 @@ const Tapes = @import("tapes.zig");
 const Rollback = @import("rollback.zig");
 const Net = @import("net.zig");
 const Log = @import("log.zig");
+const IB = @import("input_buffer.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
@@ -13,6 +14,7 @@ const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const RollbackState = Rollback.RollbackState;
 const NetState = Net.NetState;
+const InputBuffer = IB.InputBuffer;
 
 pub const hz = 1000 / 60;
 
@@ -44,6 +46,8 @@ pub const Sim = struct {
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
+    /// Canonical input buffer - single source of truth for all inputs
+    input_buffer: *InputBuffer,
     /// Rollback state for multiplayer sessions (heap-allocated due to ~67KB size)
     rollback: *RollbackState,
     /// Network state for packet management (heap-allocated due to ~68KB size)
@@ -52,8 +56,47 @@ pub const Sim = struct {
     net_ctx: *NetCtx,
     /// Whether a multiplayer session is active
     in_session: bool = false,
-    /// Whether we're currently resimulating during rollback (don't advance tape)
-    is_resimulating: bool = false,
+
+    // ─────────────────────────────────────────────────────────────
+    // Tape Observer
+    // ─────────────────────────────────────────────────────────────
+
+    /// Observer callback for InputBuffer - records local peer inputs to tape.
+    /// Called immediately when input is emitted (on receive, not on confirm).
+    fn tapeInputObserver(ctx: *anyopaque, peer: u8, _: u32, event: Event) void {
+        const self: *Sim = @ptrCast(@alignCast(ctx));
+
+        // Only record local peer's inputs - remote inputs come from packet replay
+        if (peer != self.net.local_peer_id) return;
+
+        // Only record if we're recording and not replaying
+        if (!self.is_recording or self.is_replaying) return;
+
+        if (self.tape) |*t| {
+            t.append_event(event) catch {
+                // Tape is full - stop recording gracefully
+                self.stop_recording();
+                if (self.callbacks.on_tape_full) |on_tape_full| {
+                    on_tape_full();
+                } else {
+                    Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+                }
+            };
+        }
+    }
+
+    /// Wire up the tape observer to the InputBuffer
+    fn enableTapeObserver(self: *Sim) void {
+        self.input_buffer.observer = IB.InputObserver{
+            .callback = tapeInputObserver,
+            .context = @ptrCast(self),
+        };
+    }
+
+    /// Disable the tape observer
+    fn disableTapeObserver(self: *Sim) void {
+        self.input_buffer.observer = null;
+    }
 
     /// Initialize a new simulation with allocated contexts
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
@@ -69,13 +112,22 @@ pub const Sim = struct {
         const events = try allocator.create(EventBuffer);
         @memset(std.mem.asBytes(events), 0);
 
-        // Allocate RollbackState on heap (~67KB, too large for stack)
-        const rollback = try allocator.create(RollbackState);
-        rollback.* = .{ .allocator = allocator };
+        // Allocate canonical InputBuffer (single source of truth for all inputs)
+        const input_buffer = try allocator.create(InputBuffer);
+        input_buffer.* = .{};
+        // Default: MAX_PEERS to support local multiplayer testing (session mode will reinit)
+        input_buffer.init(IB.MAX_PEERS, 0);
 
-        // Allocate NetState on heap (~68KB, too large for stack)
+        // Allocate RollbackState on heap (~reduced size, now references InputBuffer)
+        const rollback = try allocator.create(RollbackState);
+        rollback.* = .{
+            .input_buffer = input_buffer,
+            .allocator = allocator,
+        };
+
+        // Allocate NetState on heap (now much smaller - no unacked_frames copies)
         const net = try allocator.create(NetState);
-        net.* = .{ .allocator = allocator };
+        net.* = .{ .allocator = allocator, .input_buffer = input_buffer };
 
         // Allocate NetCtx (small struct exposed to game systems)
         const net_ctx = try allocator.create(NetCtx);
@@ -85,6 +137,7 @@ pub const Sim = struct {
             .time = time,
             .inputs = inputs,
             .events = events,
+            .input_buffer = input_buffer,
             .rollback = rollback,
             .net = net,
             .net_ctx = net_ctx,
@@ -97,6 +150,7 @@ pub const Sim = struct {
     pub fn deinit(self: *Sim) void {
         self.rollback.deinit();
         self.allocator.destroy(self.rollback);
+        self.allocator.destroy(self.input_buffer);
         self.net.deinit();
         self.allocator.destroy(self.net);
         if (self.tape) |*t| {
@@ -127,15 +181,23 @@ pub const Sim = struct {
         self.rollback.deinit();
         self.net.deinit();
 
-        // Reinitialize rollback state
+        // Reinitialize InputBuffer for the new session
+        // Preserve observer (tape recording) across session init
+        const saved_observer = self.input_buffer.observer;
+        self.input_buffer.* = .{};
+        self.input_buffer.init(peer_count, self.time.frame);
+        self.input_buffer.observer = saved_observer;
+
+        // Reinitialize rollback state (references the same InputBuffer)
         self.rollback.* = .{
             .session_start_frame = self.time.frame,
             .peer_count = peer_count,
+            .input_buffer = self.input_buffer,
             .allocator = self.allocator,
         };
 
-        // Reinitialize net state
-        self.net.* = .{ .allocator = self.allocator };
+        // Reinitialize net state (references the same InputBuffer)
+        self.net.* = .{ .allocator = self.allocator, .input_buffer = self.input_buffer };
 
         // Update net_ctx for snapshots (captured in take_snapshot)
         self.net_ctx.peer_count = peer_count;
@@ -167,9 +229,18 @@ pub const Sim = struct {
         }
 
         self.rollback.deinit();
-        self.rollback.* = .{ .allocator = self.allocator };
+        // Reinitialize InputBuffer for non-session mode
+        // Preserve observer (tape recording) across session end
+        const saved_observer = self.input_buffer.observer;
+        self.input_buffer.* = .{};
+        self.input_buffer.init(1, 0);
+        self.input_buffer.observer = saved_observer;
+        self.rollback.* = .{
+            .input_buffer = self.input_buffer,
+            .allocator = self.allocator,
+        };
         self.net.deinit();
-        self.net.* = .{ .allocator = self.allocator };
+        self.net.* = .{ .allocator = self.allocator, .input_buffer = self.input_buffer };
         self.in_session = false;
         self.net_ctx.in_session = 0;
         self.net_ctx.peer_count = 0;
@@ -196,10 +267,7 @@ pub const Sim = struct {
     /// Get confirmed frame for a specific peer
     pub fn getPeerFrame(self: *const Sim, peer: u8) u32 {
         if (!self.in_session) return 0;
-        if (peer < self.rollback.peer_count) {
-            return self.rollback.peer_confirmed_frame[peer];
-        }
-        return 0;
+        return self.rollback.getPeerConfirmedFrame(peer);
     }
 
     /// Get rollback depth (match_frame - confirmed_frame)
@@ -248,11 +316,6 @@ pub const Sim = struct {
         }
 
         self.net.disconnectPeer(peer_id);
-    }
-
-    /// Record local inputs to unacked buffers for all connected peers
-    pub fn recordLocalInputs(self: *Sim, match_frame: u16, events: []const Event) void {
-        self.net.recordLocalInputs(match_frame, events);
     }
 
     /// Build outbound packet for a target peer
@@ -358,7 +421,7 @@ pub const Sim = struct {
             if (self.in_session) {
                 self.sessionStep();
             } else {
-                self.tick();
+                self.tick(false); // Non-session: not resimulating, always record
             }
 
             step_count += 1;
@@ -396,15 +459,12 @@ pub const Sim = struct {
             // 2. Resim confirmed frames with all peer inputs
             var f = r.confirmed_frame + 1;
             while (f <= next_confirm) : (f += 1) {
-                // Only mark as resimulating if this is NOT the current frame
-                self.is_resimulating = (f < target_match_frame);
-                self.injectInputsForFrame(f);
-                self.tick();
-                if (f < target_match_frame) {
+                const is_current_frame = (f == target_match_frame);
+                self.tick(!is_current_frame); // resimulating unless this is the target frame
+                if (!is_current_frame) {
                     r.stats.frames_resimulated += 1;
                 }
             }
-            self.is_resimulating = false;
 
             // 3. Update confirmed snapshot (get current user_data_len dynamically)
             if (r.confirmed_snapshot) |old_snap| {
@@ -417,54 +477,57 @@ pub const Sim = struct {
             if (next_confirm < target_match_frame) {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
-                    // Only mark as resimulating if this is NOT the current frame
-                    self.is_resimulating = (f < target_match_frame);
-                    self.injectInputsForFrame(f);
-                    self.tick();
-                    if (f < target_match_frame) {
+                    const is_current_frame = (f == target_match_frame);
+                    self.tick(!is_current_frame); // resimulating unless this is the target frame
+                    if (!is_current_frame) {
                         r.stats.frames_resimulated += 1;
                     }
                 }
-                self.is_resimulating = false;
             }
         } else {
-            // No rollback needed - just tick with current frame's inputs
-            self.injectInputsForFrame(target_match_frame);
-            self.tick();
+            // No rollback needed - this is the target frame, not resimulating
+            self.tick(false);
         }
 
         // Always advance local peer's confirmed frame, even if there's no input.
         // Without this, confirmed_frame can't advance if the local player is idle,
         // causing rollback depth to grow unbounded.
-        if (target_match_frame > r.peer_confirmed_frame[self.net.local_peer_id]) {
-            r.peer_confirmed_frame[self.net.local_peer_id] = target_match_frame;
-        }
-    }
-
-    /// Inject stored inputs for a specific match frame into the event buffer.
-    /// Uses inject_event (not append_event) since these are replayed events.
-    fn injectInputsForFrame(self: *Sim, match_frame: u32) void {
-        const r = self.rollback;
-        for (0..r.peer_count) |peer_idx| {
-            const peer: u8 = @intCast(peer_idx);
-            const events = r.getInputs(peer, match_frame);
-            for (events) |event| {
-                self.inject_event(event);
-            }
+        if (target_match_frame > self.input_buffer.peer_confirmed[self.net.local_peer_id]) {
+            self.input_buffer.peer_confirmed[self.net.local_peer_id] = target_match_frame;
         }
     }
 
     /// Run a single simulation frame without accumulator management.
-    /// Use this for rollback resimulation to avoid re-entrancy issues with step().
-    pub fn tick(self: *Sim) void {
+    /// @param is_resimulating: true if this is a resim frame during rollback (don't record to tape),
+    ///                         false if this is a new frame being processed (record to tape).
+    pub fn tick(self: *Sim, is_resimulating: bool) void {
         // Age input states at the start of each frame (all players)
         self.inputs.age_all_states();
 
         self.time.dt_ms = hz;
         self.time.total_ms += hz;
 
-        // Note: Tape replay is handled centrally in step() via replay_tape_inputs()
-        // which populates the event buffer or rollback state as appropriate.
+        // Calculate match_frame for the frame we're about to process
+        const match_frame = if (self.in_session)
+            self.rollback.getMatchFrame(self.time.frame) + 1
+        else
+            self.time.frame + 1;
+
+        // Read events from canonical InputBuffer for all peers
+        // In session mode, use rollback peer_count; in non-session mode, use InputBuffer peer_count
+        const peer_count = if (self.in_session) self.rollback.peer_count else self.input_buffer.peer_count;
+        for (0..peer_count) |peer_idx| {
+            const peer: u8 = @intCast(peer_idx);
+            const events = self.input_buffer.get(peer, match_frame);
+            for (events) |event| {
+                // Add to event buffer for processing
+                const idx = self.events.count;
+                if (idx < Events.MAX_EVENTS) {
+                    self.events.count += 1;
+                    self.events.events[idx] = event;
+                }
+            }
+        }
 
         self.process_events();
 
@@ -480,8 +543,9 @@ pub const Sim = struct {
         self.time.frame += 1;
         self.flush_events();
 
-        // Advance tape frame if recording (not replaying, not resimulating during rollback)
-        if (self.is_recording and !self.is_replaying and !self.is_resimulating) {
+        // Advance tape frame if recording a new frame (not replaying or resimulating)
+        // Note: Input events are written via observer on emit, this just advances the frame marker
+        if (self.is_recording and !self.is_replaying and !is_resimulating) {
             if (self.tape) |*t| {
                 t.start_frame() catch {
                     // Tape is full - stop recording gracefully
@@ -553,7 +617,7 @@ pub const Sim = struct {
     }
 
     /// Replay input events from tape for the current frame.
-    /// Routes inputs appropriately: to rollback state if in session, otherwise directly to event buffer.
+    /// Routes inputs to InputBuffer (tick reads from there).
     fn replay_tape_inputs(self: *Sim) void {
         if (self.tape) |*t| {
             const tape_events = t.get_events(self.time.frame);
@@ -561,17 +625,19 @@ pub const Sim = struct {
                 // Skip FrameStart markers and session events
                 if (event.kind == .FrameStart or event.kind.isSessionEvent()) continue;
 
-                if (self.in_session) {
-                    // Route through rollback for proper multiplayer handling
-                    const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1;
+                // Calculate match_frame for the upcoming tick
+                const match_frame = if (self.in_session)
+                    self.rollback.getMatchFrame(self.time.frame) + 1
+                else
+                    self.time.frame + 1;
 
-                    var local_event = event;
-                    local_event.peer_id = self.net.local_peer_id;
-                    self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});
-                } else {
-                    // Direct injection for non-session replay
-                    self.inject_event(event);
-                }
+                const peer_id = if (self.in_session) self.net.local_peer_id else 0;
+
+                var local_event = event;
+                local_event.peer_id = peer_id;
+
+                // Write to InputBuffer - tick will read from there
+                self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
             }
         }
     }
@@ -609,55 +675,31 @@ pub const Sim = struct {
         self.append_event(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
     }
 
-    /// Append a fresh local event. Records to tape, netstate, and rollback, then adds to buffer.
+    /// Append a fresh local event. Writes to canonical InputBuffer (observer handles tape).
     /// Use this for events from live user input (emit_* functions).
     fn append_event(self: *Sim, event: Event) void {
-        // Record to tape if recording
-        if (self.is_recording) {
-            if (self.tape) |*t| {
-                t.append_event(event) catch {
-                    // Tape is full - stop recording gracefully
-                    self.stop_recording();
-                    if (self.callbacks.on_tape_full) |on_tape_full| {
-                        on_tape_full();
-                    } else {
-                        Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
-                    }
-                };
-            }
-        }
+        // Calculate match_frame for the upcoming tick
+        const match_frame = if (self.in_session)
+            self.rollback.getMatchFrame(self.time.frame) + 1
+        else
+            self.time.frame + 1; // Non-session: match_frame = time.frame
 
-        // If in a session, record to both NetState (for packet sending) and RollbackState (for local replay)
+        // In session mode, use local_peer_id for network consistency
+        // In non-session mode, preserve the event's peer_id for local multiplayer
+        const peer_id = if (self.in_session) self.net.local_peer_id else event.peer_id;
+
+        // Tag the event with the resolved peer ID
+        var local_event = event;
+        local_event.peer_id = peer_id;
+
+        // Write to canonical InputBuffer - observer handles tape recording
+        self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
+
+        // If in a session, extend unacked window for packet sending to peers
+        // (events are already in InputBuffer - no copy needed)
         if (self.in_session) {
-            const match_frame = self.rollback.getMatchFrame(self.time.frame) + 1; // +1 because this event is for the next tick
             const match_frame_u16: u16 = @intCast(match_frame);
-
-            // Tag the event with the correct local peer ID for proper player routing
-            var local_event = event;
-            local_event.peer_id = self.net.local_peer_id;
-
-            // Record to NetState for packet sending to peers
-            self.net.recordLocalInputs(match_frame_u16, &[_]Event{local_event});
-
-            // Also store in RollbackState for the local peer so it can be replayed during rollback
-            self.rollback.emitInputs(self.net.local_peer_id, match_frame, &[_]Event{local_event});
-
-            // Inject with correct peer_id so it routes to the right player
-            self.inject_event(local_event);
-        } else {
-            self.inject_event(event);
-        }
-    }
-
-    /// Inject an event into the buffer without recording.
-    /// Use this for replayed events (from tape or remote peers during rollback).
-    fn inject_event(self: *Sim, event: Event) void {
-        const idx = self.events.count;
-        if (idx < Events.MAX_EVENTS) {
-            self.events.count += 1;
-            self.events.events[idx] = event;
-        } else {
-            @panic("Event buffer full. Have you called flush?");
+            self.net.extendUnackedWindow(match_frame_u16);
         }
     }
 
@@ -704,9 +746,17 @@ pub const Sim = struct {
             self.rollback.deinit();
             self.net.deinit();
 
+            // Reinitialize InputBuffer with session state from snapshot
+            // Preserve observer (tape recording) across restore
+            const saved_observer = self.input_buffer.observer;
+            self.input_buffer.* = .{};
+            self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
+            self.input_buffer.observer = saved_observer;
+
             self.rollback.* = .{
                 .session_start_frame = snapshot.net.session_start_frame,
                 .peer_count = snapshot.net.peer_count,
+                .input_buffer = self.input_buffer,
                 .allocator = self.allocator,
             };
             self.net.* = .{ .allocator = self.allocator };
@@ -751,7 +801,10 @@ pub const Sim = struct {
         };
         self.is_recording = true;
 
-        // Start the first frame
+        // Enable tape observer to record local inputs
+        self.enableTapeObserver();
+
+        // Start the first frame marker so events are captured correctly
         self.tape.?.start_frame() catch {
             return RecordingError.TapeError;
         };
@@ -760,6 +813,7 @@ pub const Sim = struct {
     /// Stop recording
     pub fn stop_recording(self: *Sim) void {
         self.is_recording = false;
+        self.disableTapeObserver();
     }
 
     /// Load a tape from raw bytes (enters replay mode)
@@ -928,12 +982,12 @@ test "tick advances single frame" {
     try std.testing.expectEqual(0, sim.time.frame);
     try std.testing.expectEqual(0, sim.time.total_ms);
 
-    sim.tick();
+    sim.tick(false);
     try std.testing.expectEqual(1, sim.time.frame);
     try std.testing.expectEqual(hz, sim.time.dt_ms);
     try std.testing.expectEqual(hz, sim.time.total_ms);
 
-    sim.tick();
+    sim.tick(false);
     try std.testing.expectEqual(2, sim.time.frame);
     try std.testing.expectEqual(hz * 2, sim.time.total_ms);
 }
@@ -960,11 +1014,11 @@ test "tick calls systems callback" {
     defer sim.deinit();
     sim.callbacks.systems = TestState.systems;
 
-    sim.tick();
+    sim.tick(false);
     try std.testing.expectEqual(1, TestState.call_count);
     try std.testing.expectEqual(hz, TestState.last_dt);
 
-    sim.tick();
+    sim.tick(false);
     try std.testing.expectEqual(2, TestState.call_count);
 }
 
@@ -1008,7 +1062,7 @@ test "tick processes events and updates input state" {
 
     // Emit keydown and tick
     sim.emit_keydown(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Key should now be down (bit 0 set)
     try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
@@ -1023,14 +1077,14 @@ test "tick ages input states" {
 
     // Press key and tick
     sim.emit_keydown(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Key state should be 0b1 (just pressed this frame)
     const state1 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
     try std.testing.expectEqual(0b1, state1);
 
     // Tick again (key still held - no new event, but held bit carries forward)
-    sim.tick();
+    sim.tick(false);
 
     // Key state should be 0b11 (held for 2 frames - aged once, still held)
     const state2 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
@@ -1038,7 +1092,7 @@ test "tick ages input states" {
 
     // Release key and tick
     sim.emit_keyup(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Key state should be 0b110 (was held for 2 frames, now released)
     const state3 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
@@ -1050,9 +1104,9 @@ test "take_snapshot captures time state" {
     defer sim.deinit();
 
     // Advance a few frames
-    sim.tick();
-    sim.tick();
-    sim.tick();
+    sim.tick(false);
+    sim.tick(false);
+    sim.tick(false);
 
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
@@ -1066,15 +1120,15 @@ test "restore restores time state" {
     defer sim.deinit();
 
     // Advance and snapshot
-    sim.tick();
-    sim.tick();
+    sim.tick(false);
+    sim.tick(false);
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Advance more
-    sim.tick();
-    sim.tick();
-    sim.tick();
+    sim.tick(false);
+    sim.tick(false);
+    sim.tick(false);
     try std.testing.expectEqual(5, sim.time.frame);
 
     // Restore
@@ -1090,7 +1144,7 @@ test "snapshot preserves input state" {
     // Set up some input state
     sim.emit_keydown(.KeyA, 0);
     sim.emit_mousemove(100.0, 200.0, 0);
-    sim.tick();
+    sim.tick(false);
 
     const snapshot = try sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
@@ -1098,7 +1152,7 @@ test "snapshot preserves input state" {
     // Modify input state
     sim.emit_keyup(.KeyA, 0);
     sim.emit_mousemove(999.0, 999.0, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Verify state changed
     try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
@@ -1161,32 +1215,45 @@ test "sessionEnd cleans up rollback state" {
     try std.testing.expect(!sim.in_session);
 }
 
-test "emit_keydown adds event to buffer" {
+test "emit_keydown adds event to InputBuffer" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
+    // Event buffer is empty until tick
     try std.testing.expectEqual(0, sim.events.count);
 
+    // Emit keydown - goes to InputBuffer at match_frame = time.frame + 1
     sim.emit_keydown(.KeyA, 0);
-    try std.testing.expectEqual(1, sim.events.count);
-    try std.testing.expectEqual(.KeyDown, sim.events.events[0].kind);
-    try std.testing.expectEqual(.KeyA, sim.events.events[0].payload.key);
-    try std.testing.expectEqual(.LocalKeyboard, sim.events.events[0].device);
 
+    // Event buffer still empty (tick hasn't run)
+    try std.testing.expectEqual(0, sim.events.count);
+
+    // Check InputBuffer has the event at frame 1 (time.frame=0, so match_frame=1)
+    const events = sim.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(.KeyDown, events[0].kind);
+    try std.testing.expectEqual(.KeyA, events[0].payload.key);
+    try std.testing.expectEqual(.LocalKeyboard, events[0].device);
+
+    // Emit keyup - also goes to InputBuffer at frame 1
     sim.emit_keyup(.KeyA, 0);
-    try std.testing.expectEqual(2, sim.events.count);
-    try std.testing.expectEqual(.KeyUp, sim.events.events[1].kind);
+    const events2 = sim.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 2), events2.len);
+    try std.testing.expectEqual(.KeyUp, events2[1].kind);
 }
 
-test "emit_mousemove adds event to buffer" {
+test "emit_mousemove adds event to InputBuffer" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
     sim.emit_mousemove(100.5, 200.5, 0);
-    try std.testing.expectEqual(1, sim.events.count);
-    try std.testing.expectEqual(.MouseMove, sim.events.events[0].kind);
-    try std.testing.expectEqual(100.5, sim.events.events[0].payload.mouse_move.x);
-    try std.testing.expectEqual(200.5, sim.events.events[0].payload.mouse_move.y);
+
+    // Check InputBuffer has the event at frame 1
+    const events = sim.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(.MouseMove, events[0].kind);
+    try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
+    try std.testing.expectEqual(200.5, events[0].payload.mouse_move.y);
 }
 
 test "session uses dynamic user_data_len for snapshots" {
@@ -1289,10 +1356,10 @@ test "recording captures events" {
     try sim.start_recording(0, 1024, 0);
 
     sim.emit_keydown(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     sim.emit_keyup(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Tape should have recorded the events
     const tape_buf = sim.get_tape_buffer();
@@ -1316,12 +1383,12 @@ test "Sim.seek restores to target frame" {
 
     // Advance a few frames with input
     sim.emit_keydown(.KeyA, 0);
-    sim.tick(); // frame 1
-    sim.tick(); // frame 2
+    sim.tick(false); // frame 1
+    sim.tick(false); // frame 2
     sim.emit_keyup(.KeyA, 0);
-    sim.tick(); // frame 3
-    sim.tick(); // frame 4
-    sim.tick(); // frame 5
+    sim.tick(false); // frame 3
+    sim.tick(false); // frame 4
+    sim.tick(false); // frame 5
 
     try std.testing.expectEqual(5, sim.time.frame);
 
@@ -1341,14 +1408,14 @@ test "Sim.seek replays events correctly" {
 
     // Frame 0->1: press A
     sim.emit_keydown(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // Frame 1->2: hold A
-    sim.tick();
+    sim.tick(false);
 
     // Frame 2->3: release A
     sim.emit_keyup(.KeyA, 0);
-    sim.tick();
+    sim.tick(false);
 
     // At frame 3, key A should be released
     try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);

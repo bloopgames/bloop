@@ -181,10 +181,6 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
         }
     };
 
-    if (sim.?.time.frame != 0) {
-        wasm_log("Untested: started recording from non-zero frame");
-    }
-
     return 0;
 }
 
@@ -293,8 +289,9 @@ pub export fn step(ms: u32) u32 {
 
 /// Run a single simulation frame without accumulator management.
 /// Use this for rollback resimulation to avoid re-entrancy issues with step().
+/// During resimulation, frames are confirmed (we're replaying known inputs).
 pub export fn tick() void {
-    sim.?.tick();
+    sim.?.tick(true);
 }
 
 pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {

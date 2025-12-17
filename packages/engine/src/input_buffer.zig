@@ -1,0 +1,370 @@
+const std = @import("std");
+const Events = @import("events.zig");
+const Event = Events.Event;
+
+pub const MAX_PEERS = 12;
+pub const MAX_FRAMES = 500;
+pub const MAX_EVENTS_PER_FRAME = 16;
+
+/// A single frame's worth of inputs for one peer.
+/// The match_frame field acts as a sentinel to detect stale ring buffer data.
+pub const InputSlot = struct {
+    events: [MAX_EVENTS_PER_FRAME]Event = undefined,
+    count: u8 = 0,
+    /// Which match frame this slot represents. Used to detect stale data after wraparound.
+    match_frame: u32 = 0,
+
+    pub fn clear(self: *InputSlot) void {
+        self.count = 0;
+    }
+
+    pub fn add(self: *InputSlot, event: Event) error{SlotFull}!void {
+        if (self.count >= MAX_EVENTS_PER_FRAME) {
+            return error.SlotFull;
+        }
+        self.events[self.count] = event;
+        self.count += 1;
+    }
+
+    pub fn slice(self: *const InputSlot) []const Event {
+        return self.events[0..self.count];
+    }
+};
+
+/// Observer callback for input events.
+/// Called when an input is added to the canonical buffer.
+pub const InputObserver = struct {
+    callback: *const fn (ctx: *anyopaque, peer: u8, match_frame: u32, event: Event) void,
+    context: *anyopaque,
+
+    pub fn notify(self: InputObserver, peer: u8, match_frame: u32, event: Event) void {
+        self.callback(self.context, peer, match_frame, event);
+    }
+};
+
+/// Canonical input buffer - single source of truth for all inputs.
+///
+/// All inputs (local or remote) are written here with match_frame tagging.
+/// Local play is a special case where peer_count=1 and match_frame == time.frame - session_start_frame.
+///
+/// Tape recording, packet building, and rollback resimulation are all views onto this buffer.
+pub const InputBuffer = struct {
+    /// Ring buffer: slots[peer][match_frame % MAX_FRAMES]
+    slots: [MAX_PEERS][MAX_FRAMES]InputSlot = [_][MAX_FRAMES]InputSlot{[_]InputSlot{.{}} ** MAX_FRAMES} ** MAX_PEERS,
+
+    /// Per-peer confirmed frame (inputs received up to this frame)
+    peer_confirmed: [MAX_PEERS]u32 = [_]u32{0} ** MAX_PEERS,
+
+    /// Session configuration
+    peer_count: u8 = 1,
+    session_start_frame: u32 = 0,
+
+    /// Observer for input events (e.g., tape recording)
+    observer: ?InputObserver = null,
+
+    /// Initialize for a session.
+    /// Call this when starting a session or when using local play (peer_count=1).
+    pub fn init(self: *InputBuffer, peer_count: u8, session_start_frame: u32) void {
+        self.peer_count = peer_count;
+        self.session_start_frame = session_start_frame;
+        // Reset confirmed frames
+        for (0..MAX_PEERS) |i| {
+            self.peer_confirmed[i] = 0;
+        }
+    }
+
+    /// Emit inputs for a peer at a given match frame.
+    /// This is the unified write API - works for any peer (local or remote).
+    /// Observer is notified for each event (used for tape recording).
+    pub fn emit(self: *InputBuffer, peer: u8, match_frame: u32, events: []const Event) void {
+        if (peer >= self.peer_count) return;
+
+        const slot_idx = match_frame % MAX_FRAMES;
+        var slot = &self.slots[peer][slot_idx];
+
+        // Only clear if this slot was for a different frame (preserves multiple events per frame)
+        if (slot.match_frame != match_frame) {
+            slot.clear();
+            slot.match_frame = match_frame;
+        }
+
+        for (events) |event| {
+            slot.add(event) catch {
+                // Slot full - log and continue
+                // In production this is a soft error, not a crash
+            };
+
+            // Notify observer for each event
+            if (self.observer) |obs| {
+                obs.notify(peer, match_frame, event);
+            }
+        }
+
+        // Update confirmed frame for this peer
+        if (match_frame > self.peer_confirmed[peer]) {
+            self.peer_confirmed[peer] = match_frame;
+        }
+    }
+
+    /// Get inputs for a peer at a given match frame.
+    /// Returns empty slice if the slot doesn't contain data for the requested frame.
+    pub fn get(self: *const InputBuffer, peer: u8, match_frame: u32) []const Event {
+        if (peer >= self.peer_count) return &[_]Event{};
+
+        const slot_idx = match_frame % MAX_FRAMES;
+        const slot = &self.slots[peer][slot_idx];
+
+        // Check sentinel to detect stale data
+        if (slot.match_frame != match_frame) {
+            return &[_]Event{};
+        }
+        return slot.slice();
+    }
+
+    /// Convert absolute frame to match frame (0-indexed from session start).
+    pub fn toMatchFrame(self: *const InputBuffer, absolute_frame: u32) u32 {
+        return absolute_frame - self.session_start_frame;
+    }
+
+    /// Convert match frame to absolute frame.
+    pub fn toAbsoluteFrame(self: *const InputBuffer, match_frame: u32) u32 {
+        return match_frame + self.session_start_frame;
+    }
+
+    /// Calculate the next confirmable frame (minimum across all peers).
+    pub fn calculateNextConfirmFrame(self: *const InputBuffer, current_match_frame: u32) u32 {
+        var min_frame = current_match_frame;
+        for (0..self.peer_count) |i| {
+            const peer_frame = self.peer_confirmed[i];
+            if (peer_frame < min_frame) {
+                min_frame = peer_frame;
+            }
+        }
+        return min_frame;
+    }
+};
+
+// ============================================================================
+// Frame space utilities (standalone functions)
+// ============================================================================
+
+/// Convert absolute frame to match frame.
+pub fn toMatchFrame(absolute: u32, session_start: u32) u32 {
+    return absolute - session_start;
+}
+
+/// Convert match frame to absolute frame.
+pub fn toAbsoluteFrame(match_frame: u32, session_start: u32) u32 {
+    return match_frame + session_start;
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "InputSlot basic operations" {
+    var slot = InputSlot{};
+
+    try std.testing.expectEqual(@as(u8, 0), slot.count);
+    try std.testing.expectEqual(@as(usize, 0), slot.slice().len);
+
+    try slot.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
+    try slot.add(Event.keyDown(.KeyB, 0, .LocalKeyboard));
+
+    try std.testing.expectEqual(@as(u8, 2), slot.count);
+    try std.testing.expectEqual(@as(usize, 2), slot.slice().len);
+    try std.testing.expectEqual(Events.Key.KeyA, slot.slice()[0].payload.key);
+    try std.testing.expectEqual(Events.Key.KeyB, slot.slice()[1].payload.key);
+}
+
+test "InputSlot clear" {
+    var slot = InputSlot{};
+    try slot.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
+
+    slot.clear();
+    try std.testing.expectEqual(@as(u8, 0), slot.count);
+    try std.testing.expectEqual(@as(usize, 0), slot.slice().len);
+}
+
+test "InputSlot max capacity" {
+    var slot = InputSlot{};
+
+    // Fill to capacity
+    for (0..MAX_EVENTS_PER_FRAME) |_| {
+        try slot.add(Event.keyDown(.KeyA, 0, .LocalKeyboard));
+    }
+    try std.testing.expectEqual(@as(u8, MAX_EVENTS_PER_FRAME), slot.count);
+
+    // Try to add one more - should error
+    try std.testing.expectError(error.SlotFull, slot.add(Event.keyDown(.KeyB, 0, .LocalKeyboard)));
+}
+
+test "InputBuffer emit and get round-trip" {
+    var buffer = InputBuffer{};
+    buffer.init(2, 100);
+
+    const events = [_]Event{
+        Event.keyDown(.KeyA, 0, .LocalKeyboard),
+        Event.keyDown(.KeyW, 0, .LocalKeyboard),
+    };
+    buffer.emit(0, 5, &events);
+
+    const retrieved = buffer.get(0, 5);
+    try std.testing.expectEqual(@as(usize, 2), retrieved.len);
+    try std.testing.expectEqual(Events.Key.KeyA, retrieved[0].payload.key);
+    try std.testing.expectEqual(Events.Key.KeyW, retrieved[1].payload.key);
+
+    // Verify peer_confirmed was updated
+    try std.testing.expectEqual(@as(u32, 5), buffer.peer_confirmed[0]);
+}
+
+test "InputBuffer ring buffer wraparound" {
+    var buffer = InputBuffer{};
+    buffer.init(1, 0);
+
+    // Emit at frame 0
+    const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
+    buffer.emit(0, 0, &events0);
+
+    // Emit at frame MAX_FRAMES (should wrap to same slot)
+    const eventsWrap = [_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)};
+    buffer.emit(0, MAX_FRAMES, &eventsWrap);
+
+    // Frame 0's slot should now have frame MAX_FRAMES's data
+    const retrieved = buffer.get(0, MAX_FRAMES);
+    try std.testing.expectEqual(@as(usize, 1), retrieved.len);
+    try std.testing.expectEqual(Events.Key.KeyB, retrieved[0].payload.key);
+
+    // Frame 0 should return empty (stale sentinel)
+    const stale = buffer.get(0, 0);
+    try std.testing.expectEqual(@as(usize, 0), stale.len);
+}
+
+test "InputBuffer stale slot detection" {
+    var buffer = InputBuffer{};
+    buffer.init(2, 0);
+
+    // Emit event for peer 1 at frame 109
+    const events = [_]Event{Event.mouseDown(.Left, 1, .LocalMouse)};
+    buffer.emit(1, 109, &events);
+
+    // Should get the event for frame 109
+    const retrieved109 = buffer.get(1, 109);
+    try std.testing.expectEqual(@as(usize, 1), retrieved109.len);
+
+    // Frame 109 + MAX_FRAMES maps to same slot
+    // But we never emitted events for that frame, so should get empty
+    const stale = buffer.get(1, 109 + MAX_FRAMES);
+    try std.testing.expectEqual(@as(usize, 0), stale.len);
+
+    // Frame 110 also has no events
+    const retrieved110 = buffer.get(1, 110);
+    try std.testing.expectEqual(@as(usize, 0), retrieved110.len);
+}
+
+test "InputBuffer observer callback" {
+    const TestCtx = struct {
+        call_count: u32 = 0,
+        last_peer: u8 = 0,
+        last_frame: u32 = 0,
+
+        fn callback(ctx: *anyopaque, peer: u8, match_frame: u32, _: Event) void {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.call_count += 1;
+            self.last_peer = peer;
+            self.last_frame = match_frame;
+        }
+    };
+
+    var ctx = TestCtx{};
+    var buffer = InputBuffer{};
+    buffer.init(2, 0);
+    buffer.observer = InputObserver{
+        .callback = TestCtx.callback,
+        .context = @ptrCast(&ctx),
+    };
+
+    // Emit 2 events
+    const events = [_]Event{
+        Event.keyDown(.KeyA, 0, .LocalKeyboard),
+        Event.keyDown(.KeyB, 0, .LocalKeyboard),
+    };
+    buffer.emit(1, 42, &events);
+
+    // Observer should have been called twice
+    try std.testing.expectEqual(@as(u32, 2), ctx.call_count);
+    try std.testing.expectEqual(@as(u8, 1), ctx.last_peer);
+    try std.testing.expectEqual(@as(u32, 42), ctx.last_frame);
+}
+
+test "InputBuffer multi-peer isolation" {
+    var buffer = InputBuffer{};
+    buffer.init(3, 0);
+
+    // Emit different events for each peer at the same frame
+    const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
+    const events1 = [_]Event{Event.keyDown(.KeyB, 1, .LocalKeyboard)};
+    const events2 = [_]Event{Event.keyDown(.KeyC, 2, .LocalKeyboard)};
+
+    buffer.emit(0, 10, &events0);
+    buffer.emit(1, 10, &events1);
+    buffer.emit(2, 10, &events2);
+
+    // Each peer should have their own events
+    try std.testing.expectEqual(Events.Key.KeyA, buffer.get(0, 10)[0].payload.key);
+    try std.testing.expectEqual(Events.Key.KeyB, buffer.get(1, 10)[0].payload.key);
+    try std.testing.expectEqual(Events.Key.KeyC, buffer.get(2, 10)[0].payload.key);
+}
+
+test "InputBuffer toMatchFrame and toAbsoluteFrame" {
+    var buffer = InputBuffer{};
+    buffer.init(1, 100);
+
+    try std.testing.expectEqual(@as(u32, 0), buffer.toMatchFrame(100));
+    try std.testing.expectEqual(@as(u32, 5), buffer.toMatchFrame(105));
+    try std.testing.expectEqual(@as(u32, 30), buffer.toMatchFrame(130));
+
+    try std.testing.expectEqual(@as(u32, 100), buffer.toAbsoluteFrame(0));
+    try std.testing.expectEqual(@as(u32, 105), buffer.toAbsoluteFrame(5));
+    try std.testing.expectEqual(@as(u32, 130), buffer.toAbsoluteFrame(30));
+}
+
+test "InputBuffer calculateNextConfirmFrame" {
+    var buffer = InputBuffer{};
+    buffer.init(3, 0);
+
+    // All peers at frame 0 initially
+    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+
+    // Peer 0 advances to frame 5
+    buffer.peer_confirmed[0] = 5;
+    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+
+    // Peer 1 advances to frame 3
+    buffer.peer_confirmed[1] = 3;
+    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+
+    // Peer 2 advances to frame 7 - now min is 3
+    buffer.peer_confirmed[2] = 7;
+    try std.testing.expectEqual(@as(u32, 3), buffer.calculateNextConfirmFrame(10));
+}
+
+test "InputBuffer ignores events for invalid peers" {
+    var buffer = InputBuffer{};
+    buffer.init(2, 0); // Only 2 peers (0 and 1)
+
+    // Try to emit for peer 2 (invalid)
+    const events = [_]Event{Event.keyDown(.KeyA, 2, .LocalKeyboard)};
+    buffer.emit(2, 5, &events);
+
+    // Should return empty
+    const retrieved = buffer.get(2, 5);
+    try std.testing.expectEqual(@as(usize, 0), retrieved.len);
+}
+
+test "standalone frame utilities" {
+    try std.testing.expectEqual(@as(u32, 0), toMatchFrame(100, 100));
+    try std.testing.expectEqual(@as(u32, 5), toMatchFrame(105, 100));
+    try std.testing.expectEqual(@as(u32, 100), toAbsoluteFrame(0, 100));
+    try std.testing.expectEqual(@as(u32, 105), toAbsoluteFrame(5, 100));
+}

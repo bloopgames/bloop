@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop, mount } from "../src/mod";
-import { setupSession } from "./helper";
+import { readTapeHeader } from "@bloopjs/engine";
+import { assert, Bloop, mount, unwrap } from "../src/mod";
+import { setupGames, setupSession, startOnlineMatch } from "./helper";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -88,7 +89,7 @@ describe("tapes", () => {
     });
   });
 
-  describe("playback", () => {
+  describe("local recording and playback", () => {
     it("can step back", async () => {
       const bloop = Bloop.create({
         bag: {
@@ -97,7 +98,7 @@ describe("tapes", () => {
       });
 
       bloop.system("countClicks", {
-        update({ bag, inputs, time }) {
+        update({ bag, inputs }) {
           if (inputs.mouse.left.down) {
             bag.clicks++;
           }
@@ -128,7 +129,7 @@ describe("tapes", () => {
       expect(bloop.bag.clicks).toEqual(0);
     });
 
-    it("regression - steps back after one frame", async () => {
+    it("regress - steps back after one frame", async () => {
       const game = Bloop.create({});
       const { sim } = await mount(game);
 
@@ -137,6 +138,57 @@ describe("tapes", () => {
       sim.stepBack();
 
       expect(game.context.time.frame).toEqual(1);
+    });
+
+    it("can start recording mid-game", async () => {
+      const game = Bloop.create({
+        bag: { score: 0 },
+      });
+
+      game.system("scorer", {
+        keydown({ event, bag }) {
+          if (event.key === "Space") {
+            bag.score += 10;
+          }
+        },
+      });
+
+      // Start without recording
+      const { sim } = await mount(game, { startRecording: false });
+      expect(sim.isRecording).toBe(false);
+
+      // Play for a bit without recording (frames 0->1, 1->2, 2->3)
+      sim.step();
+      sim.step();
+      sim.emit.keydown("Space");
+      sim.step();
+      expect(game.bag.score).toBe(10);
+      expect(game.context.time.frame).toBe(3);
+
+      // Now start recording mid-game at frame 3 (local only)
+      sim.record(100, 0);
+      expect(sim.isRecording).toBe(true);
+
+      // Score more points while recording (frames 3->4, 4->5)
+      sim.emit.keyup("Space");
+      sim.step();
+      sim.emit.keydown("Space");
+      sim.step();
+      expect(game.bag.score).toBe(20);
+      expect(game.context.time.frame).toBe(5);
+
+      // Save tape and load into replay sim
+      const tape = sim.saveTape();
+      const { sim: replay } = await mount(game);
+      replay.loadTape(tape);
+
+      // Recording should start at score 10, frame 3
+      replay.seek(3);
+      expect(game.bag.score).toBe(10);
+
+      // Recording should replay space events
+      replay.seek(5);
+      expect(game.bag.score).toBe(20);
     });
   });
 
@@ -185,10 +237,78 @@ describe("tapes", () => {
       sim1.step();
       expect(bloop.bag.score).toEqual(10);
     });
+
+    it("replays keydown events from file at correct frame", async () => {
+      // Load tape recorded from mario game
+      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      // Track keydown events externally (bag gets overwritten by tape snapshot)
+      let spaceDownFrame = -1;
+      let keydownCount = 0;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          keydownCount++;
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+
+      // Tape starts at frame 0, space keydown is at frame 94
+      expect(sim.time.frame).toBe(0);
+      expect(spaceDownFrame).toBe(-1);
+
+      // Step to frame 93 - no space yet
+      sim.seek(93);
+      expect(sim.time.frame).toBe(93);
+      expect(spaceDownFrame).toBe(-1);
+
+      // Step to frame 95 to process events at frame 94
+      sim.seek(95);
+      expect(sim.time.frame).toBe(95);
+      expect(spaceDownFrame).toBe(94);
+      expect(keydownCount).toEqual(10);
+    });
+
+    it("replays events from file when stepping forward with step()", async () => {
+      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      let spaceDownFrame = -1;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+
+      expect(sim.time.frame).toBe(0);
+      expect(sim.isReplaying).toBe(true);
+
+      // Step forward using step() - should advance and replay events
+      for (let i = 0; i < 100; i++) {
+        sim.step(16);
+      }
+
+      expect(sim.time.frame).toBe(100);
+      expect(spaceDownFrame).toBe(94);
+    });
   });
 
   describe("tape overflow", () => {
-    it("should stop recording gracefully when tape is full", async () => {
+    it("stops recording gracefully when tape is full", async () => {
       const game = Bloop.create({ bag: { count: 0 } });
       let tapeFull = false;
       let savedTape: Uint8Array | null = null;
@@ -240,156 +360,18 @@ describe("tapes", () => {
     });
   });
 
-  describe("local recording and playback", () => {
-    it("can start recording mid-game", async () => {
-      const game = Bloop.create({
-        bag: { score: 0 },
-      });
-
-      game.system("scorer", {
-        keydown({ event, bag }) {
-          if (event.key === "Space") {
-            bag.score += 10;
-          }
-        },
-      });
-
-      // start without recording
-      const { sim } = await mount(game, { startRecording: false });
-      expect(sim.isRecording).toBe(false);
-
-      // Play for a bit without recording (frames 0->1, 1->2, 2->3)
-      sim.step();
-      sim.step();
-      sim.emit.keydown("Space");
-      sim.step();
-      expect(game.bag.score).toBe(10);
-      expect(game.context.time.frame).toBe(3);
-
-      // Now start recording mid-game at frame 3 (local only)
-      sim.record(100, 0);
-      expect(sim.isRecording).toBe(true);
-
-      // Score more points while recording (frames 3->4, 4->5)
-      sim.emit.keyup("Space");
-      sim.step();
-      sim.emit.keydown("Space");
-      sim.step();
-      expect(game.bag.score).toBe(20);
-      expect(game.context.time.frame).toBe(5);
-
-      // Can save tape successfully
-      const tape = sim.saveTape();
-      expect(tape.length).toBeGreaterThan(0);
-
-      // Verify tape can be loaded in a fresh sim and replayed correctly
-      const { sim: sim2 } = await mount(game);
-      sim2.loadTape(tape);
-
-      // At frame 3 (start of recording), score should be 10
-      sim2.seek(3);
-      expect(game.bag.score).toBe(10);
-
-      // At frame 5 (end of recording), score should be 20
-      sim2.seek(5);
-      expect(game.bag.score).toBe(20);
-    });
-
-    it.skip("restarted recordings have valid tape data (TODO - write this)", async () => {});
-
-    it("replays keydown events from file at correct frame", async () => {
-      // Load tape recorded from mario game
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      // Track keydown events externally (bag gets overwritten by tape snapshot)
-      let spaceDownFrame = -1;
-      let keydownCount = 0;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          keydownCount++;
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      // Tape starts at frame 0, space keydown is at frame 94
-      expect(sim.time.frame).toBe(0);
-      expect(spaceDownFrame).toBe(-1);
-
-      // Step to frame 93 - no space yet
-      sim.seek(93);
-      expect(sim.time.frame).toBe(93);
-      expect(spaceDownFrame).toBe(-1);
-
-      // Step to frame 95 to process events at frame 94
-      sim.seek(95);
-      expect(sim.time.frame).toBe(95);
-      expect(spaceDownFrame).toBe(94);
-      expect(keydownCount).toEqual(7);
-    });
-
-    it("replays events from file when stepping forward with step()", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      let spaceDownFrame = -1;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      expect(sim.time.frame).toBe(0);
-      expect(sim.isReplaying).toBe(true);
-
-      // Step forward using step() - should advance and replay events
-      for (let i = 0; i < 100; i++) {
-        sim.step(16);
-      }
-
-      expect(sim.time.frame).toBe(100);
-      expect(spaceDownFrame).toBe(94);
-    });
-  });
-
   describe("networked session recording", () => {
     it("records and replays networked session with delayed packets", async () => {
-      // Game where clicks increment player scores
-      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game0.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
+      const [sim0, sim1, game0] = await startOnlineMatch(() => {
+        const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+        game.system("score", {
+          update({ bag, players }) {
+            if (players[0]?.mouse.left.down) bag.p0Score++;
+            if (players[1]?.mouse.left.down) bag.p1Score++;
+          },
+        });
+        return game;
       });
-
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game1.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
-      });
-
-      const { sim: sim0 } = await mount(game0);
-      const { sim: sim1 } = await mount(game1);
-
-      // Setup session - sim0 is player 0, sim1 is player 1
-      setupSession(sim0, sim1);
 
       // Frame 0: Player 0 clicks locally, Player 1 clicks on sim1
       sim0.emit.mousedown("Left", 0);
@@ -425,7 +407,6 @@ describe("tapes", () => {
 
       // Save tape from sim0's perspective
       const tapeBytes = sim0.saveTape();
-      expect(tapeBytes.length).toBeGreaterThan(0);
 
       // Create fresh game instance for replay
       const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
@@ -459,8 +440,9 @@ describe("tapes", () => {
     });
 
     it("records session that starts after initial gameplay", async () => {
-      // Game where clicks increment player scores
       const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+
       game0.system("score", {
         update({ bag, players }) {
           if (players[0]?.mouse.left.down) bag.p0Score++;
@@ -468,7 +450,6 @@ describe("tapes", () => {
         },
       });
 
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       game1.system("score", {
         update({ bag, players }) {
           if (players[0]?.mouse.left.down) bag.p0Score++;
@@ -476,7 +457,6 @@ describe("tapes", () => {
         },
       });
 
-      // Start without recording
       const { sim: sim0 } = await mount(game0, { startRecording: false });
       const { sim: sim1 } = await mount(game1, { startRecording: false });
 
@@ -548,32 +528,27 @@ describe("tapes", () => {
     });
 
     it("allows recording before session init", async () => {
-      const game0 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game0.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
-      });
-
-      const game1 = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
-      game1.system("score", {
-        update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
-        },
+      const [game0, game1] = setupGames(() => {
+        const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+        game.system("score", {
+          update({ bag, players }) {
+            if (players[0]?.mouse.left.down) bag.p0Score++;
+            if (players[1]?.mouse.left.down) bag.p1Score++;
+          },
+        });
+        return game;
       });
 
       // Start WITH recording at frame 0 (no session yet)
-      const { sim: sim0 } = await mount(game0);
+      const { sim: sim0 } = await mount(game0, { startRecording: true });
       const { sim: sim1 } = await mount(game1, { startRecording: false });
 
       // Run some frames before session (recording is active but no session)
-      sim0.step(); // frame 0 -> 1
+      sim0.step();
       sim1.step();
-      sim0.step(); // frame 1 -> 2
+      sim0.step();
       sim1.step();
-      sim0.step(); // frame 2 -> 3
+      sim0.step();
       sim1.step();
       expect(game0.context.time.frame).toBe(3);
 
@@ -634,15 +609,48 @@ describe("tapes", () => {
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
-    it.skip("regress - retains match frames when rollback happens", () => {
-      // fixed with is_resimulating change
-      // run 100 frames
-      // start connection
-      // start recording
-      // peer a is consistently 2 frames behind peer b
-      // peer a inputs a jump on match frame 50 and 100
-      // dump tape
-      // replay tape and ensure that the jump inputs are on the correct match frames
+    it("regress - captures tape with online session and no input events", async () => {
+      const [sim0, sim1] = await startOnlineMatch(() => {
+        return Bloop.create();
+      });
+
+      const outbound0: Uint8Array[] = [];
+      const outbound1: Uint8Array[] = [];
+
+      for (let i = 0; i < 1000; i++) {
+        // Capture outgoing packets to simulate network delay
+        const packet0 = unwrap(sim0.net.getOutboundPacket(1));
+        outbound0.push(packet0);
+        const packet1 = unwrap(sim1.net.getOutboundPacket(0));
+        outbound1.push(packet1);
+
+        // Step both sims
+        sim0.step();
+        sim1.step();
+
+        // 2 frame delay on receiving packets
+        if (i > 1) {
+          const packet0 = unwrap(
+            outbound0.shift(),
+            `Expected packet on tick ${i}`,
+          );
+          sim1.net.receivePacket(packet0);
+
+          const packet1 = unwrap(
+            outbound1.shift(),
+            `Expected packet on tick ${i}`,
+          );
+          sim0.net.receivePacket(packet1);
+        }
+      }
+
+      expect(sim0.time.frame).toEqual(1000);
+
+      const tape = sim0.saveTape();
+
+      const header = readTapeHeader(tape);
+      expect(header.startFrame).toBe(0);
+      expect(header.frameCount).toBe(1001); // 1 initial frame + 1000 steps
     });
   });
 });
