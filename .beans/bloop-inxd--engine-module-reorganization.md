@@ -1,10 +1,11 @@
 ---
 # bloop-inxd
 title: Engine Module Reorganization
-status: todo
+status: completed
 type: epic
+priority: normal
 created_at: 2025-12-16T22:55:34Z
-updated_at: 2025-12-16T22:55:34Z
+updated_at: 2025-12-17T23:22:01Z
 parent: bloop-ar9z
 ---
 

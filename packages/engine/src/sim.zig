@@ -202,7 +202,7 @@ pub const Sim = struct {
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
-    fn getUserDataLen(self: *const Sim) u32 {
+    pub fn getUserDataLen(self: *const Sim) u32 {
         if (self.callbacks.user_data_len) |get_len| {
             return get_len();
         }
@@ -418,7 +418,7 @@ pub const Sim = struct {
     }
 
     /// Session-aware step that handles rollback when late inputs arrive
-    fn sessionStep(self: *Sim) void {
+    pub fn sessionStep(self: *Sim) void {
         // The frame we're about to process (after this tick, match_frame will be this value)
         const target_match_frame = self.session.getMatchFrame(self.time.frame) + 1;
 
@@ -559,7 +559,7 @@ pub const Sim = struct {
 
     /// Replay session lifecycle events from tape for the current frame.
     /// Must be called before replay_tape_packets and replay_tape_inputs.
-    fn replay_tape_session_events(self: *Sim) void {
+    pub fn replay_tape_session_events(self: *Sim) void {
         const tape_events = self.vcr.getEventsForFrame(self.time.frame);
         for (tape_events) |event| {
             switch (event.kind) {
@@ -584,7 +584,7 @@ pub const Sim = struct {
     }
 
     /// Replay packets from tape for the current frame
-    fn replay_tape_packets(self: *Sim) void {
+    pub fn replay_tape_packets(self: *Sim) void {
         var iter = self.vcr.getPacketsForFrame(self.time.frame) orelse return;
         while (iter.next()) |packet| {
             // Process the packet as if it was just received
@@ -597,7 +597,7 @@ pub const Sim = struct {
 
     /// Replay input events from tape for the current frame.
     /// Routes inputs to InputBuffer (tick reads from there).
-    fn replay_tape_inputs(self: *Sim) void {
+    pub fn replay_tape_inputs(self: *Sim) void {
         const tape_events = self.vcr.getEventsForFrame(self.time.frame);
         for (tape_events) |event| {
             // Skip FrameStart markers and session events

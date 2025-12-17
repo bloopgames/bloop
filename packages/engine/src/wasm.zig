@@ -2,7 +2,8 @@ const std = @import("std");
 const Events = @import("events.zig");
 const Tapes = @import("tapes/tapes.zig");
 const Log = @import("log.zig");
-const Sim = @import("sim.zig").Sim;
+const root = @import("root.zig");
+const Engine = root.Engine;
 
 // ─────────────────────────────────────────────────────────────
 // WASM externs
@@ -45,7 +46,7 @@ var global_cb_handle: cb_handle = 0;
 var global_snapshot_handle: cb_handle = 0;
 var global_restore_handle: cb_handle = 0;
 
-var sim: ?Sim = null;
+var engine: ?Engine = null;
 
 pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
@@ -89,27 +90,28 @@ pub export fn initialize() wasmPointer {
     std.debug.assert(@sizeOf(Events.EventPayload) == 8);
     std.debug.assert(@alignOf(Events.EventPayload) == 4);
 
-    // Allocate the callback pointer struct first (we need to pass it to Sim.init)
+    // Allocate the callback pointer struct first (we need to pass it to Engine.init)
     // the callback pointer injects:
     // 0 - pointer to time context
     // 1 - pointer to input context
     // 2 - pointer to events buffer
     cb_ptr = alloc(@sizeOf(u32) * 3);
 
-    // Initialize the Sim
-    sim = Sim.init(wasm_alloc, cb_ptr) catch {
-        @panic("Failed to initialize simulation");
+    // Initialize the Engine (which creates and owns Sim)
+    engine = Engine.init(wasm_alloc, cb_ptr) catch {
+        @panic("Failed to initialize engine");
     };
 
     // Wire up the callback pointer with Sim's context pointers
+    const sim = engine.?.sim;
     const cb_data: [*]u32 = @ptrFromInt(cb_ptr);
-    cb_data[0] = @intFromPtr(sim.?.time);
-    cb_data[1] = @intFromPtr(sim.?.inputs);
-    cb_data[2] = @intFromPtr(sim.?.events);
-    cb_data[3] = @intFromPtr(sim.?.net_ctx);
+    cb_data[0] = @intFromPtr(sim.time);
+    cb_data[1] = @intFromPtr(sim.inputs);
+    cb_data[2] = @intFromPtr(sim.events);
+    cb_data[3] = @intFromPtr(sim.net_ctx);
 
     // Wire up WASM callbacks
-    sim.?.callbacks = .{
+    sim.callbacks = .{
         .before_frame = wasm_before_frame,
         .systems = wasm_systems_callback,
         .user_serialize = wasm_user_serialize,
@@ -164,17 +166,17 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
 }
 
 pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_bytes: u32) u8 {
-    sim.?.start_recording(user_data_len, max_events, max_packet_bytes) catch |e| {
+    engine.?.startRecording(user_data_len, max_events, max_packet_bytes) catch |e| {
         switch (e) {
-            Sim.RecordingError.AlreadyRecording => {
+            Engine.RecordingError.AlreadyRecording => {
                 wasm_log("Already recording");
                 return 2;
             },
-            Sim.RecordingError.OutOfMemory => {
+            Engine.RecordingError.OutOfMemory => {
                 wasm_log("Failed to start recording: Out of memory");
                 return 1;
             },
-            Sim.RecordingError.TapeError => {
+            Engine.RecordingError.TapeError => {
                 wasm_log("Failed to start first tape frame");
                 return 1;
             },
@@ -185,29 +187,29 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
 }
 
 pub export fn stop_recording() u8 {
-    if (!sim.?.isRecording()) {
+    if (!engine.?.isRecording()) {
         wasm_log("Not currently recording");
         return 2;
     }
-    sim.?.stop_recording();
+    engine.?.stopRecording();
     return 0;
 }
 
 pub export fn is_recording() bool {
-    return sim.?.isRecording();
+    return engine.?.isRecording();
 }
 
 pub export fn is_replaying() bool {
-    return sim.?.isReplaying();
+    return engine.?.isReplaying();
 }
 
 pub export fn get_tape_ptr() wasmPointer {
-    const buf = sim.?.get_tape_buffer() orelse @panic("No active tape");
+    const buf = engine.?.getTapeBuffer() orelse @panic("No active tape");
     return @intFromPtr(buf.ptr);
 }
 
 pub export fn get_tape_len() u32 {
-    const buf = sim.?.get_tape_buffer() orelse @panic("No active tape");
+    const buf = engine.?.getTapeBuffer() orelse @panic("No active tape");
     return @intCast(buf.len);
 }
 
@@ -215,7 +217,7 @@ pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
     const tape_buf: [*]u8 = @ptrFromInt(tape_ptr);
     const tape_slice = tape_buf[0..tape_len];
 
-    sim.?.load_tape(tape_slice) catch |e| {
+    engine.?.loadTape(tape_slice) catch |e| {
         switch (e) {
             error.CurrentlyRecording => {
                 wasm_log("Cannot load tape while recording");
@@ -248,9 +250,9 @@ pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
 }
 
 pub export fn deinit() void {
-    if (sim != null) {
-        sim.?.deinit();
-        sim = null;
+    if (engine != null) {
+        engine.?.deinit();
+        engine = null;
     }
     if (arena_alloc != null) {
         arena_alloc.?.deinit();
@@ -259,7 +261,7 @@ pub export fn deinit() void {
 }
 
 pub export fn take_snapshot(user_data_len: u32) wasmPointer {
-    const snap = sim.?.take_snapshot(user_data_len) catch {
+    const snap = engine.?.sim.take_snapshot(user_data_len) catch {
         @panic("Snapshot allocation failed: Out of memory");
     };
     return @intFromPtr(snap);
@@ -267,11 +269,11 @@ pub export fn take_snapshot(user_data_len: u32) wasmPointer {
 
 pub export fn restore(snapshot_ptr: wasmPointer) void {
     const snap: *Tapes.Snapshot = @ptrFromInt(snapshot_ptr);
-    sim.?.restore(snap);
+    engine.?.sim.restore(snap);
 }
 
 pub export fn seek(frame: u32) void {
-    sim.?.seek(frame);
+    engine.?.seek(frame);
 }
 
 pub export fn register_systems(handle: cb_handle) void {
@@ -284,46 +286,46 @@ pub export fn step(ms: u32) u32 {
             _ = arena_alloc.?.reset(.retain_capacity);
         }
     }
-    return sim.?.step(ms);
+    return engine.?.advance(ms);
 }
 
 /// Run a single simulation frame without accumulator management.
 /// Use this for rollback resimulation to avoid re-entrancy issues with step().
 /// During resimulation, frames are confirmed (we're replaying known inputs).
 pub export fn tick() void {
-    sim.?.tick(true);
+    engine.?.sim.tick(true);
 }
 
 pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {
-    sim.?.emit_keydown(key_code, peer_id);
+    engine.?.sim.emit_keydown(key_code, peer_id);
 }
 
 pub export fn emit_keyup(key_code: Events.Key, peer_id: u8) void {
-    sim.?.emit_keyup(key_code, peer_id);
+    engine.?.sim.emit_keyup(key_code, peer_id);
 }
 
 pub export fn emit_mousedown(button: Events.MouseButton, peer_id: u8) void {
-    sim.?.emit_mousedown(button, peer_id);
+    engine.?.sim.emit_mousedown(button, peer_id);
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton, peer_id: u8) void {
-    sim.?.emit_mouseup(button, peer_id);
+    engine.?.sim.emit_mouseup(button, peer_id);
 }
 
 pub export fn emit_mousemove(x: f32, y: f32, peer_id: u8) void {
-    sim.?.emit_mousemove(x, y, peer_id);
+    engine.?.sim.emit_mousemove(x, y, peer_id);
 }
 
 pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, peer_id: u8) void {
-    sim.?.emit_mousewheel(delta_x, delta_y, peer_id);
+    engine.?.sim.emit_mousewheel(delta_x, delta_y, peer_id);
 }
 
 pub export fn get_time_ctx() wasmPointer {
-    return @intFromPtr(sim.?.time);
+    return @intFromPtr(engine.?.sim.time);
 }
 
 pub export fn get_events_ptr() wasmPointer {
-    return @intFromPtr(sim.?.events);
+    return @intFromPtr(engine.?.sim.events);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -333,7 +335,7 @@ pub export fn get_events_ptr() wasmPointer {
 /// Initialize a multiplayer session with rollback support
 /// Captures current frame as session_start_frame
 pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
-    sim.?.sessionInit(peer_count, user_data_len) catch {
+    engine.?.sessionInit(peer_count, user_data_len) catch {
         wasm_log("Failed to initialize session: Out of memory");
         return 1;
     };
@@ -342,7 +344,7 @@ pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
 
 /// End the current session
 pub export fn session_end() void {
-    sim.?.sessionEnd();
+    engine.?.sessionEnd();
 }
 
 /// Emit inputs for a peer at a given match frame
@@ -351,12 +353,12 @@ pub export fn session_end() void {
 pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPointer, events_len: u32) void {
     const events: [*]const Events.Event = @ptrFromInt(events_ptr);
     const events_slice = events[0..events_len];
-    sim.?.sessionEmitInputs(peer, match_frame, events_slice);
+    engine.?.sessionEmitInputs(peer, match_frame, events_slice);
 }
 
 /// Get pointer to net context struct
 pub export fn get_net_ctx() usize {
-    return @intFromPtr(sim.?.net_ctx);
+    return @intFromPtr(engine.?.sim.net_ctx);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -365,50 +367,50 @@ pub export fn get_net_ctx() usize {
 
 /// Set local peer ID for packet encoding
 pub export fn session_set_local_peer(peer_id: u8) void {
-    sim.?.setLocalPeer(peer_id);
+    engine.?.setLocalPeer(peer_id);
 }
 
 /// Mark a peer as connected
 pub export fn session_peer_connect(peer_id: u8) void {
-    sim.?.connectPeer(peer_id);
+    engine.?.connectPeer(peer_id);
 }
 
 /// Mark a peer as disconnected
 pub export fn session_peer_disconnect(peer_id: u8) void {
-    sim.?.disconnectPeer(peer_id);
+    engine.?.disconnectPeer(peer_id);
 }
 
 /// Build an outbound packet for a target peer
 /// Call get_outbound_packet to get the pointer
 /// Call get_outbound_packet_len to get the length
 pub export fn build_outbound_packet(target_peer: u8) void {
-    sim.?.buildOutboundPacket(target_peer);
+    engine.?.buildOutboundPacket(target_peer);
 }
 
 /// Get pointer to the outbound packet buffer
 pub export fn get_outbound_packet() wasmPointer {
-    return @intCast(sim.?.getOutboundPacketPtr());
+    return @intCast(engine.?.getOutboundPacketPtr());
 }
 
 /// Get length of the outbound packet
 pub export fn get_outbound_packet_len() u32 {
-    return sim.?.getOutboundPacketLen();
+    return engine.?.getOutboundPacketLen();
 }
 
 /// Process a received packet
 /// Returns 0 on success, error code otherwise
 pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
-    return sim.?.receivePacket(ptr, len);
+    return engine.?.receivePacket(ptr, len);
 }
 
 /// Get seq for a peer (latest frame received from them)
 pub export fn get_peer_seq(peer: u8) u16 {
-    return sim.?.getPeerSeq(peer);
+    return engine.?.getPeerSeq(peer);
 }
 
 /// Get ack for a peer (latest frame they acked from us)
 pub export fn get_peer_ack(peer: u8) u16 {
-    return sim.?.getPeerAck(peer);
+    return engine.?.getPeerAck(peer);
 }
 
 // ─────────────────────────────────────────────────────────────
