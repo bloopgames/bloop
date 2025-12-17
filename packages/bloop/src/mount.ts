@@ -7,16 +7,24 @@ import { type EngineHooks, Sim } from "./sim";
 import { assert } from "./util";
 
 /**
+ * An object that can be mounted to the simulation engine.
+ * Bloop instances satisfy this interface.
+ */
+export type Mountable = {
+  hooks: EngineHooks;
+};
+
+/**
  * Mount a simulation engine instance - instantiates wasm and sets up hooks and initial state.
  *
  * This is called by app.start on the web.
  */
 export async function mount(
-  opts: MountOpts,
+  mountable: Mountable,
   options?: MountOptions,
 ): Promise<MountResult> {
-  const wasmUrl = options?.wasmUrl ?? opts.wasmUrl ?? DEFAULT_WASM_URL;
-  const startRecording = options?.startRecording ?? opts.startRecording ?? true;
+  const wasmUrl = options?.wasmUrl ?? DEFAULT_WASM_URL;
+  const startRecording = options?.startRecording ?? true;
   const { maxEvents, maxPacketBytes } = calculateTapeConfig(options?.tape);
 
   // https://github.com/oven-sh/bun/issues/12434
@@ -38,15 +46,15 @@ export async function mount(
     env: {
       memory,
       __systems: function (system_handle: number, ptr: number) {
-        opts.hooks.setBuffer(memory.buffer);
-        opts.hooks.systemsCallback(system_handle, ptr);
+        mountable.hooks.setBuffer(memory.buffer);
+        mountable.hooks.systemsCallback(system_handle, ptr);
       },
       __before_frame: function (ptr: EnginePointer, frame: number) {
         try {
           // Refresh DataViews before beforeFrame hook (memory may have grown)
-          opts.hooks.setBuffer(memory.buffer);
-          opts.hooks.setContext(ptr);
-          opts.hooks.beforeFrame?.(frame);
+          mountable.hooks.setBuffer(memory.buffer);
+          mountable.hooks.setContext(ptr);
+          mountable.hooks.beforeFrame?.(frame);
         } catch (e) {
           console.error("Error in beforeFrame hook:", e);
         }
@@ -76,11 +84,11 @@ export async function mount(
         console.log(string);
       },
       __user_data_len: function () {
-        const serializer = opts.hooks.serialize();
+        const serializer = mountable.hooks.serialize();
         return serializer ? serializer.size : 0;
       },
       user_data_serialize: function (ptr: EnginePointer, len: number) {
-        const serializer = opts.hooks.serialize();
+        const serializer = mountable.hooks.serialize();
         assert(
           len === serializer.size,
           `user_data_serialize length mismatch, expected=${serializer.size} got=${len}`,
@@ -88,7 +96,7 @@ export async function mount(
         serializer.write(memory.buffer, ptr);
       },
       user_data_deserialize: function (ptr: EnginePointer, len: number) {
-        opts.hooks.deserialize(memory.buffer, ptr, len);
+        mountable.hooks.deserialize(memory.buffer, ptr, len);
       },
     },
   });
@@ -96,15 +104,15 @@ export async function mount(
 
   const enginePointer = wasm.initialize();
   sim = new Sim(wasm, memory, {
-    serialize: opts.hooks.serialize,
+    serialize: mountable.hooks.serialize,
   });
 
   if (startRecording) {
     sim.record(maxEvents, maxPacketBytes);
   }
 
-  opts.hooks.setBuffer(memory.buffer);
-  opts.hooks.setContext(enginePointer);
+  mountable.hooks.setBuffer(memory.buffer);
+  mountable.hooks.setContext(enginePointer);
 
   return {
     sim,
@@ -138,18 +146,6 @@ export type MountOptions = {
    * Custom WASM URL (for advanced use cases)
    */
   wasmUrl?: URL;
-};
-
-export type MountOpts = {
-  hooks: EngineHooks;
-
-  wasmUrl?: URL;
-
-  /**
-   * Whether to start recording immediately upon mount
-   * Defaults to true
-   */
-  startRecording?: boolean;
 };
 
 export type MountResult = {

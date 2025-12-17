@@ -273,28 +273,30 @@ describe("tapes", () => {
   describe("caller payload", () => {
     it("can capture and restore arbitrary payloads", async () => {
       let called = false;
-      const { sim } = await mount({
-        startRecording: false,
-        hooks: {
-          ...defaultHooks,
-          serialize() {
-            return {
-              write(buffer, ptr) {
-                const data = new Uint8Array(buffer, ptr, 1);
-                data[0] = 66;
-              },
-              size: 1,
-            };
-          },
-          deserialize(buffer, ptr, length) {
-            called = true;
-            const data = new Uint8Array(buffer, ptr, length);
-            expect(data.byteLength).toBe(1);
-            expect(length).toEqual(1);
-            expect(data[0]).toBe(66);
+      const { sim } = await mount(
+        {
+          hooks: {
+            ...defaultHooks,
+            serialize() {
+              return {
+                write(buffer, ptr) {
+                  const data = new Uint8Array(buffer, ptr, 1);
+                  data[0] = 66;
+                },
+                size: 1,
+              };
+            },
+            deserialize(buffer, ptr, length) {
+              called = true;
+              const data = new Uint8Array(buffer, ptr, length);
+              expect(data.byteLength).toBe(1);
+              expect(length).toEqual(1);
+              expect(data[0]).toBe(66);
+            },
           },
         },
-      });
+        { startRecording: false },
+      );
 
       const snapshot = sim.snapshot();
       sim.restore(snapshot);

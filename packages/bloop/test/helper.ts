@@ -1,6 +1,6 @@
 import type { Bloop } from "../src/bloop";
 import type { BloopSchema } from "../src/data/schema";
-import { type MountOptions, type MountOpts, mount } from "../src/mount";
+import { type MountOptions, mount } from "../src/mount";
 import type { Sim } from "../src/sim";
 import { unwrap } from "../src/util";
 

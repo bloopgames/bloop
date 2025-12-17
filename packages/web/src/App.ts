@@ -1,4 +1,9 @@
-import { type Bloop, type MountOpts, mount, type Sim } from "@bloopjs/bloop";
+import {
+  type Bloop,
+  type MountOptions,
+  mount,
+  type Sim,
+} from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton, readTapeHeader } from "@bloopjs/engine";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
@@ -36,8 +41,7 @@ const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
 /** Start a bloop game on the web */
 export async function start(opts: StartOptions): Promise<App> {
   if (!opts.sim) {
-    const { sim } = await mount({
-      hooks: opts.game.hooks,
+    const { sim } = await mount(opts.game, {
       startRecording: opts.startRecording ?? true,
       wasmUrl: opts.engineWasmUrl,
     });
@@ -374,7 +378,7 @@ export class App {
    */
   async acceptHmr(
     module: any,
-    opts?: Partial<MountOpts> & { files?: string[] },
+    opts?: MountOptions & { files?: string[] },
   ): Promise<void> {
     const game = (module.game ?? module) as Bloop<any>;
     if (!game.hooks) {
@@ -385,8 +389,7 @@ export class App {
 
     // load session from the current sim
     this.sim.pause();
-    const { sim } = await mount({
-      hooks: game.hooks,
+    const { sim } = await mount(game, {
       wasmUrl: new URL("/bloop-wasm/bloop.wasm", window.location.href),
       ...opts,
     });
