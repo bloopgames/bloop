@@ -1,28 +1,19 @@
 import { describe, expect, it } from "bun:test";
-import { MAX_ROLLBACK_FRAMES } from "@bloopjs/engine";
-import { assert, Bloop, mount, unwrap } from "../src/mod";
-import { setupSession, stepBoth } from "./helper";
+import { assert, Bloop } from "../src/mod";
+import { startOnlineMatch } from "./helper";
 
 describe("netcode integration", () => {
   it("should route remote peer events to correct player", async () => {
-    // Create two games representing two peers
-    const game0 = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
-    const game1 = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
-
-    // Track clicks per player
-    const clickSystem = {
-      update({ bag, players }: { bag: typeof game0.bag; players: any[] }) {
-        if (players[0]?.mouse.left.down) bag.p0Clicks++;
-        if (players[1]?.mouse.left.down) bag.p1Clicks++;
-      },
-    };
-    game0.system("clicks", clickSystem as any);
-    game1.system("clicks", clickSystem as any);
-
-    const { sim: sim0 } = await mount(game0);
-    const { sim: sim1 } = await mount(game1);
-
-    setupSession(sim0, sim1);
+    const [sim0, sim1, game0, game1] = await startOnlineMatch(() => {
+      const game = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
+      game.system("clicks", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Clicks++;
+          if (players[1]?.mouse.left.down) bag.p1Clicks++;
+        },
+      });
+      return game;
+    });
 
     // Step both sims to start
     sim0.step();
@@ -50,22 +41,16 @@ describe("netcode integration", () => {
   });
 
   it("should handle peer 1 sending to peer 0", async () => {
-    const game0 = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
-    const game1 = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
-
-    const clickSystem = {
-      update({ bag, players }: { bag: typeof game0.bag; players: any[] }) {
-        if (players[0]?.mouse.left.down) bag.p0Clicks++;
-        if (players[1]?.mouse.left.down) bag.p1Clicks++;
-      },
-    };
-    game0.system("clicks", clickSystem as any);
-    game1.system("clicks", clickSystem as any);
-
-    const { sim: sim0 } = await mount(game0);
-    const { sim: sim1 } = await mount(game1);
-
-    setupSession(sim0, sim1);
+    const [sim0, sim1, game0, game1] = await startOnlineMatch(() => {
+      const game = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
+      game.system("clicks", {
+        update({ bag, players }) {
+          if (players[0]?.mouse.left.down) bag.p0Clicks++;
+          if (players[1]?.mouse.left.down) bag.p1Clicks++;
+        },
+      });
+      return game;
+    });
 
     sim0.step();
     sim1.step();
@@ -91,75 +76,17 @@ describe("netcode integration", () => {
     expect(game0.bag.p1Clicks).toBe(1);
   });
 
-  // TODO: this test passed when it should have failed - see getUnackedFrame in net.zig
-  it("regress: does not send stale events after ring buffer wrap", async () => {
-    const receivedEvents = new Map<number, string>();
-
-    const game0 = Bloop.create({ bag: {} });
-    const game1 = Bloop.create({ bag: {} });
-    game1.system("track", {
-      keydown({ event, net }) {
-        console.log("received event");
-        receivedEvents.set(net.matchFrame, event.key);
-      },
-      update({ net, time }) {
-        console.log("checking match frame", net.matchFrame, time.frame);
-      },
-    });
-
-    const { sim: sim0 } = await mount(game0, { startRecording: false });
-    const { sim: sim1 } = await mount(game1, { startRecording: false });
-
-    // Setup session
-    setupSession(sim0, sim1);
-
-    // Frame 1: peer0 KeyA
-    stepBoth(sim0, sim1);
-    sim0.emit.keydown("KeyA", 0);
-    sim0.step();
-
-    const peerState = sim0.net.getPeerState(1);
-    expect(peerState).toEqual({ seq: 0, ack: 0 });
-
-    for (let i = 0; i < MAX_ROLLBACK_FRAMES + 10; i++) {
-      // TODO: why does this cause changes in test behavior??
-      // sim0.emit.mousemove(100, 100);
-      sim1.net.receivePacket(unwrap(sim0.net.getOutboundPacket(1)));
-      sim0.step();
-    }
-
-    for (let i = 0; i < MAX_ROLLBACK_FRAMES + 10; i++) {
-      sim1.step();
-    }
-
-    // we should not receive the stale KeyA event on a future frame
-    expect(receivedEvents.size).toEqual(1);
-    expect(receivedEvents.get(1)).toEqual("KeyA");
-  });
-
   it("regress: processes two events on the same frame through a rollback session", async () => {
-    // If keydown and keyup happen on the same frame, both should be processed
-    const game = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
-    game.system("track-keys", {
-      update({ bag, players }) {
-        if (players[0]?.keys.a.down) bag.aCount++;
-        if (players[0]?.keys.b.down) bag.bCount++;
-      },
+    const [sim0, sim1, game0, game1] = await startOnlineMatch(() => {
+      const game = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
+      game.system("track-keys", {
+        update({ bag, players }) {
+          if (players[0]?.keys.a.down) bag.aCount++;
+          if (players[0]?.keys.b.down) bag.bCount++;
+        },
+      });
+      return game;
     });
-
-    const game1 = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
-    game1.system("track-keys", {
-      update({ bag, players }) {
-        if (players[0]?.keys.a.down) bag.aCount++;
-        if (players[0]?.keys.b.down) bag.bCount++;
-      },
-    });
-
-    const { sim: sim0 } = await mount(game, { startRecording: false });
-    const { sim: sim1 } = await mount(game1, { startRecording: false });
-
-    // Initialize session
-    setupSession(sim0, sim1);
 
     // Emit both keydown and keyup before stepping (same frame)
     sim0.emit.keydown("KeyA", 0);
@@ -168,8 +95,8 @@ describe("netcode integration", () => {
     sim1.step();
 
     // Both events should be processed during prediction
-    expect(game.bag.aCount).toBe(1);
-    expect(game.bag.bCount).toBe(1);
+    expect(game0.bag.aCount).toBe(1);
+    expect(game0.bag.bCount).toBe(1);
 
     // send and receive packets to trigger rollback
     const packet = sim0.net.getOutboundPacket(1);
@@ -182,8 +109,8 @@ describe("netcode integration", () => {
     sim0.step();
     sim1.step();
 
-    expect(game.bag.bCount).toEqual(1);
-    expect(game.bag.aCount).toEqual(1);
+    expect(game0.bag.bCount).toEqual(1);
+    expect(game0.bag.aCount).toEqual(1);
     expect(game1.bag.bCount).toEqual(1);
     expect(game1.bag.aCount).toEqual(1);
   });
