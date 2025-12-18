@@ -1,23 +1,50 @@
 import { Bloop } from "@bloopjs/bloop";
 import * as cfg from "./config";
+import type { Flipbook } from "./flipbook";
+import { FLIPBOOKS } from "./sprites";
+import { AnimationSystem } from "./systems/animation";
+import { CollisionSystem } from "./systems/collision";
+import { InputsSystem } from "./systems/inputs";
+import { PhaseSystem } from "./systems/phase";
+import { PhysicsSystem } from "./systems/physics";
 
-type Player = {
+export type Player = {
   x: number;
   y: number;
+  vx: number;
   vy: number;
   grounded: boolean;
+  facingDir: 1 | -1;
+  pose: Pose;
   score: number;
+  anims: {
+    idle: Flipbook;
+    run: Flipbook;
+    jump: Flipbook;
+    skid: Flipbook;
+  };
 };
 
-function createPlayer(x: number): Player {
+function createPlayer(x: number, facingDir: 1 | -1 = 1): Player {
   return {
     x,
     y: cfg.GROUND_Y,
+    vx: 0,
     vy: 0,
     grounded: true,
+    facingDir,
+    pose: "idle",
     score: 0,
+    anims: {
+      idle: FLIPBOOKS.idle,
+      run: FLIPBOOKS.run,
+      jump: FLIPBOOKS.jump,
+      skid: FLIPBOOKS.skid,
+    },
   };
 }
+
+export type Pose = "idle" | "run" | "jump" | "skid";
 
 export type Phase = "title" | "waiting" | "playing";
 
@@ -25,8 +52,8 @@ export const game = Bloop.create({
   bag: {
     phase: "title" as Phase,
     mode: null as "local" | "online" | null,
-    p1: createPlayer(cfg.P1_START_X),
-    p2: createPlayer(cfg.P2_START_X),
+    p1: createPlayer(cfg.P1_START_X, 1),
+    p2: createPlayer(cfg.P2_START_X, -1),
     block: {
       x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2,
       direction: 1 as 1 | -1,
@@ -42,8 +69,8 @@ export const game = Bloop.create({
 });
 
 export function resetGameState(bag: typeof game.bag) {
-  bag.p1 = createPlayer(cfg.P1_START_X);
-  bag.p2 = createPlayer(cfg.P2_START_X);
+  bag.p1 = createPlayer(cfg.P1_START_X, 1);
+  bag.p2 = createPlayer(cfg.P2_START_X, -1);
   bag.block = { x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2, direction: 1 };
   bag.coin = {
     visible: false,
@@ -71,158 +98,64 @@ game.system("session-watcher", {
   },
 });
 
-PhaseSystem("title", "title-screen", {
-  keydown({ bag, event }) {
-    if (event.key === "Space") {
-      // Local multiplayer - start immediately
-      bag.mode = "local";
-      bag.phase = "playing";
-      resetGameState(bag);
-    }
-  },
-});
-
-// Player 1 input: WASD
-PhaseSystem("playing", "inputs", {
-  update({ bag, players, net }) {
-    const p1 = bag.p1;
-    const p2 = bag.p2;
-
-    // Horizontal movement
-    if (players[0].keys.a.held) p1.x -= cfg.MOVE_SPEED;
-    if (players[0].keys.d.held) p1.x += cfg.MOVE_SPEED;
-    // Jump
-    const wantsJump = players[0].keys.w.down || players[0].mouse.left.down;
-    if (wantsJump && p1.grounded) {
-      p1.vy = cfg.JUMP_VELOCITY;
-      p1.grounded = false;
-    }
-
-    // Horizontal movement
-    if (players[1].keys.a.held) p2.x -= cfg.MOVE_SPEED;
-    if (players[1].keys.d.held) p2.x += cfg.MOVE_SPEED;
-    // Jump
-    if ((players[1].keys.w.down || players[1].mouse.left.down) && p2.grounded) {
-      p2.vy = cfg.JUMP_VELOCITY;
-      p2.grounded = false;
-    }
-
-    if (!net.isInSession) {
-      // locally, control second player with ijkl
-      // Horizontal movement
-      if (players[0].keys.j.held) p2.x -= cfg.MOVE_SPEED;
-      if (players[0].keys.l.held) p2.x += cfg.MOVE_SPEED;
-      // Jump
-      if (players[0].keys.i.down && p2.grounded) {
-        p2.vy = cfg.JUMP_VELOCITY;
-        p2.grounded = false;
+game.system(
+  "title-screen",
+  PhaseSystem("title", {
+    keydown({ bag, event }) {
+      if (event.key === "Space") {
+        // Local multiplayer - start immediately
+        bag.mode = "local";
+        bag.phase = "playing";
+        resetGameState(bag);
       }
-    }
-  },
-});
+    },
+  }),
+);
 
-// Physics for both players
-PhaseSystem("playing", "physics", {
-  update({ bag }) {
-    for (const p of [bag.p1, bag.p2]) {
-      // Gravity i in the air
-      if (!p.grounded) {
-        p.vy -= cfg.GRAVITY;
-        p.vy = Math.max(p.vy, -cfg.MAX_FALL_SPEED);
-      }
+game.system("inputs", InputsSystem);
 
-      p.y += p.vy;
+game.system("physics", PhysicsSystem);
 
-      if (p.y <= cfg.GROUND_Y) {
-        p.y = cfg.GROUND_Y;
-        p.vy = 0;
-        p.grounded = true;
-      }
-    }
-  },
-});
+game.system("collision", CollisionSystem);
+
+game.system("animation", AnimationSystem);
 
 // Block movement (oscillates left/right)
-PhaseSystem("playing", "block", {
-  update({ bag }) {
-    const block = bag.block;
-    block.x += cfg.BLOCK_SPEED * block.direction;
+game.system(
+  "block",
+  PhaseSystem("playing", {
+    update({ bag }) {
+      const block = bag.block;
+      block.x += cfg.BLOCK_SPEED * block.direction;
 
-    if (block.x >= cfg.BLOCK_MAX_X) {
-      block.x = cfg.BLOCK_MAX_X;
-      block.direction = -1;
-    } else if (block.x <= cfg.BLOCK_MIN_X) {
-      block.x = cfg.BLOCK_MIN_X;
-      block.direction = 1;
-    }
-  },
-});
-
-// Collision: player head hits block from below
-PhaseSystem("playing", "collision", {
-  update({ bag, time }) {
-    const block = bag.block;
-
-    for (const p of [bag.p1, bag.p2]) {
-      // Only check if player is moving upward (positive vy)
-      if (p.vy <= 0) continue;
-
-      // Check if player's head intersects with block
-      // Player's feet are at p.y, head is at p.y + PLAYER_HEIGHT
-      const playerTop = p.y + cfg.PLAYER_HEIGHT;
-      const playerLeft = p.x - cfg.PLAYER_WIDTH / 2;
-      const playerRight = p.x + cfg.PLAYER_WIDTH / 2;
-
-      // Block bottom is at BLOCK_Y, top is at BLOCK_Y + BLOCK_SIZE
-      const blockBottom = cfg.BLOCK_Y;
-      const blockLeft = block.x - cfg.BLOCK_SIZE / 2;
-      const blockRight = block.x + cfg.BLOCK_SIZE / 2;
-
-      // AABB collision - head hitting bottom of block
-      const hitX = playerRight > blockLeft && playerLeft < blockRight;
-      const hitY =
-        playerTop > blockBottom && playerTop < blockBottom + cfg.BLOCK_SIZE;
-
-      if (hitX && hitY && bag.coin.visible === false) {
-        // Bonk! Stop upward movement
-        p.vy = 0;
-        p.y = blockBottom - cfg.PLAYER_HEIGHT;
-
-        p.score += 1;
-
-        bag.coin.hitTime = time.time;
-        bag.coin.visible = true;
-        bag.coin.winner = p === bag.p1 ? 1 : 2;
+      if (block.x >= cfg.BLOCK_MAX_X) {
+        block.x = cfg.BLOCK_MAX_X;
+        block.direction = -1;
+      } else if (block.x <= cfg.BLOCK_MIN_X) {
+        block.x = cfg.BLOCK_MIN_X;
+        block.direction = 1;
       }
-    }
-  },
-});
-
-PhaseSystem("playing", "coin", {
-  update({ bag, time }) {
-    // Coin follows block unless coin animation is active
-    if (!bag.coin.visible) {
-      bag.coin.x = bag.block.x;
-      bag.coin.y = cfg.BLOCK_Y + cfg.BLOCK_SIZE;
-      return;
-    }
-
-    bag.coin.y += cfg.COIN_V_Y;
-    if (time.time - bag.coin.hitTime >= cfg.COIN_VISIBLE_DURATION) {
-      bag.coin.visible = false;
-    }
-  },
-});
-
-type GameSystem = Parameters<typeof game.system>[1];
-
-function PhaseSystem(phase: Phase, name: string, system: GameSystem) {
-  const original = system.update;
-  game.system(name, {
-    ...system,
-    update(ctx) {
-      if (ctx.bag.phase !== phase) return;
-      original?.(ctx);
     },
-  });
-}
+  }),
+);
+
+game.system(
+  "coin",
+  PhaseSystem("playing", {
+    update({ bag, time }) {
+      // Coin follows block unless coin animation is active
+      if (!bag.coin.visible) {
+        bag.coin.x = bag.block.x;
+        bag.coin.y = cfg.BLOCK_Y + cfg.BLOCK_SIZE;
+        return;
+      }
+
+      bag.coin.y += cfg.COIN_V_Y;
+      if (time.time - bag.coin.hitTime >= cfg.COIN_VISIBLE_DURATION) {
+        bag.coin.visible = false;
+      }
+    },
+  }),
+);
+
+export type GameSystem = Parameters<typeof game.system>[1];
