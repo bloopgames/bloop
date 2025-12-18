@@ -102,6 +102,9 @@ pub export fn initialize() wasmPointer {
         @panic("Failed to initialize engine");
     };
 
+    // Wire up tick listeners now that Engine is in its final location
+    engine.?.wireListeners();
+
     // Wire up the callback pointer with Sim's context pointers
     const sim = engine.?.sim;
     const cb_data: [*]u32 = @ptrFromInt(cb_ptr);
@@ -297,27 +300,27 @@ pub export fn tick() void {
 }
 
 pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {
-    engine.?.sim.emit_keydown(key_code, peer_id);
+    engine.?.emit_keydown(key_code, peer_id);
 }
 
 pub export fn emit_keyup(key_code: Events.Key, peer_id: u8) void {
-    engine.?.sim.emit_keyup(key_code, peer_id);
+    engine.?.emit_keyup(key_code, peer_id);
 }
 
 pub export fn emit_mousedown(button: Events.MouseButton, peer_id: u8) void {
-    engine.?.sim.emit_mousedown(button, peer_id);
+    engine.?.emit_mousedown(button, peer_id);
 }
 
 pub export fn emit_mouseup(button: Events.MouseButton, peer_id: u8) void {
-    engine.?.sim.emit_mouseup(button, peer_id);
+    engine.?.emit_mouseup(button, peer_id);
 }
 
 pub export fn emit_mousemove(x: f32, y: f32, peer_id: u8) void {
-    engine.?.sim.emit_mousemove(x, y, peer_id);
+    engine.?.emit_mousemove(x, y, peer_id);
 }
 
 pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, peer_id: u8) void {
-    engine.?.sim.emit_mousewheel(delta_x, delta_y, peer_id);
+    engine.?.emit_mousewheel(delta_x, delta_y, peer_id);
 }
 
 pub export fn get_time_ctx() wasmPointer {
