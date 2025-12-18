@@ -43,7 +43,6 @@ pub const Sim = struct {
     inputs: *InputCtx,
     events: *EventBuffer,
     vcr: VCR,
-    accumulator: u32 = 0,
     callbacks: Callbacks = .{},
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
@@ -382,105 +381,8 @@ pub const Sim = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Time stepping
+    // Core frame execution
     // ─────────────────────────────────────────────────────────────
-
-    /// Advance simulation by `ms` milliseconds, returns number of frames stepped
-    /// If in a session, handles rollback/resimulation when late inputs arrive
-    pub fn step(self: *Sim, ms: u32) u32 {
-        self.accumulator += ms;
-
-        var step_count: u32 = 0;
-        while (self.accumulator >= hz) {
-            // Replay tape data during replay mode
-            if (self.vcr.is_replaying) {
-                self.replay_tape_session_events(); // Process session events first
-                self.replay_tape_packets(); // Then packets (populates rollback state)
-                self.replay_tape_inputs(); // Then input events
-            }
-
-            // Notify host before each simulation step
-            if (self.callbacks.before_frame) |before_frame| {
-                before_frame(self.time.frame);
-            }
-
-            // If in a session, handle rollback
-            if (self.session.active) {
-                self.sessionStep();
-            } else {
-                self.tick(false); // Non-session: not resimulating, always record
-            }
-
-            step_count += 1;
-            self.accumulator -= hz;
-        }
-        return step_count;
-    }
-
-    /// Session-aware step that handles rollback when late inputs arrive
-    pub fn sessionStep(self: *Sim) void {
-        // The frame we're about to process (after this tick, match_frame will be this value)
-        const target_match_frame = self.session.getMatchFrame(self.time.frame) + 1;
-
-        // Calculate how many frames can be confirmed based on received inputs
-        const next_confirm = self.input_buffer.calculateNextConfirmFrame(target_match_frame);
-        const current_confirmed = self.session.confirmed_frame;
-
-        if (next_confirm > current_confirmed) {
-            // New confirmed frames available - need to rollback and resim
-            const rollback_depth = target_match_frame - 1 - current_confirmed;
-            if (rollback_depth > Transport.MAX_ROLLBACK_FRAMES) {
-                @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
-            }
-
-            // 1. Restore to confirmed state
-            if (self.confirmed_snapshot) |snap| {
-                self.restore(snap);
-            }
-
-            // 2. Resim confirmed frames with all peer inputs
-            var frames_resimmed: u32 = 0;
-            var f = current_confirmed + 1;
-            while (f <= next_confirm) : (f += 1) {
-                const is_current_frame = (f == target_match_frame);
-                self.tick(!is_current_frame); // resimulating unless this is the target frame
-                if (!is_current_frame) {
-                    frames_resimmed += 1;
-                }
-            }
-
-            // 3. Update confirmed snapshot (get current user_data_len dynamically)
-            if (self.confirmed_snapshot) |old_snap| {
-                old_snap.deinit(self.allocator);
-            }
-            self.confirmed_snapshot = self.take_snapshot(self.getUserDataLen()) catch null;
-
-            // 4. If we haven't reached target_match_frame yet, predict forward
-            if (next_confirm < target_match_frame) {
-                f = next_confirm + 1;
-                while (f <= target_match_frame) : (f += 1) {
-                    const is_current_frame = (f == target_match_frame);
-                    self.tick(!is_current_frame); // resimulating unless this is the target frame
-                    if (!is_current_frame) {
-                        frames_resimmed += 1;
-                    }
-                }
-            }
-
-            // Update session with new confirmed frame and stats
-            self.session.confirmFrame(next_confirm, frames_resimmed);
-        } else {
-            // No rollback needed - this is the target frame, not resimulating
-            self.tick(false);
-        }
-
-        // Always advance local peer's confirmed frame, even if there's no input.
-        // Without this, confirmed_frame can't advance if the local player is idle,
-        // causing rollback depth to grow unbounded.
-        if (target_match_frame > self.input_buffer.peer_confirmed[self.session.local_peer_id]) {
-            self.input_buffer.peer_confirmed[self.session.local_peer_id] = target_match_frame;
-        }
-    }
 
     /// Run a single simulation frame without accumulator management.
     /// @param is_resimulating: true if this is a resim frame during rollback (don't record to tape),
@@ -797,40 +699,6 @@ pub const Sim = struct {
         return self.vcr.is_replaying;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Seek
-    // ─────────────────────────────────────────────────────────────
-
-    /// Seek to the start of a given frame (requires tape)
-    pub fn seek(self: *Sim, frame: u32) void {
-        if (!self.vcr.hasTape()) {
-            @panic("Tried to seek to frame without an active tape");
-        }
-
-        const snapshot = self.vcr.closestSnapshot(frame) orelse @panic("No snapshot found for seek");
-        self.restore(snapshot);
-
-        // Remember if we were already replaying (from load_tape)
-        const was_replaying = self.vcr.is_replaying;
-
-        // Enter replay mode for resimulation
-        self.vcr.enterReplayMode();
-
-        // Advance to the desired frame
-        // step() handles tape event replay via replay_tape_inputs()
-        while (self.time.frame < frame) {
-            const count = self.step(hz);
-            if (count == 0) {
-                @panic("Failed to advance frame during seek");
-            }
-        }
-
-        // Preserve replay state if we were replaying before (e.g., from load_tape)
-        // Only reset if we weren't in replay mode before this seek
-        if (!was_replaying) {
-            self.vcr.exitReplayMode();
-        }
-    }
 };
 
 test "Sim init and deinit" {
@@ -868,8 +736,9 @@ test "sessionInit creates rollback state" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
 
-    // Advance a few frames first
-    _ = sim.step(32); // 2 frames
+    // Advance a few frames first using tick
+    sim.tick(false);
+    sim.tick(false);
     try std.testing.expectEqual(@as(u32, 2), sim.time.frame);
 
     // Initialize session with 2 peers
@@ -881,52 +750,6 @@ test "sessionInit creates rollback state" {
     try std.testing.expectEqual(@as(u8, 2), sim.session.peer_count);
     try std.testing.expectEqual(@as(u32, 0), sim.session.confirmed_frame);
     try std.testing.expect(sim.confirmed_snapshot != null);
-}
-
-test "session step without rollback (inputs in sync)" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    try sim.sessionInit(2, 0);
-
-    // Emit inputs for both peers at match frame 1 (in sync)
-    const events0 = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
-    const events1 = [_]Event{Event.keyDown(.KeyW, 0, .LocalKeyboard)};
-    sim.sessionEmitInputs(0, 1, &events0);
-    sim.sessionEmitInputs(1, 1, &events1);
-
-    // Step once - should not trigger rollback
-    _ = sim.step(16);
-
-    try std.testing.expectEqual(@as(u32, 1), sim.getMatchFrame());
-    try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
-    try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expectEqual(@as(u32, 0), sim.session.stats.total_rollbacks);
-}
-
-test "step advances frames based on accumulator" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    // 16ms = 1 frame (at 60hz, hz = 16)
-    const count1 = sim.step(16);
-    try std.testing.expectEqual(1, count1);
-    try std.testing.expectEqual(1, sim.time.frame);
-
-    // 32ms = 2 frames
-    const count2 = sim.step(32);
-    try std.testing.expectEqual(2, count2);
-    try std.testing.expectEqual(3, sim.time.frame);
-
-    // 8ms = 0 frames (accumulates)
-    const count3 = sim.step(8);
-    try std.testing.expectEqual(0, count3);
-    try std.testing.expectEqual(3, sim.time.frame);
-
-    // 8ms more = 1 frame (8 + 8 = 16)
-    const count4 = sim.step(8);
-    try std.testing.expectEqual(1, count4);
-    try std.testing.expectEqual(4, sim.time.frame);
 }
 
 test "tick advances single frame" {
@@ -974,37 +797,6 @@ test "tick calls systems callback" {
 
     sim.tick(false);
     try std.testing.expectEqual(2, TestState.call_count);
-}
-
-test "step calls before_frame callback" {
-    const TestState = struct {
-        var frames_seen: [4]u32 = .{ 0, 0, 0, 0 };
-        var idx: usize = 0;
-
-        fn before_frame(frame: u32) void {
-            if (idx < 4) {
-                frames_seen[idx] = frame;
-                idx += 1;
-            }
-        }
-
-        fn reset() void {
-            frames_seen = .{ 0, 0, 0, 0 };
-            idx = 0;
-        }
-    };
-
-    TestState.reset();
-
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-    sim.callbacks.before_frame = TestState.before_frame;
-
-    _ = sim.step(48); // 3 frames
-    try std.testing.expectEqual(3, TestState.idx);
-    try std.testing.expectEqual(0, TestState.frames_seen[0]);
-    try std.testing.expectEqual(1, TestState.frames_seen[1]);
-    try std.testing.expectEqual(2, TestState.frames_seen[2]);
 }
 
 test "tick processes events and updates input state" {
@@ -1120,44 +912,6 @@ test "snapshot preserves input state" {
     try std.testing.expectEqual(200.0, sim.inputs.players[0].mouse_ctx.y);
 }
 
-test "session step with rollback (late inputs)" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    try sim.sessionInit(2, 0);
-
-    // Peer 0 emits inputs at frames 1, 2, 3
-    sim.sessionEmitInputs(0, 1, &[_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)});
-    sim.sessionEmitInputs(0, 2, &[_]Event{});
-    sim.sessionEmitInputs(0, 3, &[_]Event{});
-
-    // Peer 1 only has inputs up to frame 1
-    sim.sessionEmitInputs(1, 1, &[_]Event{Event.keyDown(.KeyW, 0, .LocalKeyboard)});
-
-    // Step 3 frames - peer 1 is lagging
-    _ = sim.step(16); // frame 1 - both have inputs, confirm to 1
-    _ = sim.step(16); // frame 2 - peer 1 lagging, predict
-    _ = sim.step(16); // frame 3 - peer 1 still lagging, predict
-
-    try std.testing.expectEqual(@as(u32, 3), sim.getMatchFrame());
-    try std.testing.expectEqual(@as(u32, 1), sim.getConfirmedFrame());
-    try std.testing.expectEqual(@as(u32, 2), sim.getRollbackDepth());
-
-    // Now peer 1 catches up with inputs for frames 2 and 3
-    sim.sessionEmitInputs(1, 2, &[_]Event{});
-    sim.sessionEmitInputs(1, 3, &[_]Event{});
-
-    // Step once more - should trigger rollback
-    sim.sessionEmitInputs(0, 4, &[_]Event{});
-    sim.sessionEmitInputs(1, 4, &[_]Event{});
-    _ = sim.step(16);
-
-    try std.testing.expectEqual(@as(u32, 4), sim.getMatchFrame());
-    try std.testing.expectEqual(@as(u32, 4), sim.getConfirmedFrame());
-    try std.testing.expectEqual(@as(u32, 0), sim.getRollbackDepth());
-    try std.testing.expect(sim.session.stats.total_rollbacks > 0);
-}
-
 test "sessionEnd cleans up rollback state" {
     var sim = try Sim.init(std.testing.allocator, 0);
     defer sim.deinit();
@@ -1208,65 +962,6 @@ test "emit_mousemove adds event to InputBuffer" {
     try std.testing.expectEqual(.MouseMove, events[0].kind);
     try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
     try std.testing.expectEqual(200.5, events[0].payload.mouse_move.y);
-}
-
-test "session uses dynamic user_data_len for snapshots" {
-    // Test that user_data_len is fetched dynamically at snapshot time,
-    // not cached at session init
-    const TestState = struct {
-        var current_size: u32 = 8;
-
-        fn getUserDataLen() u32 {
-            return current_size;
-        }
-
-        fn serialize(_: usize, _: u32) void {
-            // No-op for this test - we just care about the size
-        }
-
-        fn deserialize(_: usize, _: u32) void {
-            // No-op for this test
-        }
-    };
-
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    // Wire up the dynamic size callback
-    sim.callbacks.user_data_len = TestState.getUserDataLen;
-    sim.callbacks.user_serialize = TestState.serialize;
-    sim.callbacks.user_deserialize = TestState.deserialize;
-
-    // Start with size = 8
-    TestState.current_size = 8;
-    try sim.sessionInit(2, TestState.getUserDataLen());
-
-    // Initial snapshot should have size 8
-    try std.testing.expectEqual(@as(u32, 8), sim.confirmed_snapshot.?.user_data_len);
-
-    // Emit inputs for frame 1
-    sim.sessionEmitInputs(0, 1, &[_]Event{});
-    sim.sessionEmitInputs(1, 1, &[_]Event{});
-
-    // Change size to 16 before stepping
-    TestState.current_size = 16;
-
-    // Step - this should take a new snapshot with the updated size
-    _ = sim.step(16);
-
-    // The new confirmed snapshot should have the new size
-    try std.testing.expectEqual(@as(u32, 16), sim.confirmed_snapshot.?.user_data_len);
-
-    // Change size to 32
-    TestState.current_size = 32;
-
-    // Emit inputs and step again
-    sim.sessionEmitInputs(0, 2, &[_]Event{});
-    sim.sessionEmitInputs(1, 2, &[_]Event{});
-    _ = sim.step(16);
-
-    // Snapshot should now have size 32
-    try std.testing.expectEqual(@as(u32, 32), sim.confirmed_snapshot.?.user_data_len);
 }
 
 test "start_recording enables recording" {
@@ -1328,55 +1023,3 @@ test "get_tape_buffer returns null without recording" {
     try std.testing.expectEqual(null, sim.get_tape_buffer());
 }
 
-test "Sim.seek restores to target frame" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    // Start recording
-    try sim.start_recording(0, 1024, 0);
-
-    // Advance a few frames with input
-    sim.emit_keydown(.KeyA, 0);
-    sim.tick(false); // frame 1
-    sim.tick(false); // frame 2
-    sim.emit_keyup(.KeyA, 0);
-    sim.tick(false); // frame 3
-    sim.tick(false); // frame 4
-    sim.tick(false); // frame 5
-
-    try std.testing.expectEqual(5, sim.time.frame);
-
-    // Seek back to frame 2
-    sim.seek(2);
-
-    try std.testing.expectEqual(2, sim.time.frame);
-    try std.testing.expectEqual(hz * 2, sim.time.total_ms);
-}
-
-test "Sim.seek replays events correctly" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    // Start recording
-    try sim.start_recording(0, 1024, 0);
-
-    // Frame 0->1: press A
-    sim.emit_keydown(.KeyA, 0);
-    sim.tick(false);
-
-    // Frame 1->2: hold A
-    sim.tick(false);
-
-    // Frame 2->3: release A
-    sim.emit_keyup(.KeyA, 0);
-    sim.tick(false);
-
-    // At frame 3, key A should be released
-    try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
-
-    // Seek back to frame 2 (before release)
-    sim.seek(2);
-
-    // At frame 2, key A should still be held
-    try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
-}

@@ -24,7 +24,7 @@ Bloop is in early development. The goals for 1.0 are:
 - [x] Record gameplay "tapes"
 - [x] Rewind any live or recorded gameplay session
 - [x] Hot reload code changes during a rewinded play session
-- [ ] Rollback netcode out of the box
+- [ ] [Rollback netcode](https://trybloop.gg/nu11/mario)
 
 ### Table Stakes
 
@@ -37,21 +37,24 @@ Bloop is in early development. The goals for 1.0 are:
 - [ ] Feature flags
 - [ ] Config values
 - [ ] Gamepad (aka controller) input handling
+
+### Performance
+
 - [ ] Single frame object pools
 - [ ] Multithreading
 
 ### Rendering Engine Integrations
 
-- [ ] [Toodle](https://toodle.gg)
 - [ ] Godot
+- [ ] [Toodle](https://toodle.gg)
 
 ### Platform Targets
 
 - [x] Browser
+- [ ] PC
 - [ ] Desktop Mac
 - [ ] iOS
 - [ ] Steam Deck
-- [ ] PC
 - [ ] Nintendo Switch
 - [ ] Run anywhere you can allocate a byte buffer
 
