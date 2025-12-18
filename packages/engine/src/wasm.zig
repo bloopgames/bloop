@@ -40,7 +40,7 @@ const cb_handle = u32;
 var wasm_alloc = std.heap.wasm_allocator;
 var arena_alloc: ?std.heap.ArenaAllocator = null;
 
-var cb_ptr: wasmPointer = 0;
+var ctx_ptr: wasmPointer = 0;
 
 var global_cb_handle: cb_handle = 0;
 var global_snapshot_handle: cb_handle = 0;
@@ -95,10 +95,11 @@ pub export fn initialize() wasmPointer {
     // 0 - pointer to time context
     // 1 - pointer to input context
     // 2 - pointer to events buffer
-    cb_ptr = alloc(@sizeOf(u32) * 3);
+    // 3 - pointer to network context
+    ctx_ptr = alloc(@sizeOf(u32) * 4);
 
     // Initialize the Engine (which creates and owns Sim)
-    engine = Engine.init(wasm_alloc, cb_ptr) catch {
+    engine = Engine.init(wasm_alloc, ctx_ptr) catch {
         @panic("Failed to initialize engine");
     };
 
@@ -107,7 +108,7 @@ pub export fn initialize() wasmPointer {
 
     // Wire up the callback pointer with Sim's context pointers
     const sim = engine.?.sim;
-    const cb_data: [*]u32 = @ptrFromInt(cb_ptr);
+    const cb_data: [*]u32 = @ptrFromInt(ctx_ptr);
     cb_data[0] = @intFromPtr(sim.time);
     cb_data[1] = @intFromPtr(sim.inputs);
     cb_data[2] = @intFromPtr(sim.events);
@@ -123,16 +124,15 @@ pub export fn initialize() wasmPointer {
         .on_tape_full = wasm_on_tape_full,
     };
 
-    return cb_ptr;
+    return ctx_ptr;
 }
 
 fn wasm_before_frame(frame: u32) void {
-    __before_frame(cb_ptr, frame);
+    __before_frame(ctx_ptr, frame);
 }
 
-fn wasm_systems_callback(ctx_ptr: usize, dt: u32) void {
-    _ = ctx_ptr;
-    __systems(global_cb_handle, cb_ptr, dt);
+fn wasm_systems_callback(_: usize, dt: u32) void {
+    __systems(global_cb_handle, ctx_ptr, dt);
 }
 
 fn wasm_user_serialize(ptr: usize, len: u32) void {
@@ -148,7 +148,7 @@ fn wasm_user_data_len() u32 {
 }
 
 fn wasm_on_tape_full() void {
-    __on_tape_full(cb_ptr);
+    __on_tape_full(ctx_ptr);
 }
 
 pub export fn alloc(size: usize) wasmPointer {
@@ -295,8 +295,8 @@ pub export fn step(ms: u32) u32 {
 /// Run a single simulation frame without accumulator management.
 /// Use this for rollback resimulation to avoid re-entrancy issues with step().
 /// During resimulation, frames are confirmed (we're replaying known inputs).
-pub export fn tick() void {
-    engine.?.sim.tick(true);
+pub export fn tick(is_resimulating: bool) void {
+    engine.?.sim.tick(is_resimulating);
 }
 
 pub export fn emit_keydown(key_code: Events.Key, peer_id: u8) void {

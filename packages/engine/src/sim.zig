@@ -49,7 +49,7 @@ pub const Sim = struct {
     allocator: std.mem.Allocator,
     /// Pointer to context data passed to callbacks (for JS interop)
     ctx_ptr: usize,
-    /// Canonical input buffer for standalone Sim tests (Engine has its own)
+    /// Input buffer (owned by caller - Engine or tests)
     input_buffer: *InputBuffer,
     /// Network context exposed to game systems via DataView (Engine syncs this)
     net_ctx: *NetCtx,
@@ -60,9 +60,8 @@ pub const Sim = struct {
     listeners: TickListeners = .{},
 
     /// Initialize a new simulation with allocated contexts.
-    /// Note: When used with Engine, Engine allocates its own InputBuffer and syncs net_ctx.
-    /// This version allocates its own InputBuffer for standalone Sim tests.
-    pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Sim {
+    /// The InputBuffer is passed in - caller (Engine or tests) owns its lifecycle.
+    pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize, input_buffer: *InputBuffer) !Sim {
         // Allocate TimeCtx
         const time = try allocator.create(TimeCtx);
         time.* = TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
@@ -75,15 +74,9 @@ pub const Sim = struct {
         const events = try allocator.create(EventBuffer);
         @memset(std.mem.asBytes(events), 0);
 
-        // Allocate InputBuffer for standalone tests (Engine has its own)
-        const input_buffer = try allocator.create(InputBuffer);
-        input_buffer.* = .{};
-        // Default: single peer for simple tests
-        input_buffer.init(1, 0);
-
         // Allocate NetCtx (small struct exposed to game systems)
         const net_ctx = try allocator.create(NetCtx);
-        net_ctx.* = .{ .peer_count = 0, .match_frame = 0 };
+        net_ctx.* = .{ .peer_count = input_buffer.peer_count, .match_frame = 0 };
 
         return Sim{
             .time = time,
@@ -96,9 +89,8 @@ pub const Sim = struct {
         };
     }
 
-    /// Free all simulation resources
+    /// Free all simulation resources (input_buffer is owned by caller)
     pub fn deinit(self: *Sim) void {
-        self.allocator.destroy(self.input_buffer);
         self.allocator.destroy(self.time);
         self.allocator.destroy(self.inputs);
         self.allocator.destroy(self.events);
@@ -117,25 +109,11 @@ pub const Sim = struct {
     // Core frame execution
     // ─────────────────────────────────────────────────────────────
 
-    /// Run a single simulation frame without accumulator management.
-    /// This is the core frame execution - receives dependencies from Engine.
-    /// @param input_buffer: The input buffer to read events from
-    /// @param session_active: Whether a session is active
-    /// @param match_frame: The match frame to process (pre-calculated by Engine)
-    /// @param peer_count: Number of peers to process inputs for
+    /// Run a single simulation frame.
+    /// Reads match_frame and peer_count from net_ctx (synced by Engine before tick).
     /// @param is_resimulating: true if this is a resim frame during rollback
-    pub fn tickWithDeps(
-        self: *Sim,
-        input_buffer: *InputBuffer,
-        session_active: bool,
-        match_frame: u32,
-        peer_count: u8,
-        is_resimulating: bool,
-    ) void {
-        // session_active is passed for future use; Engine handles session logic
-        _ = session_active;
-
-        // Call before_tick listener (Engine uses this for net_ctx sync)
+    pub fn tick(self: *Sim, is_resimulating: bool) void {
+        // Call before_tick listener (Engine syncs net_ctx here)
         if (self.listeners.before_tick) |before_tick| {
             before_tick(self.listeners.context.?);
         }
@@ -146,10 +124,14 @@ pub const Sim = struct {
         self.time.dt_ms = hz;
         self.time.total_ms += hz;
 
+        // Read match_frame and peer_count from contexts (synced by Engine)
+        const match_frame = self.net_ctx.match_frame;
+        const peer_count = self.net_ctx.peer_count;
+
         // Read events from InputBuffer for all peers
         for (0..peer_count) |peer_idx| {
             const peer: u8 = @intCast(peer_idx);
-            const events = input_buffer.get(peer, match_frame);
+            const events = self.input_buffer.get(peer, match_frame);
             for (events) |event| {
                 // Add to event buffer for processing
                 const idx = self.events.count;
@@ -161,8 +143,6 @@ pub const Sim = struct {
         }
 
         self.process_events();
-
-        // Note: net_ctx is updated by Engine.syncNetCtx() via beforeTickListener
 
         // Call game systems
         if (self.callbacks.systems) |systems| {
@@ -178,15 +158,6 @@ pub const Sim = struct {
         }
     }
 
-    /// Legacy tick() for backwards compatibility with standalone Sim tests.
-    /// Assumes non-session mode. Use Engine for session/rollback functionality.
-    pub fn tick(self: *Sim, is_resimulating: bool) void {
-        // Non-session mode: match_frame = time.frame + 1
-        const match_frame = self.time.frame + 1;
-        const peer_count = self.input_buffer.peer_count;
-        self.tickWithDeps(self.input_buffer, false, match_frame, peer_count, is_resimulating);
-    }
-
     // ─────────────────────────────────────────────────────────────
     // Internal helpers
     // ─────────────────────────────────────────────────────────────
@@ -199,48 +170,6 @@ pub const Sim = struct {
 
     fn flush_events(self: *Sim) void {
         self.events.count = 0;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Event emission
-    // ─────────────────────────────────────────────────────────────
-
-    /// Emit an event to be processed this frame
-    pub fn emit_event(self: *Sim, event: Event) void {
-        self.append_event(event);
-    }
-
-    pub fn emit_keydown(self: *Sim, key: Events.Key, peer_id: u8) void {
-        self.append_event(Event.keyDown(key, peer_id, .LocalKeyboard));
-    }
-
-    pub fn emit_keyup(self: *Sim, key: Events.Key, peer_id: u8) void {
-        self.append_event(Event.keyUp(key, peer_id, .LocalKeyboard));
-    }
-
-    pub fn emit_mousedown(self: *Sim, button: Events.MouseButton, peer_id: u8) void {
-        self.append_event(Event.mouseDown(button, peer_id, .LocalMouse));
-    }
-
-    pub fn emit_mouseup(self: *Sim, button: Events.MouseButton, peer_id: u8) void {
-        self.append_event(Event.mouseUp(button, peer_id, .LocalMouse));
-    }
-
-    pub fn emit_mousemove(self: *Sim, x: f32, y: f32, peer_id: u8) void {
-        self.append_event(Event.mouseMove(x, y, peer_id, .LocalMouse));
-    }
-
-    pub fn emit_mousewheel(self: *Sim, delta_x: f32, delta_y: f32, peer_id: u8) void {
-        self.append_event(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
-    }
-
-    /// Append a fresh local event. Writes to canonical InputBuffer.
-    /// For standalone Sim tests (non-session mode). Engine handles session mode.
-    fn append_event(self: *Sim, event: Event) void {
-        // Non-session mode: match_frame = time.frame + 1
-        const match_frame = self.time.frame + 1;
-        // Preserve event's peer_id for local multiplayer
-        self.input_buffer.emit(event.peer_id, match_frame, &[_]Event{event});
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -282,23 +211,88 @@ pub const Sim = struct {
     }
 };
 
+// ─────────────────────────────────────────────────────────────
+// Test Helpers
+// ─────────────────────────────────────────────────────────────
+
+/// Test helper that manages InputBuffer lifecycle and sets up listeners for standalone Sim tests.
+const TestSimContext = struct {
+    input_buffer: *InputBuffer,
+    sim: Sim,
+    allocator: std.mem.Allocator,
+
+    /// Create a test Sim with properly configured InputBuffer and listeners
+    fn init(allocator: std.mem.Allocator) !TestSimContext {
+        const input_buffer = try allocator.create(InputBuffer);
+        input_buffer.* = .{};
+        input_buffer.init(1, 0); // Single peer for simple tests
+
+        const sim = try Sim.init(allocator, 0, input_buffer);
+
+        return TestSimContext{
+            .input_buffer = input_buffer,
+            .sim = sim,
+            .allocator = allocator,
+        };
+    }
+
+    /// Wire up listeners after TestSimContext is in a stable memory location
+    fn wireListeners(self: *TestSimContext) void {
+        self.sim.listeners = .{
+            .context = @ptrCast(self),
+            .before_tick = beforeTickListener,
+            .after_tick = null,
+        };
+    }
+
+    fn beforeTickListener(ctx_ptr: *anyopaque) void {
+        const self: *TestSimContext = @ptrCast(@alignCast(ctx_ptr));
+        // Sync net_ctx like Engine does
+        self.sim.net_ctx.peer_count = self.input_buffer.peer_count;
+        self.sim.net_ctx.match_frame = self.sim.time.frame + 1;
+    }
+
+    fn deinit(self: *TestSimContext) void {
+        self.sim.deinit();
+        self.allocator.destroy(self.input_buffer);
+    }
+
+    // Event emission helpers for tests (writes directly to input_buffer)
+    fn emit_keydown(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
+        const match_frame = self.sim.time.frame + 1;
+        self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyDown(key, peer_id, .LocalKeyboard)});
+    }
+
+    fn emit_keyup(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
+        const match_frame = self.sim.time.frame + 1;
+        self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyUp(key, peer_id, .LocalKeyboard)});
+    }
+
+    fn emit_mousemove(self: *TestSimContext, x: f32, y: f32, peer_id: u8) void {
+        const match_frame = self.sim.time.frame + 1;
+        self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.mouseMove(x, y, peer_id, .LocalMouse)});
+    }
+};
+
 test "Sim init and deinit" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Verify initial state
-    try std.testing.expectEqual(0, sim.time.frame);
-    try std.testing.expectEqual(0, sim.time.dt_ms);
-    try std.testing.expectEqual(0, sim.time.total_ms);
-    try std.testing.expectEqual(0, sim.events.count);
+    try std.testing.expectEqual(0, ctx.sim.time.frame);
+    try std.testing.expectEqual(0, ctx.sim.time.dt_ms);
+    try std.testing.expectEqual(0, ctx.sim.time.total_ms);
+    try std.testing.expectEqual(0, ctx.sim.events.count);
 }
 
 test "Sim contexts are zeroed" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Verify inputs are zeroed
-    for (sim.inputs.players) |player| {
+    for (ctx.sim.inputs.players) |player| {
         for (player.key_ctx.key_states) |state| {
             try std.testing.expectEqual(0, state);
         }
@@ -311,20 +305,21 @@ test "Sim contexts are zeroed" {
 }
 
 test "tick advances single frame" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
-    try std.testing.expectEqual(0, sim.time.frame);
-    try std.testing.expectEqual(0, sim.time.total_ms);
+    try std.testing.expectEqual(0, ctx.sim.time.frame);
+    try std.testing.expectEqual(0, ctx.sim.time.total_ms);
 
-    sim.tick(false);
-    try std.testing.expectEqual(1, sim.time.frame);
-    try std.testing.expectEqual(hz, sim.time.dt_ms);
-    try std.testing.expectEqual(hz, sim.time.total_ms);
+    ctx.sim.tick(false);
+    try std.testing.expectEqual(1, ctx.sim.time.frame);
+    try std.testing.expectEqual(hz, ctx.sim.time.dt_ms);
+    try std.testing.expectEqual(hz, ctx.sim.time.total_ms);
 
-    sim.tick(false);
-    try std.testing.expectEqual(2, sim.time.frame);
-    try std.testing.expectEqual(hz * 2, sim.time.total_ms);
+    ctx.sim.tick(false);
+    try std.testing.expectEqual(2, ctx.sim.time.frame);
+    try std.testing.expectEqual(hz * 2, ctx.sim.time.total_ms);
 }
 
 test "tick calls systems callback" {
@@ -345,74 +340,78 @@ test "tick calls systems callback" {
 
     TestState.reset();
 
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-    sim.callbacks.systems = TestState.systems;
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
+    ctx.sim.callbacks.systems = TestState.systems;
 
-    sim.tick(false);
+    ctx.sim.tick(false);
     try std.testing.expectEqual(1, TestState.call_count);
     try std.testing.expectEqual(hz, TestState.last_dt);
 
-    sim.tick(false);
+    ctx.sim.tick(false);
     try std.testing.expectEqual(2, TestState.call_count);
 }
 
 test "tick processes events and updates input state" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Key should not be down initially
-    try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)]);
+    try std.testing.expectEqual(0, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)]);
 
     // Emit keydown and tick
-    sim.emit_keydown(.KeyA, 0);
-    sim.tick(false);
+    ctx.emit_keydown(.KeyA, 0);
+    ctx.sim.tick(false);
 
     // Key should now be down (bit 0 set)
-    try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
+    try std.testing.expectEqual(1, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
 
     // Events should be flushed after tick
-    try std.testing.expectEqual(0, sim.events.count);
+    try std.testing.expectEqual(0, ctx.sim.events.count);
 }
 
 test "tick ages input states" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Press key and tick
-    sim.emit_keydown(.KeyA, 0);
-    sim.tick(false);
+    ctx.emit_keydown(.KeyA, 0);
+    ctx.sim.tick(false);
 
     // Key state should be 0b1 (just pressed this frame)
-    const state1 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
+    const state1 = ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
     try std.testing.expectEqual(0b1, state1);
 
     // Tick again (key still held - no new event, but held bit carries forward)
-    sim.tick(false);
+    ctx.sim.tick(false);
 
     // Key state should be 0b11 (held for 2 frames - aged once, still held)
-    const state2 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
+    const state2 = ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
     try std.testing.expectEqual(0b11, state2);
 
     // Release key and tick
-    sim.emit_keyup(.KeyA, 0);
-    sim.tick(false);
+    ctx.emit_keyup(.KeyA, 0);
+    ctx.sim.tick(false);
 
     // Key state should be 0b110 (was held for 2 frames, now released)
-    const state3 = sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
+    const state3 = ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)];
     try std.testing.expectEqual(0b110, state3);
 }
 
 test "take_snapshot captures time state" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Advance a few frames
-    sim.tick(false);
-    sim.tick(false);
-    sim.tick(false);
+    ctx.sim.tick(false);
+    ctx.sim.tick(false);
+    ctx.sim.tick(false);
 
-    const snapshot = try sim.take_snapshot(0);
+    const snapshot = try ctx.sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(3, snapshot.time.frame);
@@ -420,93 +419,55 @@ test "take_snapshot captures time state" {
 }
 
 test "restore restores time state" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Advance and snapshot
-    sim.tick(false);
-    sim.tick(false);
-    const snapshot = try sim.take_snapshot(0);
+    ctx.sim.tick(false);
+    ctx.sim.tick(false);
+    const snapshot = try ctx.sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Advance more
-    sim.tick(false);
-    sim.tick(false);
-    sim.tick(false);
-    try std.testing.expectEqual(5, sim.time.frame);
+    ctx.sim.tick(false);
+    ctx.sim.tick(false);
+    ctx.sim.tick(false);
+    try std.testing.expectEqual(5, ctx.sim.time.frame);
 
     // Restore
-    sim.restore(snapshot);
-    try std.testing.expectEqual(2, sim.time.frame);
-    try std.testing.expectEqual(hz * 2, sim.time.total_ms);
+    ctx.sim.restore(snapshot);
+    try std.testing.expectEqual(2, ctx.sim.time.frame);
+    try std.testing.expectEqual(hz * 2, ctx.sim.time.total_ms);
 }
 
 test "snapshot preserves input state" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
+    var ctx = try TestSimContext.init(std.testing.allocator);
+    ctx.wireListeners();
+    defer ctx.deinit();
 
     // Set up some input state
-    sim.emit_keydown(.KeyA, 0);
-    sim.emit_mousemove(100.0, 200.0, 0);
-    sim.tick(false);
+    ctx.emit_keydown(.KeyA, 0);
+    ctx.emit_mousemove(100.0, 200.0, 0);
+    ctx.sim.tick(false);
 
-    const snapshot = try sim.take_snapshot(0);
+    const snapshot = try ctx.sim.take_snapshot(0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Modify input state
-    sim.emit_keyup(.KeyA, 0);
-    sim.emit_mousemove(999.0, 999.0, 0);
-    sim.tick(false);
+    ctx.emit_keyup(.KeyA, 0);
+    ctx.emit_mousemove(999.0, 999.0, 0);
+    ctx.sim.tick(false);
 
     // Verify state changed
-    try std.testing.expectEqual(0, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
+    try std.testing.expectEqual(0, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
 
     // Restore
-    sim.restore(snapshot);
+    ctx.sim.restore(snapshot);
 
     // Verify input state restored
-    try std.testing.expectEqual(1, sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
-    try std.testing.expectEqual(100.0, sim.inputs.players[0].mouse_ctx.x);
-    try std.testing.expectEqual(200.0, sim.inputs.players[0].mouse_ctx.y);
+    try std.testing.expectEqual(1, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
+    try std.testing.expectEqual(100.0, ctx.sim.inputs.players[0].mouse_ctx.x);
+    try std.testing.expectEqual(200.0, ctx.sim.inputs.players[0].mouse_ctx.y);
 }
 
-test "emit_keydown adds event to InputBuffer" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    // Event buffer is empty until tick
-    try std.testing.expectEqual(0, sim.events.count);
-
-    // Emit keydown - goes to InputBuffer at match_frame = time.frame + 1
-    sim.emit_keydown(.KeyA, 0);
-
-    // Event buffer still empty (tick hasn't run)
-    try std.testing.expectEqual(0, sim.events.count);
-
-    // Check InputBuffer has the event at frame 1 (time.frame=0, so match_frame=1)
-    const events = sim.input_buffer.get(0, 1);
-    try std.testing.expectEqual(@as(usize, 1), events.len);
-    try std.testing.expectEqual(.KeyDown, events[0].kind);
-    try std.testing.expectEqual(.KeyA, events[0].payload.key);
-    try std.testing.expectEqual(.LocalKeyboard, events[0].device);
-
-    // Emit keyup - also goes to InputBuffer at frame 1
-    sim.emit_keyup(.KeyA, 0);
-    const events2 = sim.input_buffer.get(0, 1);
-    try std.testing.expectEqual(@as(usize, 2), events2.len);
-    try std.testing.expectEqual(.KeyUp, events2[1].kind);
-}
-
-test "emit_mousemove adds event to InputBuffer" {
-    var sim = try Sim.init(std.testing.allocator, 0);
-    defer sim.deinit();
-
-    sim.emit_mousemove(100.5, 200.5, 0);
-
-    // Check InputBuffer has the event at frame 1
-    const events = sim.input_buffer.get(0, 1);
-    try std.testing.expectEqual(@as(usize, 1), events.len);
-    try std.testing.expectEqual(.MouseMove, events[0].kind);
-    try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
-    try std.testing.expectEqual(200.5, events[0].payload.mouse_move.y);
-}

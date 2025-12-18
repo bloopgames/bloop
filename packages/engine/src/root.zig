@@ -53,9 +53,9 @@ pub const Engine = struct {
         const net = try allocator.create(NetState);
         net.* = .{ .allocator = allocator, .input_buffer = input_buffer };
 
-        // Create Sim (slimmed down - only owns contexts)
+        // Create Sim (slimmed down - only owns contexts, uses Engine's input_buffer)
         const sim = try allocator.create(Sim);
-        sim.* = try Sim.init(allocator, ctx_ptr);
+        sim.* = try Sim.init(allocator, ctx_ptr, input_buffer);
 
         return Engine{
             .sim = sim,
@@ -104,10 +104,16 @@ pub const Engine = struct {
         }
     }
 
-    /// Sync sim.net_ctx from Engine's network state before each tick
+    /// Sync sim.net_ctx from Engine's network state before each tick.
+    /// Sets match_frame to the NEXT frame that tick will process (time.frame + 1).
     fn syncNetCtx(self: *Engine) void {
-        self.sim.net_ctx.peer_count = if (self.session.active) self.session.peer_count else 0;
-        self.sim.net_ctx.match_frame = self.getMatchFrame();
+        // Use session peer_count in session mode, input_buffer.peer_count for local multiplayer
+        self.sim.net_ctx.peer_count = if (self.session.active) self.session.peer_count else self.input_buffer.peer_count;
+        // Calculate the target match_frame for the upcoming tick
+        self.sim.net_ctx.match_frame = if (self.session.active)
+            self.session.getMatchFrame(self.sim.time.frame) + 1
+        else
+            self.sim.time.frame + 1;
         self.sim.net_ctx.in_session = if (self.session.active) 1 else 0;
         self.sim.net_ctx.session_start_frame = self.session.start_frame;
         self.sim.net_ctx.local_peer_id = self.session.local_peer_id;
@@ -140,10 +146,8 @@ pub const Engine = struct {
             if (self.session.active) {
                 self.sessionStep();
             } else {
-                // Non-session mode: use Engine's input_buffer
-                const match_frame = self.sim.time.frame + 1;
-                const peer_count = self.input_buffer.peer_count;
-                self.sim.tickWithDeps(self.input_buffer, false, match_frame, peer_count, false);
+                // Non-session mode: beforeTickListener syncs net_ctx
+                self.sim.tick(false);
             }
 
             step_count += 1;
@@ -182,8 +186,8 @@ pub const Engine = struct {
             var f = current_confirmed + 1;
             while (f <= next_confirm) : (f += 1) {
                 const is_current_frame = (f == target_match_frame);
-                const resim_match_frame = self.session.getMatchFrame(self.sim.time.frame) + 1;
-                self.sim.tickWithDeps(self.input_buffer, true, resim_match_frame, self.session.peer_count, !is_current_frame);
+                // beforeTickListener syncs net_ctx with correct match_frame
+                self.sim.tick(!is_current_frame);
                 if (!is_current_frame) {
                     frames_resimmed += 1;
                 }
@@ -200,8 +204,8 @@ pub const Engine = struct {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
                     const is_current_frame = (f == target_match_frame);
-                    const predict_match_frame = self.session.getMatchFrame(self.sim.time.frame) + 1;
-                    self.sim.tickWithDeps(self.input_buffer, true, predict_match_frame, self.session.peer_count, !is_current_frame);
+                    // beforeTickListener syncs net_ctx with correct match_frame
+                    self.sim.tick(!is_current_frame);
                     if (!is_current_frame) {
                         frames_resimmed += 1;
                     }
@@ -212,7 +216,7 @@ pub const Engine = struct {
             self.session.confirmFrame(next_confirm, frames_resimmed);
         } else {
             // No rollback needed - this is the target frame, not resimulating
-            self.sim.tickWithDeps(self.input_buffer, true, target_match_frame, self.session.peer_count, false);
+            self.sim.tick(false);
         }
 
         // Always advance local peer's confirmed frame, even if there's no input.
@@ -837,6 +841,43 @@ test "Engine session lifecycle" {
     // End session
     engine.sessionEnd();
     try std.testing.expectEqual(false, engine.inSession());
+}
+
+test "Engine emit_keydown adds event to InputBuffer" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Emit keydown - goes to InputBuffer at match_frame = time.frame + 1
+    engine.emit_keydown(.KeyA, 0);
+
+    // Check InputBuffer has the event at frame 1 (time.frame=0, so match_frame=1)
+    const events = engine.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(.KeyDown, events[0].kind);
+    try std.testing.expectEqual(.KeyA, events[0].payload.key);
+    try std.testing.expectEqual(.LocalKeyboard, events[0].device);
+
+    // Emit keyup - also goes to InputBuffer at frame 1
+    engine.emit_keyup(.KeyA, 0);
+    const events2 = engine.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 2), events2.len);
+    try std.testing.expectEqual(.KeyUp, events2[1].kind);
+}
+
+test "Engine emit_mousemove adds event to InputBuffer" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    engine.emit_mousemove(100.5, 200.5, 0);
+
+    // Check InputBuffer has the event at frame 1
+    const events = engine.input_buffer.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(.MouseMove, events[0].kind);
+    try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
+    try std.testing.expectEqual(200.5, events[0].payload.mouse_move.y);
 }
 
 // ─────────────────────────────────────────────────────────────
