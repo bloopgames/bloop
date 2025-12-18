@@ -15,6 +15,7 @@ Polish the mario game to be GIF-ready.
 
 - [ ] Add player-player collisions
 - [x] Sprite animations
+- [ ] Fix mario run animation
 - [ ] Inputs UI (match https://bymuno.com/post/rollback)
 - [ ] Update gamefeel and physics to match 1-1
 - [ ] Update environment art
