@@ -14,7 +14,10 @@ export class NetContext {
   }
 
   get isInSession(): boolean {
-    return this.peerCount > 0;
+    if (!this.dataView) {
+      throw new Error("NetContext DataView is not initialized");
+    }
+    return this.dataView.getUint8(2) !== 0;
   }
 
   /** Current match frame (frames since session start, 0 if no session) */

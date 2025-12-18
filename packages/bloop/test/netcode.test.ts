@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop } from "../src/mod";
+import { assert, Bloop, mount } from "../src/mod";
 import { startOnlineMatch } from "./helper";
 
 describe("netcode integration", () => {
@@ -113,5 +113,24 @@ describe("netcode integration", () => {
     expect(game0.bag.aCount).toEqual(1);
     expect(game1.bag.bCount).toEqual(1);
     expect(game1.bag.aCount).toEqual(1);
+  });
+
+  it("regress: handles net.isInSession context correctly for local", async () => {
+    const game = Bloop.create({
+      bag: { count: 0, inSession: false as boolean },
+    });
+    game.system("halp", {
+      update({ bag, net }) {
+        bag.count++;
+        bag.inSession = net.isInSession;
+      },
+    });
+
+    const { sim } = await mount(game);
+
+    sim.step();
+
+    expect(game.bag.count).toEqual(1);
+    expect(game.bag.inSession).toEqual(false);
   });
 });
