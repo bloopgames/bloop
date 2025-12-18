@@ -18,7 +18,7 @@ export type WasmEngine = {
   /**
    * Run a single simulation frame. step wraps this in an accumulator
    */
-  tick: () => void;
+  tick: (is_resimulating: boolean) => void;
   /**
    * Seek to a specific frame number (inclusive).
    * Seeking to frame 1 will run events for frame 0 and frame 1.
@@ -48,7 +48,10 @@ export type WasmEngine = {
   // Input platform events (all take source as second/last parameter)
   emit_keydown: (key: Enums.Key, source: Enums.InputSource) => void;
   emit_keyup: (key: Enums.Key, source: Enums.InputSource) => void;
-  emit_mousedown: (button: Enums.MouseButton, source: Enums.InputSource) => void;
+  emit_mousedown: (
+    button: Enums.MouseButton,
+    source: Enums.InputSource,
+  ) => void;
   emit_mouseup: (button: Enums.MouseButton, source: Enums.InputSource) => void;
   emit_mousemove: (x: number, y: number, source: Enums.InputSource) => void;
   emit_mousewheel: (x: number, y: number, source: Enums.InputSource) => void;

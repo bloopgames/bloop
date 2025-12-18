@@ -127,10 +127,11 @@ export class Sim {
 
   /**
    * Run a single simulation frame. step wraps this in an accumulator.
-   * Use this for rollback resimulation to avoid re-entrancy issues with step().
+   * Use this for advanced use cases where you need to execute a single frame outside of the engine.
+   * Consider `step()` for normal frame advancement. And `seek()` for moving to specific frames within a tape.
    */
-  tick(): void {
-    this.wasm.tick();
+  tick(isResimulating?: boolean): void {
+    this.wasm.tick(isResimulating ?? false);
   }
 
   /**
