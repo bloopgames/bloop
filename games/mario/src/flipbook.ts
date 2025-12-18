@@ -29,6 +29,7 @@ export function step(flipbook: Flipbook, dt: number) {
   while (flipbook.acc > flipbook.frames[flipbook.frameIndex].duration) {
     flipbook.acc -= flipbook.frames[flipbook.frameIndex].duration;
     flipbook.frameIndex++;
+    flipbook.frameIndex %= flipbook.frames.length;
   }
   flipbook.time += dt;
   update(flipbook);

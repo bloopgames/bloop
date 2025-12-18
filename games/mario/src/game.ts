@@ -1,6 +1,8 @@
 import { Bloop } from "@bloopjs/bloop";
 import * as cfg from "./config";
 import type { Flipbook } from "./flipbook";
+import { FLIPBOOKS } from "./sprites";
+import { AnimationSystem } from "./systems/animation";
 import { CollisionSystem } from "./systems/collision";
 import { InputsSystem } from "./systems/inputs";
 import { PhaseSystem } from "./systems/phase";
@@ -9,24 +11,40 @@ import { PhysicsSystem } from "./systems/physics";
 export type Player = {
   x: number;
   y: number;
+  vx: number;
   vy: number;
   grounded: boolean;
+  facingDir: 1 | -1;
+  pose: Pose;
   score: number;
-  poses: Record<Pose, Flipbook>;
+  anims: {
+    idle: Flipbook;
+    run: Flipbook;
+    jump: Flipbook;
+    skid: Flipbook;
+  };
 };
 
-function createPlayer(x: number): Player {
+function createPlayer(x: number, facingDir: 1 | -1 = 1): Player {
   return {
     x,
     y: cfg.GROUND_Y,
+    vx: 0,
     vy: 0,
     grounded: true,
+    facingDir,
+    pose: "idle",
     score: 0,
-    poses: {} as Record<Pose, Flipbook>,
+    anims: {
+      idle: FLIPBOOKS.idle,
+      run: FLIPBOOKS.run,
+      jump: FLIPBOOKS.jump,
+      skid: FLIPBOOKS.skid,
+    },
   };
 }
 
-export type Pose = "idle" | "run" | "jump";
+export type Pose = "idle" | "run" | "jump" | "skid";
 
 export type Phase = "title" | "waiting" | "playing";
 
@@ -34,8 +52,8 @@ export const game = Bloop.create({
   bag: {
     phase: "title" as Phase,
     mode: null as "local" | "online" | null,
-    p1: createPlayer(cfg.P1_START_X),
-    p2: createPlayer(cfg.P2_START_X),
+    p1: createPlayer(cfg.P1_START_X, 1),
+    p2: createPlayer(cfg.P2_START_X, -1),
     block: {
       x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2,
       direction: 1 as 1 | -1,
@@ -51,8 +69,8 @@ export const game = Bloop.create({
 });
 
 export function resetGameState(bag: typeof game.bag) {
-  bag.p1 = createPlayer(cfg.P1_START_X);
-  bag.p2 = createPlayer(cfg.P2_START_X);
+  bag.p1 = createPlayer(cfg.P1_START_X, 1);
+  bag.p2 = createPlayer(cfg.P2_START_X, -1);
   bag.block = { x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2, direction: 1 };
   bag.coin = {
     visible: false,
@@ -99,6 +117,8 @@ game.system("inputs", InputsSystem);
 game.system("physics", PhysicsSystem);
 
 game.system("collision", CollisionSystem);
+
+game.system("animation", AnimationSystem);
 
 // Block movement (oscillates left/right)
 game.system(

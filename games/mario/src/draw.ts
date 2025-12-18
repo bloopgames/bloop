@@ -1,3 +1,4 @@
+import { assert, unwrap } from "@bloopjs/bloop";
 import type { QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
 import { Colors } from "@bloopjs/toodle";
 import {
@@ -8,7 +9,7 @@ import {
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
 } from "./config";
-import type { game } from "./game";
+import type { game, Player, Pose } from "./game";
 
 // Placeholder colors until sprites are added
 const MARIO_COLOR = Colors.web.red;
@@ -16,6 +17,9 @@ const LUIGI_COLOR = Colors.web.green;
 const BLOCK_COLOR = Colors.web.sienna;
 const COIN_COLOR = Colors.web.gold;
 const GROUND_COLOR = Colors.web.saddleBrown;
+
+/** Quads for each pose animation */
+type PoseQuads = Record<Pose, QuadNode>;
 
 export interface DrawState {
   root: SceneNode;
@@ -26,8 +30,8 @@ export interface DrawState {
   ground: QuadNode;
   block: SceneNode;
   coin: QuadNode;
-  p1: QuadNode;
-  p2: QuadNode;
+  p1: PoseQuads;
+  p2: PoseQuads;
   viewport: SceneNode;
   p1Score: Text.TextNode;
   p2Score: Text.TextNode;
@@ -82,20 +86,33 @@ export function createDrawState(toodle: Toodle): DrawState {
     }),
   );
 
-  const p1 = gameScreen.add(
-    toodle.Quad("marioWalk", {
-      size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-      region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-    }),
-  );
+  // Map pose to texture name
+  const poseTextures: Record<Pose, string> = {
+    idle: "marioIdle",
+    run: "marioWalk",
+    jump: "marioJump",
+    skid: "marioSkid",
+  };
 
-  const p2 = gameScreen.add(
-    toodle.Quad("marioWalk", {
-      size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-      region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-      color: LUIGI_COLOR,
-    }),
-  );
+  // Create pose quads for a player
+  const createPoseQuads = (color?: typeof LUIGI_COLOR): PoseQuads => {
+    const poses = {} as PoseQuads;
+    for (const pose of ["idle", "run", "jump", "skid"] satisfies Pose[]) {
+      const quad = gameScreen.add(
+        toodle.Quad(poseTextures[pose], {
+          size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+          region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+          color,
+        }),
+      );
+      quad.isActive = false; // Start inactive, draw will activate the right one
+      poses[pose] = quad;
+    }
+    return poses;
+  };
+
+  const p1 = createPoseQuads();
+  const p2 = createPoseQuads(LUIGI_COLOR);
 
   const p1Score = gameScreen.add(
     toodle.Text("ComicNeue", "P9: 0", {
@@ -161,13 +178,9 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
         : bag.coin.winner === 2
           ? LUIGI_COLOR
           : COIN_COLOR;
-    state.p1.position = {
-      x: bag.p1.x,
-      y: bag.p1.y + PLAYER_HEIGHT / 2,
-    }; // sprite is 16x16, center at +8
-    state.p2.position = { x: bag.p2.x, y: bag.p2.y + PLAYER_HEIGHT / 2 };
-
-    state.p2.flipX = true;
+    // Update player sprites
+    updatePlayerQuads(state.p1, bag.p1);
+    updatePlayerQuads(state.p2, bag.p2);
 
     const padding = 20;
 
@@ -195,4 +208,39 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
   toodle.startFrame();
   toodle.draw(state.root);
   toodle.endFrame();
+}
+
+/** Updates a player's pose quads based on their current state */
+function updatePlayerQuads(quads: PoseQuads, player: Player) {
+  const poses: Pose[] = ["idle", "run", "jump", "skid"];
+
+  for (const pose of poses) {
+    const quad = quads[pose];
+    const isActive = pose === player.pose;
+    quad.isActive = isActive;
+    if (!isActive) {
+      continue;
+    }
+
+    // Update position
+    quad.position = {
+      x: player.x,
+      y: player.y + PLAYER_HEIGHT / 2,
+    };
+
+    // Update flip based on facing direction
+    quad.flipX = player.facingDir === -1;
+
+    // Update region from flipbook frame using static flipbooks + bag AnimState
+    const flipbook = unwrap(
+      player.anims[pose],
+      `No runtime flipbook for pose ${pose}`,
+    );
+    const frameIndex = flipbook.frameIndex % flipbook.frames.length;
+    const frame = flipbook.frames[frameIndex];
+    quad.region.x = frame.pos.x;
+    quad.region.y = frame.pos.y;
+    quad.region.width = frame.width;
+    quad.region.height = frame.height;
+  }
 }
