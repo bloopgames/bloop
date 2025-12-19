@@ -1,10 +1,12 @@
 ---
 # bloop-32f8
-title: Netcode API callable from game code
+title: Design and implement netcode API
 status: todo
 type: feature
+priority: normal
 created_at: 2025-12-18T23:00:37Z
-updated_at: 2025-12-18T23:00:37Z
+updated_at: 2025-12-19T19:39:07Z
+parent: bloop-52uc
 ---
 
 Update the netcode API to be callable from game code (not just internal engine use).

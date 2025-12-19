@@ -1,4 +1,4 @@
-import { assert, unwrap } from "@bloopjs/bloop";
+import { unwrap } from "@bloopjs/bloop";
 import type { QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
 import { Colors } from "@bloopjs/toodle";
 import {

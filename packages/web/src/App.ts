@@ -1,9 +1,4 @@
-import {
-  type Bloop,
-  type MountOptions,
-  mount,
-  type Sim,
-} from "@bloopjs/bloop";
+import { type Bloop, type MountOptions, mount, type Sim } from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton, readTapeHeader } from "@bloopjs/engine";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
@@ -180,7 +175,8 @@ export class App {
     window.addEventListener("keyup", handleKeyup);
 
     const handleMousemove = (event: MouseEvent) => {
-      if (shouldEmitInputs()) this.sim.emit.mousemove(event.clientX, event.clientY);
+      if (shouldEmitInputs())
+        this.sim.emit.mousemove(event.clientX, event.clientY);
     };
     window.addEventListener("mousemove", handleMousemove);
 
@@ -253,6 +249,7 @@ export class App {
       if (this.sim.hasHistory) {
         switch (event.key) {
           case "4":
+          case ";":
             debugState.onJumpBack.value?.();
             break;
           case ",":
@@ -264,6 +261,7 @@ export class App {
             if (this.sim.isPaused) this.sim.seek(this.sim.time.frame + 1);
             break;
           case "8":
+          case "'":
             debugState.onJumpForward.value?.();
             break;
         }

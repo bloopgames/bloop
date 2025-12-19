@@ -1,25 +1,32 @@
 # bloop
 
-Make faster mistakes.
+## Why can't you rewind your game like a youtube video?
 
 (insert gif here)
 
-Bloop is a rewindable 2d game simulation library that can be embedded in any game engine.
+If you're a gamedev who is sick of:
 
-- Write game state and logic in TypeScript
-- Rewind any live or recorded gameplay session
-- Hot reload code changes during a rewinded play session
+* Compile time
+* Hot code reload not working
+* Spending hours tracking down edge case bugs
+* Writing netcode
+
+Bloop is an experimental new npm package that lets you edit your 2d game logic live while replaying any gameplay session.
+
+- Hot reload code changes instantly while playing your game
+- Record any gameplay session as a "tape"
+- Edit code live while rewinding and seeking through a tape
+- Rollback netcode built in - every local multiplayer game is an online multiplayer game!
 
 [Why Bloop?](./why.md)
 
-## 1.0
+## Feature list
 
 Bloop is in early development. The goals for 1.0 are:
 
 ### Features
 
 - [x] Unit testable
-- [x] Keyboard and Mouse Input Handling
 - [x] Bag for singleton game state
 - [x] Record gameplay "tapes"
 - [x] Rewind any live or recorded gameplay session
@@ -28,12 +35,14 @@ Bloop is in early development. The goals for 1.0 are:
 
 ### Table Stakes
 
-- [ ] ECS
-- [ ] Transforms
+- [x] Keyboard and Mouse Input Handling
+- [ ] Transform Hierarchy
 - [ ] Animated Sprites
 - [ ] Collision detection
 - [ ] Cameras
+- [ ] ECS
 - [ ] Scene Loading
+- [ ] Gameplay phases
 - [ ] Feature flags
 - [ ] Config values
 - [ ] Gamepad (aka controller) input handling

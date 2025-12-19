@@ -69,6 +69,7 @@ export function setTime(flipbook: Flipbook, time: number) {
 export function reset(flipbook: Flipbook) {
   flipbook.frameIndex = 0;
   flipbook.time = 0;
+  flipbook.acc = 0;
   update(flipbook);
 }
 

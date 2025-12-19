@@ -5,7 +5,7 @@ status: in-progress
 type: feature
 priority: normal
 created_at: 2025-12-16T22:55:25Z
-updated_at: 2025-12-18T22:11:27Z
+updated_at: 2025-12-19T16:50:52Z
 parent: bloop-nti4
 ---
 
@@ -13,11 +13,11 @@ Polish the mario game to be GIF-ready.
 
 ## Checklist
 
-- [ ] Add player-player collisions
 - [x] Sprite animations
 - [ ] Fix mario run animation
-- [ ] Inputs UI (match https://bymuno.com/post/rollback)
-- [ ] Update gamefeel and physics to match 1-1
-- [ ] Update environment art
-- [ ] Chromatic aberration post-process shader
 - [ ] Debug hitbox toggle
+- [ ] Chromatic aberration post-process shader
+- [ ] Inputs UI (match https://bymuno.com/post/rollback)
+- [ ] Add player-player collisions
+- [ ] Update environment art
+- [ ] Update gamefeel and physics to match 1-1
