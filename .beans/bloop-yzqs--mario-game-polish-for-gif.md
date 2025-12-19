@@ -14,8 +14,8 @@ Polish the mario game to be GIF-ready.
 ## Checklist
 
 - [x] Sprite animations
-- [ ] Fix mario run animation
-- [ ] Debug hitbox toggle
+- [x] Fix mario run animation
+- [x] Debug hitbox toggle
 - [ ] Chromatic aberration post-process shader
 - [ ] Inputs UI (match https://bymuno.com/post/rollback)
 - [ ] Add player-player collisions

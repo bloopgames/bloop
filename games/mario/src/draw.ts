@@ -1,5 +1,5 @@
 import { unwrap } from "@bloopjs/bloop";
-import type { QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
+import type { Color, QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
 import { Colors } from "@bloopjs/toodle";
 import {
   BLOCK_SIZE,
@@ -207,6 +207,9 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
 
   toodle.startFrame();
   toodle.draw(state.root);
+  if (bag.debugHitboxes) {
+    drawHitboxes(toodle, state, bag);
+  }
   toodle.endFrame();
 }
 
@@ -243,4 +246,67 @@ function updatePlayerQuads(quads: PoseQuads, player: Player) {
     quad.region.width = frame.width;
     quad.region.height = frame.height;
   }
+}
+
+function drawHitboxes(toodle: Toodle, state: DrawState, bag: typeof game.bag) {
+  const p1Quad = state.p1[bag.p1.pose];
+  const p2Quad = state.p2[bag.p2.pose];
+
+  toodle.draw(makeHitbox(toodle, p1Quad.bounds));
+  toodle.draw(makeHitbox(toodle, p2Quad.bounds));
+  toodle.draw(makeHitbox(toodle, state.block.bounds));
+
+  if (bag.coin.visible) {
+    toodle.draw(makeHitbox(toodle, state.coin.bounds));
+  }
+}
+
+const hitboxDefaultColor = { r: 1, g: 0, b: 1, a: 0.4 };
+
+let hitboxShader: ReturnType<Toodle["QuadShader"]> | null = null;
+
+function getHitboxShader(toodle: Toodle) {
+  if (!hitboxShader) {
+    hitboxShader = toodle.QuadShader(
+      "hitbox-border",
+      16,
+      /*wgsl*/ `
+@fragment
+fn frag(vertex: VertexOutput) -> @location(0) vec4f {
+  let color = default_fragment_shader(vertex, linearSampler);
+  let uv = vertex.engine_uv.zw;
+  let border = 0.1;
+
+  let nearLeft = uv.x < border;
+  let nearRight = uv.x > (1.0 - border);
+  let nearBottom = uv.y < border;
+  let nearTop = uv.y > (1.0 - border);
+
+  if (nearLeft || nearRight || nearBottom || nearTop) {
+    return vec4f(color.rgb, 1.0);
+  }
+
+  return color;
+}
+      `,
+    );
+  }
+  return hitboxShader;
+}
+
+function makeHitbox(
+  toodle: Toodle,
+  bounds: { left: number; right: number; top: number; bottom: number },
+  color: Color = hitboxDefaultColor,
+) {
+  return toodle.shapes
+    .Rect({
+      color,
+      size: {
+        width: bounds.right - bounds.left,
+        height: bounds.top - bounds.bottom,
+      },
+      shader: getHitboxShader(toodle),
+    })
+    .setBounds(bounds);
 }

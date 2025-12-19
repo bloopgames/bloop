@@ -65,6 +65,7 @@ export const game = Bloop.create({
       x: (cfg.BLOCK_MIN_X + cfg.BLOCK_MAX_X) / 2,
       y: 0,
     },
+    debugHitboxes: false as boolean,
   },
 });
 
@@ -119,6 +120,15 @@ game.system("physics", PhysicsSystem);
 game.system("collision", CollisionSystem);
 
 game.system("animation", AnimationSystem);
+
+// Debug hitbox toggle (H key)
+game.system("debug", {
+  keydown({ bag, event }) {
+    if (event.key === "KeyH") {
+      bag.debugHitboxes = !bag.debugHitboxes;
+    }
+  },
+});
 
 // Block movement (oscillates left/right)
 game.system(

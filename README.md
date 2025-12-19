@@ -11,7 +11,7 @@ If you're a gamedev who is sick of:
 * Spending hours tracking down edge case bugs
 * Writing netcode
 
-Bloop is an experimental new npm package that lets you edit your 2d game logic live while replaying any gameplay session.
+With bloop, an experimental npm package, you can edit your 2d game logic live while replaying any gameplay session.
 
 - Hot reload code changes instantly while playing your game
 - Record any gameplay session as a "tape"
