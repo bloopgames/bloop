@@ -61,12 +61,18 @@ async function loadTape(bytes: Uint8Array, fileName: string) {
   toodle.clearColor = { r: 0.36, g: 0.58, b: 0.99, a: 1 };
 
   // Load sprites
+  const spriteUrl = (name: string) =>
+    new URL(
+      `${import.meta.env.BASE_URL}sprites/${name}.png`,
+      window.location.href,
+    );
+
   await toodle.assets.registerBundle("main", {
     textures: {
-      marioWalk: new URL(
-        `${import.meta.env.BASE_URL}sprites/MarioWalk.png`,
-        window.location.href,
-      ),
+      marioIdle: spriteUrl("MarioIdle"),
+      marioWalk: spriteUrl("MarioWalk"),
+      marioJump: spriteUrl("MarioJump"),
+      marioSkid: spriteUrl("MarioSkid"),
     },
     autoLoad: true,
   });
