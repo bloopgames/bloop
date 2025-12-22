@@ -3,10 +3,10 @@
 title: Publish WASM to CDN
 status: todo
 type: task
-priority: normal
+priority: high
 created_at: 2025-12-19T19:30:47Z
-updated_at: 2025-12-19T19:30:56Z
-parent: bloop-52uc
+updated_at: 2025-12-22T17:08:01Z
+parent: bloop-dbi0
 blocking:
     - bloop-jz3s
 ---

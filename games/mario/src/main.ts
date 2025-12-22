@@ -1,6 +1,7 @@
 import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
 import { joinRollbackRoom, start } from "@bloopjs/web";
+import { createChromaticAberrationEffect } from "./chromatic-aberration";
 import { createDrawState, draw as drawFn } from "./draw";
 import { game } from "./game";
 
@@ -67,6 +68,16 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "r" && !app.sim.isRecording) {
     app.sim.record();
     console.log("Started recording at frame", app.sim.time.frame);
+  }
+});
+
+// Debug: Press G to toggle glitch effect
+const glitchEffect = createChromaticAberrationEffect(toodle);
+let glitchEnabled = false;
+window.addEventListener("keydown", (e) => {
+  if (e.key === "g") {
+    glitchEnabled = !glitchEnabled;
+    toodle.postprocess = glitchEnabled ? glitchEffect : null;
   }
 });
 

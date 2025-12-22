@@ -3,10 +3,10 @@
 title: Design and implement netcode API
 status: todo
 type: feature
-priority: normal
+priority: high
 created_at: 2025-12-18T23:00:37Z
-updated_at: 2025-12-19T19:39:07Z
-parent: bloop-52uc
+updated_at: 2025-12-22T17:08:02Z
+parent: bloop-dbi0
 ---
 
 Update the netcode API to be callable from game code (not just internal engine use).
