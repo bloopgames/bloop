@@ -94,6 +94,24 @@ async function prepPackage(cwd: string, version: [number, number, number]) {
   console.log(packageJson.name, packageJson.version);
 
   await $`bun run build`.cwd(cwd);
+
+  // Replace DEFAULT_WASM_URL with CDN URL for browser environments
+  if (packageJson.name === "@bloopjs/engine") {
+    const engineDistPath = path.join(cwd, "dist/engine.js");
+    let content = await Bun.file(engineDistPath).text();
+    const replaced = content.replace(
+      /new URL\(\s*["']\.\.\/wasm\/bloop\.wasm["'],\s*import\.meta\.url\s*\)/,
+      `new URL("https://unpkg.com/@bloopjs/engine@${versionString}/wasm/bloop.wasm")`,
+    );
+    if (replaced === content) {
+      throw new Error(
+        "Failed to replace DEFAULT_WASM_URL in engine dist - pattern not found",
+      );
+    }
+    await Bun.write(engineDistPath, replaced);
+    console.log(`  Replaced DEFAULT_WASM_URL with CDN URL for v${versionString}`);
+  }
+
   await $`npm publish --dry-run`.cwd(cwd);
 }
 
