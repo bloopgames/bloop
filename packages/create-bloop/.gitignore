@@ -1,0 +1,4 @@
+# Generated at publish time
+templates/
+dist/
+node_modules/

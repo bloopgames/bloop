@@ -1,0 +1,23 @@
+{
+  "name": "create-bloop",
+  "version": "0.0.1",
+  "description": "Create a new Bloop game",
+  "type": "module",
+  "bin": "./dist/index.js",
+  "files": ["dist", "templates"],
+  "scripts": {
+    "build": "bun build index.ts --outdir=dist --target=node"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bloopgames/bloop"
+  },
+  "keywords": ["bloop", "game", "scaffold", "create"],
+  "license": "MIT",
+  "dependencies": {
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.9"
+  }
+}
