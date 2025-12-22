@@ -217,7 +217,6 @@ async function publishTemplates(bloopVersion: string) {
   await rm(TEMPLATES_DIR, { recursive: true, force: true });
   await mkdir(TEMPLATES_DIR, { recursive: true });
 
-  console.log("building...");
   await $`bun run build`.cwd(PKG_DIR);
 
   // Copy and transform each game template
