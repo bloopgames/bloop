@@ -5,24 +5,41 @@ on:
   push:
     paths:
       - 'packages/**'
+      - 'games/**'
       - '.github/workflows/publish.yml'
       - 'bin/publish.ts'
     branches:
       - main
-      - nu11/publish
+      - nu11/quickstart-support
 
 jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.packages }}
+      games: ${{ steps.filter.outputs.games }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            packages:
+              - 'packages/**'
+              - 'bin/publish.ts'
+            games:
+              - 'games/**'
+
   publish:
+    needs: detect-changes
     runs-on: ubuntu-latest
     permissions:
-      # needed for tags
       contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v5
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
-      # might be needed to build wasm
       - name: Setup zig
         uses: mlugg/setup-zig@v2
         with:
@@ -31,5 +48,10 @@ jobs:
         run: bun install -g npm@latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      - name: Publish package
-        run: bun run publish
+      - name: Publish
+        run: |
+          if [ "${{ needs.detect-changes.outputs.packages }}" == "true" ]; then
+            bun run publish
+          else
+            bun run publish templates-only
+          fi

@@ -1,18 +1,19 @@
 #!/usr/bin/env node
-import prompts from "prompts";
 import fs from "node:fs";
 import path from "node:path";
+import prompts from "prompts";
 
 const templates = [
   {
     name: "hello",
-    title: "Minimal game",
-    description: "Simple starting point for a new game",
+    title: "Empty Project",
+    description: "An empty project with Bloop setup",
   },
   {
     name: "mario",
-    title: "Rollback netcode",
-    description: "Mario-style platformer with multiplayer rollback",
+    title: "Multiplayer Game with Rollback Netcode",
+    description:
+      "Mario-style versus platformer with online multiplayer, see demo at https://trybloop.gg/nu11/mario",
   },
 ];
 
@@ -26,7 +27,7 @@ async function main() {
       type: "text",
       name: "projectName",
       message: "Project name:",
-      initial: "my-bloop-game",
+      initial: "hellobloop",
     });
     projectName = response.projectName;
     if (!projectName) {

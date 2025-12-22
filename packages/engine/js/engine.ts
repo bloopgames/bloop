@@ -22,10 +22,7 @@ export type EngineLen = number;
  */
 export type EngineOk = number;
 
-export const DEFAULT_WASM_URL: URL = new URL(
-  "../wasm/bloop.wasm",
-  import.meta.url,
-);
+export { DEFAULT_WASM_URL } from "./defaultUrl";
 
 export const MAX_ROLLBACK_FRAMES = 500;
 
