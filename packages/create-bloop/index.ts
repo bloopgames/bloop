@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import prompts from "prompts";
+
+const DIRNAME = path.dirname(fileURLToPath(import.meta.url));
 
 const templates = [
   {
@@ -11,9 +14,8 @@ const templates = [
   },
   {
     name: "mario",
-    title: "Multiplayer Game with Rollback Netcode",
-    description:
-      "Mario-style versus platformer with online multiplayer, see demo at https://trybloop.gg/nu11/mario",
+    title: "Realtime Multiplayer",
+    description: "Mario-style versus platformer with rollback netcode",
   },
 ];
 
@@ -63,7 +65,7 @@ async function main() {
   console.log(`\nCreating ${projectName}...`);
 
   // Find templates directory (relative to this script)
-  const templatesDir = path.join(__dirname, "templates", template);
+  const templatesDir = path.join(DIRNAME, "templates", template);
   if (!fs.existsSync(templatesDir)) {
     console.error(`Error: Template "${template}" not found.`);
     console.error(`Expected at: ${templatesDir}`);
