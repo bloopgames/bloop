@@ -20,6 +20,12 @@ With bloop, an experimental npm package, you can edit your 2d game logic live wh
 
 [Why Bloop?](./why.md)
 
+## Quickstart
+
+```bash
+bun create bloop@latest
+```
+
 ## Feature list
 
 Bloop is in early development. The goals for 1.0 are:
