@@ -1,7 +1,6 @@
 import { cp, mkdir, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { $ } from "bun";
-import { l } from "../games/mario/dist/assets/game-DusI0ibS";
 
 const ROOT = path.join(__dirname, "..");
 const PKG_DIR = path.join(ROOT, "packages/create-bloop");
@@ -60,7 +59,7 @@ try {
     await $`git push --tags`;
   }
 
-  await publishCreateBloop(versionString);
+  await publishTemplates(versionString);
 } finally {
   for (const packageCwd of packageCwds) {
     console.log("reverting", packageCwd);
@@ -214,10 +213,11 @@ async function publishPackage(cwd: string) {
   await $`bunx jsr publish --allow-dirty`.cwd(cwd);
 }
 
-async function publishCreateBloop(bloopVersion: string) {
+async function publishTemplates(bloopVersion: string) {
   await rm(TEMPLATES_DIR, { recursive: true, force: true });
   await mkdir(TEMPLATES_DIR, { recursive: true });
 
+  console.log("building...");
   await $`bun run build`.cwd(PKG_DIR);
 
   // Copy and transform each game template
@@ -249,7 +249,12 @@ async function publishCreateBloop(bloopVersion: string) {
     }
   }
 
-  await $`npm version patch --no-git-tag-version`.cwd(PKG_DIR);
+  const packageJsonPath = path.join(PKG_DIR, "package.json");
+  const nextVersion = await getDesiredVersion(PKG_DIR);
+  const packageJson = await Bun.file(packageJsonPath).json();
+  packageJson.version = nextVersion.join(".");
+  await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2));
+  console.log(packageJson.name, packageJson.version);
   await $`npm publish --access public`.cwd(PKG_DIR);
 }
 
