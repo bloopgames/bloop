@@ -9,8 +9,8 @@ import {
   keyCodeToKey,
   mouseButtonCodeToMouseButton,
   NET_CTX_OFFSET,
-  type NetEvent,
   NetContext,
+  type NetEvent,
   TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
