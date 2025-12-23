@@ -64,8 +64,8 @@ async function main() {
 
   console.log(`\nCreating ${projectName}...`);
 
-  // Find templates directory (relative to this script)
-  const templatesDir = path.join(DIRNAME, "templates", template);
+  // Find templates directory (relative to this script in dist/)
+  const templatesDir = path.join(DIRNAME, "..", "templates", template);
   if (!fs.existsSync(templatesDir)) {
     console.error(`Error: Template "${template}" not found.`);
     console.error(`Expected at: ${templatesDir}`);
