@@ -27,12 +27,12 @@ describe("netcode integration", () => {
     expect(game0.bag.p1Clicks).toBe(0);
 
     // Get packet from sim0 to send to sim1
-    const packet0 = sim0.net.getOutboundPacket(1);
+    const packet0 = sim0._netInternal.getOutboundPacket(1);
     assert(packet0, "Packet from sim0 to sim1 should not be null");
     expect(packet0.length).toBeGreaterThan(0);
 
     // sim1 receives the packet
-    sim1.net.receivePacket(packet0);
+    sim1._netInternal.receivePacket(packet0);
     sim1.step();
 
     // On sim1, the remote event from peer 0 should be routed to player 0
@@ -63,12 +63,12 @@ describe("netcode integration", () => {
     expect(game1.bag.p1Clicks).toBe(1);
 
     // Get packet from sim1 to send to sim0
-    const packet1 = sim1.net.getOutboundPacket(0);
+    const packet1 = sim1._netInternal.getOutboundPacket(0);
     assert(packet1, "Packet from sim1 to sim0 should not be null");
     expect(packet1.length).toBeGreaterThan(0);
 
     // sim0 receives the packet
-    sim0.net.receivePacket(packet1);
+    sim0._netInternal.receivePacket(packet1);
     sim0.step();
 
     // On sim0, the remote event from peer 1 should be routed to player 1
@@ -99,12 +99,12 @@ describe("netcode integration", () => {
     expect(game0.bag.bCount).toBe(1);
 
     // send and receive packets to trigger rollback
-    const packet = sim0.net.getOutboundPacket(1);
+    const packet = sim0._netInternal.getOutboundPacket(1);
     assert(packet);
-    sim1.net.receivePacket(packet);
-    const packet1 = sim1.net.getOutboundPacket(0);
+    sim1._netInternal.receivePacket(packet);
+    const packet1 = sim1._netInternal.getOutboundPacket(0);
     assert(packet1);
-    sim0.net.receivePacket(packet1);
+    sim0._netInternal.receivePacket(packet1);
 
     sim0.step();
     sim1.step();
@@ -163,8 +163,8 @@ describe("netcode integration", () => {
 
     game1.system("netcode", {
       keydown({ event, net }) {
-        if (ctx.event.key === "Enter") {
-          net.joinRoom("TEST");
+        if (event.key === "Enter") {
+          net.wants.roomCode = "TEST";
         }
       },
     });
@@ -178,12 +178,13 @@ describe("netcode integration", () => {
     sim0.step();
     expect(game0.context.net.roomCode).toEqual("TEST");
 
-    sim0.net.expect(sim1.net.wants).toEqual({});
+    expect(sim1.net.wants.roomCode).toBeUndefined();
     sim1.emit.keydown("Enter");
     sim1.step();
     expect(sim1.net.wants.roomCode).toEqual("TEST");
     sim1.emit.network("join:ok", { roomCode: "TEST" });
     sim0.emit.network("peer:join", { peerId: "peer1" });
+    sim1.emit.network("peer:join", { peerId: "peer0" });
     expect(game1.context.net.roomCode).toEqual("");
     sim1.step();
     expect(game1.context.net.roomCode).toEqual("TEST");
@@ -196,10 +197,10 @@ describe("netcode integration", () => {
     expect(game0.context.net.peerCount).toEqual(2);
     expect(game1.context.net.peerCount).toEqual(2);
 
-    expect(game0.bag.events[0][0]).toEqual("join:ok");
-    expect(game0.bag.events[0][1]).toEqual({ roomCode: "TEST" });
+    expect(game0.bag.events[0]![0]).toEqual("join:ok");
+    expect(game0.bag.events[0]![1]).toEqual({ roomCode: "TEST" });
 
-    expect(game0.bag.events[1][0]).toEqual("peer:join");
-    expect(game0.bag.events[1][1]).toEqual({ peerId: "peer1" });
+    expect(game0.bag.events[1]![0]).toEqual("peer:join");
+    expect(game0.bag.events[1]![1]).toEqual({ peerId: "peer1" });
   });
 });

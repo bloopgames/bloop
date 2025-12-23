@@ -76,7 +76,15 @@ pub const Sim = struct {
 
         // Allocate NetCtx (small struct exposed to game systems)
         const net_ctx = try allocator.create(NetCtx);
-        net_ctx.* = .{ .peer_count = input_buffer.peer_count, .match_frame = 0 };
+        net_ctx.* = .{
+            .peer_count = input_buffer.peer_count,
+            .local_peer_id = 0,
+            .in_session = 0,
+            .status = @intFromEnum(Ctx.NetStatus.local),
+            .match_frame = 0,
+            .session_start_frame = 0,
+            .room_code = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
+        };
 
         return Sim{
             .time = time,

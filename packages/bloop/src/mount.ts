@@ -1,6 +1,8 @@
 import {
   DEFAULT_WASM_URL,
   type EnginePointer,
+  type NetEvent,
+  NetContext,
   type WasmEngine,
 } from "@bloopjs/engine";
 import { type EngineHooks, Sim } from "./sim";
@@ -12,6 +14,10 @@ import { assert } from "./util";
  */
 export type Mountable = {
   hooks: EngineHooks;
+  /** Get the shared NetContext instance */
+  getNet(): NetContext;
+  /** Handle network events (called by Sim when processing events) */
+  _handleNetEvent(event: NetEvent): void;
 };
 
 /**
@@ -105,7 +111,11 @@ export async function mount(
   const enginePointer = wasm.initialize();
   sim = new Sim(wasm, memory, {
     serialize: mountable.hooks.serialize,
+    netContext: mountable.getNet(),
   });
+
+  // Wire up net event callback
+  sim._onNetEvent = (event) => mountable._handleNetEvent(event);
 
   if (startRecording) {
     sim.record(maxEvents, maxPacketBytes);

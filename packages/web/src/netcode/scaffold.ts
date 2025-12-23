@@ -40,13 +40,13 @@ export function joinRollbackRoom(
 
   function receivePackets() {
     for (const packetData of incomingPackets) {
-      app.sim.net.receivePacket(packetData);
+      app.sim._netInternal.receivePacket(packetData);
 
       if (remotePeerId == null) {
         return;
       }
 
-      const peerState = app.sim.net.getPeerState(remotePeerId);
+      const peerState = app.sim._netInternal.getPeerState(remotePeerId);
       Debug.updatePeer(remoteStringPeerId!, {
         ack: peerState.ack,
         seq: peerState.seq,
@@ -70,7 +70,7 @@ export function joinRollbackRoom(
       return;
     }
 
-    const packet = app.sim.net.getOutboundPacket(remotePeerId);
+    const packet = app.sim._netInternal.getOutboundPacket(remotePeerId);
 
     if (!packet) {
       console.warn("[netcode] No packet to send");
@@ -97,7 +97,7 @@ export function joinRollbackRoom(
     onDataChannelClose(peerId, reliable) {
       console.log(`Data channel closed: ${peerId} (reliable: ${reliable})`);
       if (!reliable && remotePeerId !== null) {
-        app.sim.net.disconnectPeer(remotePeerId);
+        app.sim._netInternal.disconnectPeer(remotePeerId);
         sessionActive = false;
         opts?.onSessionEnd?.();
       }
@@ -123,8 +123,8 @@ export function joinRollbackRoom(
         app.sim.sessionInit(2);
 
         // Set up local and remote peers in net state
-        app.sim.net.setLocalPeer(localPeerId);
-        app.sim.net.connectPeer(remotePeerId);
+        app.sim._netInternal.setLocalPeer(localPeerId);
+        app.sim._netInternal.connectPeer(remotePeerId);
 
         sessionActive = true;
         console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
@@ -146,7 +146,7 @@ export function joinRollbackRoom(
     onPeerDisconnected(peerId) {
       Debug.removePeer(peerId);
       if (remotePeerId !== null && peerId === remoteStringPeerId) {
-        app.sim.net.disconnectPeer(remotePeerId);
+        app.sim._netInternal.disconnectPeer(remotePeerId);
         sessionActive = false;
         opts?.onSessionEnd?.();
       }

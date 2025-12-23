@@ -4,6 +4,9 @@ import {
   keyToKeyCode,
   type MouseButton,
   mouseButtonToMouseButtonCode,
+  type NetEvent,
+  type NetEventType,
+  NetContext,
   SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
   SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
@@ -88,12 +91,19 @@ export class Sim {
   #time: TimeContext;
   #serialize?: SerializeFn;
   #isPaused: boolean = false;
+  #pendingNetEvents: NetEvent[] = [];
 
   /**
-   * Network API for packet management in multiplayer sessions.
-   * Use this to send/receive packets and query peer network state.
+   * Shared network context - same instance as game.context.net.
+   * Provides access to network state (status, roomCode, wants, etc.)
    */
-  readonly net: Net;
+  readonly net: NetContext;
+
+  /**
+   * Internal network API for packet management (used by platform).
+   * @internal
+   */
+  readonly _netInternal: Net;
 
   /**
    * Callback fired when tape buffer fills up and recording stops.
@@ -101,10 +111,17 @@ export class Sim {
    */
   onTapeFull?: (tape: Uint8Array) => void;
 
+  /**
+   * Callback to notify the game of network events.
+   * Set by the Bloop instance to dispatch events to system handlers.
+   * @internal
+   */
+  _onNetEvent?: (event: NetEvent) => void;
+
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
-    opts?: { serialize?: SerializeFn },
+    opts?: { serialize?: SerializeFn; netContext?: NetContext },
   ) {
     this.wasm = wasm;
     this.#memory = memory;
@@ -115,14 +132,62 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
-    this.net = new Net(wasm, memory);
+    this.net = opts?.netContext ?? new NetContext();
+    this._netInternal = new Net(wasm, memory);
   }
 
   step(ms?: number): number {
     if (this.#isPaused) {
       return 0;
     }
+    // Process pending network events before stepping
+    this.#processNetEvents();
     return this.wasm.step(ms ?? 16);
+  }
+
+  /**
+   * Process pending network events and update NetContext state
+   */
+  #processNetEvents(): void {
+    for (const event of this.#pendingNetEvents) {
+      // Update NetContext state based on event type
+      switch (event.type) {
+        case "join:ok":
+          this.net._setRoomCode(event.data.roomCode);
+          this.net._setStatus("connected");
+          // Set self as first peer
+          this.net._setPeerCount(1);
+          break;
+        case "join:fail":
+          this.net._setStatus("local");
+          break;
+        case "peer:join":
+          // Increment peer count and mark as in session when another peer joins
+          this.net._setPeerCount(this.net.peerCount + 1);
+          if (this.net.peerCount >= 2) {
+            this.net._setInSession(true);
+          }
+          break;
+        case "peer:leave":
+          this.net._setPeerCount(Math.max(0, this.net.peerCount - 1));
+          if (this.net.peerCount <= 1) {
+            this.net._setInSession(false);
+          }
+          break;
+        case "session:start":
+          this.net._setInSession(true);
+          break;
+        case "session:end":
+          this.net._setInSession(false);
+          this.net._setRoomCode("");
+          this.net._setStatus("local");
+          break;
+      }
+
+      // Dispatch to game handler
+      this._onNetEvent?.(event);
+    }
+    this.#pendingNetEvents = [];
   }
 
   /**
@@ -356,6 +421,16 @@ export class Sim {
     },
     mousewheel: (x: number, y: number, peerId: number = 0): void => {
       this.wasm.emit_mousewheel(x, y, peerId);
+    },
+    /**
+     * Emit a network event (join:ok, peer:join, etc.)
+     * Events are queued and processed at the start of the next step.
+     */
+    network: <T extends NetEventType>(
+      type: T,
+      data: Extract<NetEvent, { type: T }>["data"],
+    ): void => {
+      this.#pendingNetEvents.push({ type, data } as NetEvent);
     },
   };
 

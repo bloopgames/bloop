@@ -9,6 +9,7 @@ import {
   keyCodeToKey,
   mouseButtonCodeToMouseButton,
   NET_CTX_OFFSET,
+  type NetEvent,
   NetContext,
   TIME_CTX_OFFSET,
   TimeContext,
@@ -100,6 +101,29 @@ export class Bloop<GS extends BloopSchema> {
    */
   get context(): Readonly<Context<GS>> {
     return this.#context;
+  }
+
+  /**
+   * Get the shared NetContext instance.
+   * This is used by mount to share the same NetContext with Sim.
+   */
+  getNet(): NetContext {
+    return this.#context.net;
+  }
+
+  /**
+   * Handle a network event by dispatching to all systems with a netcode handler.
+   * Called by Sim when processing network events.
+   * @internal
+   */
+  _handleNetEvent(event: NetEvent): void {
+    for (const system of this.#systems) {
+      if (system.netcode) {
+        (this.#context as any).event = event;
+        system.netcode(this.#context as Context<GS> & { event: NetEvent });
+      }
+    }
+    (this.#context as any).event = undefined;
   }
 
   /**

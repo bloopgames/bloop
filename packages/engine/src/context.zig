@@ -1,13 +1,23 @@
 const Events = @import("events.zig");
 pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
 
+/// Network status values
+pub const NetStatus = enum(u8) {
+    offline = 0,
+    local = 1,
+    join_pending = 2,
+    connected = 3,
+    disconnected = 4,
+};
+
 pub const NetCtx = extern struct {
     peer_count: u8,
     local_peer_id: u8 = 0,
     in_session: u8 = 0, // bool as u8 for alignment
-    _pad1: u8 = 0,
+    status: u8 = @intFromEnum(NetStatus.local), // NetStatus enum value
     match_frame: u32,
     session_start_frame: u32 = 0,
+    room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 }, // null-terminated room code
 };
 
 pub const MAX_PLAYERS: u8 = 12;

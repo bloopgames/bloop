@@ -4,9 +4,10 @@ import {
   type KeyState,
   MOUSE_OFFSET,
   MouseContext,
+  NetContext,
 } from "@bloopjs/engine";
 import { Bloop } from "../src/bloop";
-import { mount } from "../src/mount";
+import { mount, type Mountable } from "../src/mount";
 import type { EngineHooks } from "../src/sim";
 
 const defaultHooks: EngineHooks = {
@@ -20,16 +21,25 @@ const defaultHooks: EngineHooks = {
   setContext() {},
 };
 
+/** Create a test mountable with the required methods */
+function createTestMountable(hooks: Partial<EngineHooks> = {}): Mountable {
+  const netContext = new NetContext();
+  return {
+    hooks: { ...defaultHooks, ...hooks },
+    getNet: () => netContext,
+    _handleNetEvent: () => {},
+  };
+}
+
 it("hello wasm", async () => {
   let count = 0;
-  const { sim } = await mount({
-    hooks: {
-      ...defaultHooks,
+  const { sim } = await mount(
+    createTestMountable({
       systemsCallback() {
         count++;
       },
-    },
-  });
+    }),
+  );
 
   sim.wasm.step(16);
   expect(count).toBe(1);
@@ -37,9 +47,7 @@ it("hello wasm", async () => {
 
 describe("time", () => {
   it("injects frame and dt", async () => {
-    const { sim } = await mount({
-      hooks: defaultHooks,
-    });
+    const { sim } = await mount(createTestMountable());
 
     sim.step(16);
     expect(sim.time.frame).toEqual(1);
@@ -48,9 +56,8 @@ describe("time", () => {
 
   it("exposes time context pointer in system callback", async () => {
     let called = false;
-    const { sim } = await mount({
-      hooks: {
-        ...defaultHooks,
+    const { sim } = await mount(
+      createTestMountable({
         systemsCallback(_handle, ptr) {
           called = true;
           const dataView = new DataView(sim.buffer, ptr);
@@ -61,8 +68,8 @@ describe("time", () => {
           expect(frame).toEqual(0);
           expect(dt).toEqual(16);
         },
-      },
-    });
+      }),
+    );
     sim.step(16);
 
     expect(called).toEqual(true);
@@ -71,9 +78,7 @@ describe("time", () => {
 
 describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
-    const { sim } = await mount({
-      hooks: defaultHooks,
-    });
+    const { sim } = await mount(createTestMountable());
 
     sim.step(16);
     sim.step(16);
@@ -98,9 +103,8 @@ describe("inputs", () => {
     let called = false;
     const states: KeyState[] = [];
 
-    const { sim } = await mount({
-      hooks: {
-        ...defaultHooks,
+    const { sim } = await mount(
+      createTestMountable({
         systemsCallback(_handle, ptr) {
           const dataView = new DataView(sim.buffer, ptr);
           const inputCtxPtr = dataView.getUint32(4, true);
@@ -111,8 +115,8 @@ describe("inputs", () => {
 
           called = true;
         },
-      },
-    });
+      }),
+    );
 
     sim.emit.keydown("Digit8");
     sim.step();
@@ -151,10 +155,8 @@ describe("inputs", () => {
     };
     const states: MouseState[] = [];
 
-    const { sim } = await mount({
-      hooks: {
-        ...defaultHooks,
-
+    const { sim } = await mount(
+      createTestMountable({
         systemsCallback(_handle, ptr) {
           const dataView = new DataView(sim.buffer, ptr);
           const inputCtxPtr = dataView.getUint32(4, true);
@@ -176,8 +178,8 @@ describe("inputs", () => {
 
           called = true;
         },
-      },
-    });
+      }),
+    );
 
     sim.emit.mousedown("Left");
     sim.step();
@@ -222,9 +224,8 @@ describe("inputs", () => {
 
   it("updates platform events with input events", async () => {
     let called = false;
-    const { sim } = await mount({
-      hooks: {
-        ...defaultHooks,
+    const { sim } = await mount(
+      createTestMountable({
         systemsCallback(_handle, ptr) {
           const dataView = new DataView(sim.buffer, ptr);
           const eventsPtr = dataView.getUint32(8, true);
@@ -242,8 +243,8 @@ describe("inputs", () => {
           expect(eventPayload).toEqual(3); // KeyCode for BracketLeft
           called = true;
         },
-      },
-    });
+      }),
+    );
 
     sim.emit.keydown("BracketLeft");
     sim.step();
@@ -254,9 +255,7 @@ describe("inputs", () => {
 describe("tapes", () => {
   describe("engine snapshot", () => {
     it("saves and restores time context", async () => {
-      const { sim } = await mount({
-        hooks: defaultHooks,
-      });
+      const { sim } = await mount(createTestMountable());
 
       const snapshot = sim.snapshot();
       expect(sim.time.frame).toEqual(0);
@@ -273,6 +272,7 @@ describe("tapes", () => {
   describe("caller payload", () => {
     it("can capture and restore arbitrary payloads", async () => {
       let called = false;
+      const netContext = new NetContext();
       const { sim } = await mount(
         {
           hooks: {
@@ -294,6 +294,8 @@ describe("tapes", () => {
               expect(data[0]).toBe(66);
             },
           },
+          getNet: () => netContext,
+          _handleNetEvent: () => {},
         },
         { startRecording: false },
       );
