@@ -17,6 +17,9 @@ const Event = Events.Event;
 
 pub const hz = SimMod.hz;
 
+/// Maximum pending network events between frames
+const MAX_PENDING_NET_EVENTS: usize = 16;
+
 /// Engine coordinates the simulation, managing timing, sessions, tapes, and network.
 /// This is the unit-testable orchestration layer that sits above Sim.
 pub const Engine = struct {
@@ -40,6 +43,14 @@ pub const Engine = struct {
     input_buffer: *InputBuffer,
     /// Network state for packet management (heap-allocated due to ~68KB size)
     net: *NetState,
+
+    // ─────────────────────────────────────────────────────────────
+    // Pending network events (queued until next tick)
+    // ─────────────────────────────────────────────────────────────
+    /// Network events waiting to be processed in next tick
+    pending_net_events: [MAX_PENDING_NET_EVENTS]Event = undefined,
+    /// Number of pending network events
+    pending_net_events_count: u8 = 0,
 
     /// Initialize engine with a new simulation
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Engine {
@@ -85,6 +96,25 @@ pub const Engine = struct {
         // Update sim.net_ctx from Engine's network state before tick processes events
         // Note: Tape replay is handled by Engine.advance() before tick() is called
         self.syncNetCtx();
+
+        // Copy pending network events to sim.events (processed before input events)
+        self.flushPendingNetEvents();
+    }
+
+    /// Copy pending network events to sim.events and clear the pending buffer
+    fn flushPendingNetEvents(self: *Engine) void {
+        const pending_count = self.pending_net_events_count;
+        if (pending_count == 0) return;
+
+        for (0..pending_count) |i| {
+            const idx = self.sim.events.count;
+            if (idx < Events.MAX_EVENTS) {
+                self.sim.events.count += 1;
+                self.sim.events.events[idx] = self.pending_net_events[i];
+            }
+        }
+
+        self.pending_net_events_count = 0;
     }
 
     fn afterTickListener(ctx: *anyopaque, is_resimulating: bool) void {
@@ -106,15 +136,14 @@ pub const Engine = struct {
 
     /// Sync sim.net_ctx from Engine's network state before each tick.
     /// Sets match_frame to the NEXT frame that tick will process (time.frame + 1).
+    /// Note: peer_count, status, room_code, and in_session are managed by network events
+    /// in process_events(), not here.
     fn syncNetCtx(self: *Engine) void {
-        // Use session peer_count in session mode, input_buffer.peer_count for local multiplayer
-        self.sim.net_ctx.peer_count = if (self.session.active) self.session.peer_count else self.input_buffer.peer_count;
         // Calculate the target match_frame for the upcoming tick
         self.sim.net_ctx.match_frame = if (self.session.active)
             self.session.getMatchFrame(self.sim.time.frame) + 1
         else
             self.sim.time.frame + 1;
-        self.sim.net_ctx.in_session = if (self.session.active) 1 else 0;
         self.sim.net_ctx.session_start_frame = self.session.start_frame;
         self.sim.net_ctx.local_peer_id = self.session.local_peer_id;
     }
@@ -541,6 +570,38 @@ pub const Engine = struct {
 
     pub fn emit_mousewheel(self: *Engine, delta_x: f32, delta_y: f32, peer_id: u8) void {
         self.appendEvent(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Network event emission
+    // ─────────────────────────────────────────────────────────────
+
+    /// Queue a network event for processing in next tick
+    fn emitNetEvent(self: *Engine, event: Event) void {
+        if (self.pending_net_events_count < MAX_PENDING_NET_EVENTS) {
+            self.pending_net_events[self.pending_net_events_count] = event;
+            self.pending_net_events_count += 1;
+        }
+    }
+
+    /// Emit NetJoinOk event - successfully joined a room
+    pub fn emit_net_join_ok(self: *Engine, room_code: [8]u8) void {
+        self.emitNetEvent(Event.netJoinOk(room_code));
+    }
+
+    /// Emit NetJoinFail event - failed to join a room
+    pub fn emit_net_join_fail(self: *Engine, reason: Events.NetJoinFailReason) void {
+        self.emitNetEvent(Event.netJoinFail(reason));
+    }
+
+    /// Emit NetPeerJoin event - a peer joined the room
+    pub fn emit_net_peer_join(self: *Engine, peer_id: u8) void {
+        self.emitNetEvent(Event.netPeerJoin(peer_id));
+    }
+
+    /// Emit NetPeerLeave event - a peer left the room
+    pub fn emit_net_peer_leave(self: *Engine, peer_id: u8) void {
+        self.emitNetEvent(Event.netPeerLeave(peer_id));
     }
 
     /// Append a fresh local event. Writes to Engine's canonical InputBuffer.

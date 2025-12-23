@@ -61,6 +61,11 @@ pub fn build(b: *std.Build) void {
         "receive_packet",
         "get_peer_seq",
         "get_peer_ack",
+        // Network events
+        "emit_net_join_ok",
+        "emit_net_join_fail",
+        "emit_net_peer_join",
+        "emit_net_peer_leave",
     };
 
     // read memory from JS side

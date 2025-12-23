@@ -27,7 +27,6 @@ function createTestMountable(hooks: Partial<EngineHooks> = {}): Mountable {
   return {
     hooks: { ...defaultHooks, ...hooks },
     getNet: () => netContext,
-    _handleNetEvent: () => {},
   };
 }
 
@@ -295,7 +294,6 @@ describe("tapes", () => {
             },
           },
           getNet: () => netContext,
-          _handleNetEvent: () => {},
         },
         { startRecording: false },
       );

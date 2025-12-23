@@ -183,8 +183,8 @@ describe("netcode integration", () => {
     sim1.step();
     expect(sim1.net.wants.roomCode).toEqual("TEST");
     sim1.emit.network("join:ok", { roomCode: "TEST" });
-    sim0.emit.network("peer:join", { peerId: "peer1" });
-    sim1.emit.network("peer:join", { peerId: "peer0" });
+    sim0.emit.network("peer:join", { peerId: 1 });
+    sim1.emit.network("peer:join", { peerId: 0 });
     expect(game1.context.net.roomCode).toEqual("");
     sim1.step();
     expect(game1.context.net.roomCode).toEqual("TEST");
@@ -201,6 +201,6 @@ describe("netcode integration", () => {
     expect(game0.bag.events[0]![1]).toEqual({ roomCode: "TEST" });
 
     expect(game0.bag.events[1]![0]).toEqual("peer:join");
-    expect(game0.bag.events[1]![1]).toEqual({ peerId: "peer1" });
+    expect(game0.bag.events[1]![1]).toEqual({ peerId: 1 });
   });
 });

@@ -112,21 +112,6 @@ export class Bloop<GS extends BloopSchema> {
   }
 
   /**
-   * Handle a network event by dispatching to all systems with a netcode handler.
-   * Called by Sim when processing network events.
-   * @internal
-   */
-  _handleNetEvent(event: NetEvent): void {
-    for (const system of this.#systems) {
-      if (system.netcode) {
-        (this.#context as any).event = event;
-        system.netcode(this.#context as Context<GS> & { event: NetEvent });
-      }
-    }
-    (this.#context as any).event = undefined;
-  }
-
-  /**
    * Register a system with the game loop.
    */
   system(label: string, system: System<GS>): number {
@@ -278,8 +263,70 @@ export class Bloop<GS extends BloopSchema> {
                 }),
               );
               break;
+            case Enums.EventType.NetJoinOk: {
+              // Room code is 8 bytes starting at payload offset
+              const roomCodeBytes: number[] = [];
+              for (let j = 0; j < 8; j++) {
+                const byte = eventsDataView.getUint8(payloadOffset + j);
+                if (byte === 0) break;
+                roomCodeBytes.push(byte);
+              }
+              const roomCode = String.fromCharCode(...roomCodeBytes);
+              (this.#context as any).event = {
+                type: "join:ok",
+                data: { roomCode },
+              };
+              system.netcode?.(
+                this.#context as Context<GS> & { event: NetEvent },
+              );
+              break;
+            }
+            case Enums.EventType.NetJoinFail: {
+              // Reason is stored at payload offset as u8
+              const reasonCode = eventsDataView.getUint8(payloadOffset);
+              const reasons = [
+                "unknown",
+                "timeout",
+                "room_full",
+                "room_not_found",
+                "already_in_room",
+              ];
+              const reason = reasons[reasonCode] ?? "unknown";
+              (this.#context as any).event = {
+                type: "join:fail",
+                data: { reason },
+              };
+              system.netcode?.(
+                this.#context as Context<GS> & { event: NetEvent },
+              );
+              break;
+            }
+            case Enums.EventType.NetPeerJoin: {
+              const peerId = eventsDataView.getUint8(payloadOffset);
+              (this.#context as any).event = {
+                type: "peer:join",
+                data: { peerId },
+              };
+              system.netcode?.(
+                this.#context as Context<GS> & { event: NetEvent },
+              );
+              break;
+            }
+            case Enums.EventType.NetPeerLeave: {
+              const peerId = eventsDataView.getUint8(payloadOffset);
+              (this.#context as any).event = {
+                type: "peer:leave",
+                data: { peerId },
+              };
+              system.netcode?.(
+                this.#context as Context<GS> & { event: NetEvent },
+              );
+              break;
+            }
             default:
-              throw new Error(`Unknown event type: ${eventType}`);
+              // Session lifecycle and other internal events are handled by engine
+              // They don't need to be dispatched to game systems
+              break;
           }
           // Event is 12 bytes: kind (1) + source (1) + padding (2) + payload (8)
           offset += 12;

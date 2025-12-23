@@ -15,8 +15,8 @@ export type NetEventType =
 export type NetEvent =
   | { type: "join:ok"; data: { roomCode: string } }
   | { type: "join:fail"; data: { reason: string } }
-  | { type: "peer:join"; data: { peerId: string } }
-  | { type: "peer:leave"; data: { peerId: string } }
+  | { type: "peer:join"; data: { peerId: number } }
+  | { type: "peer:leave"; data: { peerId: number } }
   | { type: "session:start"; data: Record<string, never> }
   | { type: "session:end"; data: Record<string, never> };
 
