@@ -133,4 +133,73 @@ describe("netcode integration", () => {
     expect(game.bag.count).toEqual(1);
     expect(game.bag.inSession).toEqual(false);
   });
+
+  it("can connect via room code", async () => {
+    const game0 = Bloop.create({
+      bag: {
+        events: [] as [string, any][],
+      },
+    });
+    const game1 = Bloop.create();
+
+    game0.system("netcode", {
+      update({ net }) {
+        // available statuses:
+        // "offline" - no internet connection
+        // "local" - internet connection, not in a room
+        // "join:pending" - attempting to join a room
+        // "join:ok" - successfully joined room
+        // "join:fail" - failed to join room
+        // "disconnected" - was in a room, but disconnected
+        if (net.status === "local") {
+          net.wants.roomCode = "TEST";
+        }
+      },
+
+      netcode({ event }) {
+        game0.bag.events.push([event.type, event.data]);
+      },
+    });
+
+    game1.system("netcode", {
+      keydown({ event, net }) {
+        if (ctx.event.key === "Enter") {
+          net.joinRoom("TEST");
+        }
+      },
+    });
+
+    const { sim: sim0 } = await mount(game0);
+    const { sim: sim1 } = await mount(game1);
+
+    sim0.step();
+    expect(sim0.net.wants.roomCode).toEqual("TEST");
+    sim0.emit.network("join:ok", { roomCode: "TEST" });
+    sim0.step();
+    expect(game0.context.net.roomCode).toEqual("TEST");
+
+    sim0.net.expect(sim1.net.wants).toEqual({});
+    sim1.emit.keydown("Enter");
+    sim1.step();
+    expect(sim1.net.wants.roomCode).toEqual("TEST");
+    sim1.emit.network("join:ok", { roomCode: "TEST" });
+    sim0.emit.network("peer:join", { peerId: "peer1" });
+    expect(game1.context.net.roomCode).toEqual("");
+    sim1.step();
+    expect(game1.context.net.roomCode).toEqual("TEST");
+
+    sim0.step();
+
+    expect(game0.context.net.isInSession).toEqual(true);
+    expect(game1.context.net.isInSession).toEqual(true);
+
+    expect(game0.context.net.peerCount).toEqual(2);
+    expect(game1.context.net.peerCount).toEqual(2);
+
+    expect(game0.bag.events[0][0]).toEqual("join:ok");
+    expect(game0.bag.events[0][1]).toEqual({ roomCode: "TEST" });
+
+    expect(game0.bag.events[1][0]).toEqual("peer:join");
+    expect(game0.bag.events[1][1]).toEqual({ peerId: "peer1" });
+  });
 });
