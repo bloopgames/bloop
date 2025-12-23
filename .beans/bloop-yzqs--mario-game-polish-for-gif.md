@@ -1,11 +1,11 @@
 ---
 # bloop-yzqs
 title: Mario game polish for GIF
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2025-12-16T22:55:25Z
-updated_at: 2025-12-22T17:08:01Z
+updated_at: 2025-12-23T17:16:45Z
 parent: bloop-dbi0
 ---
 
