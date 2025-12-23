@@ -5,16 +5,10 @@ import { createChromaticAberrationEffect } from "./chromatic-aberration";
 import { createDrawState, draw as drawFn } from "./draw";
 import { game } from "./game";
 
-// In dev, vite serves wasm from /bloop-wasm/. In prod, it's bundled at ./bloop.wasm
-const wasmUrl = import.meta.env.DEV
-  ? new URL("/bloop-wasm/bloop.wasm", window.location.href)
-  : new URL("./bloop.wasm", import.meta.url);
-
 let draw = drawFn;
 
 const app = await start({
   game,
-  engineWasmUrl: wasmUrl,
   startRecording: false,
   debugUi: {
     initiallyVisible: false,
@@ -113,14 +107,10 @@ game.system("title-input", {
 // HMR support
 if (import.meta.hot) {
   import.meta.hot.accept("./game", async (newModule) => {
-    if (newModule?.game) {
-      await app.acceptHmr(newModule.game, { wasmUrl });
-    }
+    await app.acceptHmr(newModule?.game);
   });
 
   import.meta.hot.accept("./draw", async (newModule) => {
-    if (newModule?.draw && newModule?.createDrawState) {
-      draw = newModule.draw;
-    }
+    draw = newModule?.draw;
   });
 }

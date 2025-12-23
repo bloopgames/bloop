@@ -1,6 +1,6 @@
 import "./style.css";
 import { unwrap } from "@bloopjs/bloop";
-import { Debug, joinRollbackRoom, logger, start } from "@bloopjs/web";
+import { joinRollbackRoom, logger, start } from "@bloopjs/web";
 import { game } from "./game";
 import { createRenderer } from "./render";
 
@@ -11,7 +11,7 @@ const wasmUrl = import.meta.env.DEV
 
 const app = await start({
   game,
-  engineWasmUrl: wasmUrl,
+  wasmUrl: wasmUrl,
   startRecording: false,
   debugUi: {
     container: unwrap(

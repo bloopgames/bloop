@@ -242,6 +242,9 @@ async function publishTemplates(bloopVersion: string) {
         );
       } else if (file === "vite.config.ts") {
         // Skip - vite works without config file
+      } else if (file === ".gitignore") {
+        // npm won't publish .gitignore, rename to gitignore
+        await cp(srcPath, path.join(dest, "gitignore"));
       } else {
         await cp(srcPath, destPath);
       }

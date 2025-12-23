@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@bloopjs/bloop": "workspace:*",
-    "@bloopjs/toodle": "^0.1.1",
+    "@bloopjs/toodle": "^0.1.3",
     "@bloopjs/web": "workspace:*"
   }
 }

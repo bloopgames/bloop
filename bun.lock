@@ -31,7 +31,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@bloopjs/bloop": "workspace:*",
-        "@bloopjs/toodle": "^0.0.100",
+        "@bloopjs/toodle": "^0.1.3",
         "@bloopjs/web": "workspace:*",
       },
       "devDependencies": {
@@ -44,7 +44,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@bloopjs/bloop": "workspace:*",
-        "@bloopjs/toodle": "^0.1.1",
+        "@bloopjs/toodle": "^0.1.3",
         "@bloopjs/web": "workspace:*",
       },
       "devDependencies": {
@@ -290,23 +290,25 @@
 
     "wgsl_reflect": ["wgsl_reflect@1.2.3", "", {}, "sha512-BQWBIsOn411M+ffBxmA6QRLvAOVbuz3Uk4NusxnqC1H7aeQcVLhdA3k2k/EFFFtqVjhz3z7JOOZF1a9hj2tv4Q=="],
 
-    "@bloopjs/bloop/@types/bun": ["@types/bun@1.3.4", "", { "dependencies": { "bun-types": "1.3.4" } }, "sha512-EEPTKXHP+zKGPkhRLv+HI0UEX8/o+65hqARxLy8Ov5rIxMBPNTjeZww00CIihrIQGEQBYg+0roO5qOnS/7boGA=="],
+    "@bloopjs/bloop/@types/bun": ["@types/bun@1.3.5", "", { "dependencies": { "bun-types": "1.3.5" } }, "sha512-RnygCqNrd3srIPEWBd5LFeUYG7plCoH2Yw9WaZGyNmdTEei+gWaHqydbaIRkIkcbXwhBT94q78QljxN0Sk838w=="],
 
-    "@bloopjs/engine/@types/bun": ["@types/bun@1.3.4", "", { "dependencies": { "bun-types": "1.3.4" } }, "sha512-EEPTKXHP+zKGPkhRLv+HI0UEX8/o+65hqARxLy8Ov5rIxMBPNTjeZww00CIihrIQGEQBYg+0roO5qOnS/7boGA=="],
+    "@bloopjs/engine/@types/bun": ["@types/bun@1.3.5", "", { "dependencies": { "bun-types": "1.3.5" } }, "sha512-RnygCqNrd3srIPEWBd5LFeUYG7plCoH2Yw9WaZGyNmdTEei+gWaHqydbaIRkIkcbXwhBT94q78QljxN0Sk838w=="],
 
-    "@bloopjs/web/@types/bun": ["@types/bun@1.3.4", "", { "dependencies": { "bun-types": "1.3.4" } }, "sha512-EEPTKXHP+zKGPkhRLv+HI0UEX8/o+65hqARxLy8Ov5rIxMBPNTjeZww00CIihrIQGEQBYg+0roO5qOnS/7boGA=="],
+    "@bloopjs/web/@types/bun": ["@types/bun@1.3.5", "", { "dependencies": { "bun-types": "1.3.5" } }, "sha512-RnygCqNrd3srIPEWBd5LFeUYG7plCoH2Yw9WaZGyNmdTEei+gWaHqydbaIRkIkcbXwhBT94q78QljxN0Sk838w=="],
 
     "@types/prompts/@types/node": ["@types/node@24.10.0", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-qzQZRBqkFsYyaSWXuEHc2WR9c0a0CXwiE5FWUvn7ZM+vdy1uZLfCunD38UzhuB7YN/J11ndbDBcTmOdxJo9Q7A=="],
 
     "bun-types/@types/node": ["@types/node@24.10.0", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-qzQZRBqkFsYyaSWXuEHc2WR9c0a0CXwiE5FWUvn7ZM+vdy1uZLfCunD38UzhuB7YN/J11ndbDBcTmOdxJo9Q7A=="],
 
-    "mario-rollback/@bloopjs/toodle": ["@bloopjs/toodle@0.1.1", "", { "dependencies": { "fflate": "^0.8.2", "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-HVtMPZvasE65pp6pZx1AeToPj9gJkTB8jfH6Sm2rP7Kpqa8FcS7CEoTkLuugp76S9l4HNEB1NDH5rBQ4AdbqMA=="],
+    "hello/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
 
-    "@bloopjs/bloop/@types/bun/bun-types": ["bun-types@1.3.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-5ua817+BZPZOlNaRgGBpZJOSAQ9RQ17pkwPD0yR7CfJg+r8DgIILByFifDTa+IPDDxzf5VNhtNlcKqFzDgJvlQ=="],
+    "mario-rollback/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
 
-    "@bloopjs/engine/@types/bun/bun-types": ["bun-types@1.3.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-5ua817+BZPZOlNaRgGBpZJOSAQ9RQ17pkwPD0yR7CfJg+r8DgIILByFifDTa+IPDDxzf5VNhtNlcKqFzDgJvlQ=="],
+    "@bloopjs/bloop/@types/bun/bun-types": ["bun-types@1.3.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-inmAYe2PFLs0SUbFOWSVD24sg1jFlMPxOjOSSCYqUgn4Hsc3rDc7dFvfVYjFPNHtov6kgUeulV4SxbuIV/stPw=="],
 
-    "@bloopjs/web/@types/bun/bun-types": ["bun-types@1.3.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-5ua817+BZPZOlNaRgGBpZJOSAQ9RQ17pkwPD0yR7CfJg+r8DgIILByFifDTa+IPDDxzf5VNhtNlcKqFzDgJvlQ=="],
+    "@bloopjs/engine/@types/bun/bun-types": ["bun-types@1.3.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-inmAYe2PFLs0SUbFOWSVD24sg1jFlMPxOjOSSCYqUgn4Hsc3rDc7dFvfVYjFPNHtov6kgUeulV4SxbuIV/stPw=="],
+
+    "@bloopjs/web/@types/bun/bun-types": ["bun-types@1.3.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-inmAYe2PFLs0SUbFOWSVD24sg1jFlMPxOjOSSCYqUgn4Hsc3rDc7dFvfVYjFPNHtov6kgUeulV4SxbuIV/stPw=="],
 
     "@types/prompts/@types/node/undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 

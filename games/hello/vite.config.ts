@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type UserConfig } from "vite";
+
+export default defineConfig({
+  plugins: [bloopWasmDevPlugin()],
+});
 
 function bloopWasmDevPlugin(): Plugin {
   // adjust path to wherever engine builds the wasm
@@ -11,6 +15,15 @@ function bloopWasmDevPlugin(): Plugin {
 
   return {
     name: "bloop-wasm-dev",
+    config(): UserConfig {
+      return {
+        define: {
+          "import.meta.env.VITE_ENGINE_WASM_URL": JSON.stringify(
+            "/bloop-wasm/bloop.wasm",
+          ),
+        },
+      };
+    },
     configureServer(server) {
       server.middlewares.use(
         "/bloop-wasm/bloop.wasm",
@@ -30,7 +43,3 @@ function bloopWasmDevPlugin(): Plugin {
     },
   };
 }
-
-export default defineConfig({
-  plugins: [bloopWasmDevPlugin()],
-});

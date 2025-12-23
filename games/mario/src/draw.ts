@@ -1,5 +1,11 @@
 import { unwrap } from "@bloopjs/bloop";
-import type { Color, QuadNode, SceneNode, Text, Toodle } from "@bloopjs/toodle";
+import type {
+  Color,
+  QuadNode,
+  SceneNode,
+  TextNode,
+  Toodle,
+} from "@bloopjs/toodle";
 import { Colors } from "@bloopjs/toodle";
 import {
   BLOCK_SIZE,
@@ -33,11 +39,11 @@ export interface DrawState {
   p1: PoseQuads;
   p2: PoseQuads;
   viewport: SceneNode;
-  p1Score: Text.TextNode;
-  p2Score: Text.TextNode;
+  p1Score: TextNode;
+  p2Score: TextNode;
   // Title elements (under titleScreen)
-  titleText: Text.TextNode;
-  subtitleText: Text.TextNode;
+  titleText: TextNode;
+  subtitleText: TextNode;
 }
 
 export function createDrawState(toodle: Toodle): DrawState {

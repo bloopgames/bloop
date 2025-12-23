@@ -20,7 +20,7 @@ export type StartOptions = {
   /** A pre-mounted sim instance, defaults to mount with default options */
   sim?: Sim;
   /** An override url to use to fetch the engine wasm */
-  engineWasmUrl?: URL;
+  wasmUrl?: URL;
   /** Whether the sim should pause before running the first frame, defaults to false */
   startPaused?: boolean;
   /** Whether the sim should be recording to tape from initialization, defaults to true */
@@ -38,7 +38,7 @@ export async function start(opts: StartOptions): Promise<App> {
   if (!opts.sim) {
     const { sim } = await mount(opts.game, {
       startRecording: opts.startRecording ?? true,
-      wasmUrl: opts.engineWasmUrl,
+      wasmUrl: opts.wasmUrl,
     });
     opts.sim = sim;
   }

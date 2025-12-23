@@ -32,6 +32,12 @@ function bloopLocalDevPlugin(): Plugin {
     name: "bloop-local-dev",
     config(): UserConfig {
       return {
+        define: {
+          "import.meta.env.VITE_ENGINE_WASM_URL": JSON.stringify(
+            "/bloop-wasm/bloop.wasm",
+          ),
+        },
+
         server: {
           allowedHosts: ["localhost", "bloop.ngrok.dev"],
         },

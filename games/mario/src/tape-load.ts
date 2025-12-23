@@ -33,7 +33,7 @@ async function loadTape(bytes: Uint8Array, fileName: string) {
   // Start the app with recording disabled (we're loading a tape)
   const app = await start({
     game,
-    engineWasmUrl: wasmUrl,
+    wasmUrl: wasmUrl,
     debugUi: true,
     startRecording: false,
   });
