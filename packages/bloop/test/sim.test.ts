@@ -37,9 +37,7 @@ it("hello wasm", async () => {
 
 describe("time", () => {
   it("injects frame and dt", async () => {
-    const { sim } = await mount({
-      hooks: defaultHooks,
-    });
+    const { sim } = await mount({ hooks: defaultHooks });
 
     sim.step(16);
     expect(sim.time.frame).toEqual(1);
@@ -71,9 +69,7 @@ describe("time", () => {
 
 describe("snapshots", () => {
   it("can capture time to a snapshot", async () => {
-    const { sim } = await mount({
-      hooks: defaultHooks,
-    });
+    const { sim } = await mount({ hooks: defaultHooks });
 
     sim.step(16);
     sim.step(16);
@@ -154,7 +150,6 @@ describe("inputs", () => {
     const { sim } = await mount({
       hooks: {
         ...defaultHooks,
-
         systemsCallback(_handle, ptr) {
           const dataView = new DataView(sim.buffer, ptr);
           const inputCtxPtr = dataView.getUint32(4, true);
@@ -254,9 +249,7 @@ describe("inputs", () => {
 describe("tapes", () => {
   describe("engine snapshot", () => {
     it("saves and restores time context", async () => {
-      const { sim } = await mount({
-        hooks: defaultHooks,
-      });
+      const { sim } = await mount({ hooks: defaultHooks });
 
       const snapshot = sim.snapshot();
       expect(sim.time.frame).toEqual(0);

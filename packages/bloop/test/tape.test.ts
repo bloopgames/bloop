@@ -392,9 +392,9 @@ describe("tapes", () => {
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       // Frame 3: Now sim0 receives the delayed packet from frame 0
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback to frame 0
+      sim0._netInternal.receivePacket(packet); // triggers rollback to frame 0
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -489,9 +489,9 @@ describe("tapes", () => {
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback
+      sim0._netInternal.receivePacket(packet); // triggers rollback
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -567,9 +567,9 @@ describe("tapes", () => {
       sim1.step();
 
       // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet);
+      sim0._netInternal.receivePacket(packet);
       sim0.step();
       sim1.step();
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
@@ -619,9 +619,9 @@ describe("tapes", () => {
 
       for (let i = 0; i < 1000; i++) {
         // Capture outgoing packets to simulate network delay
-        const packet0 = unwrap(sim0.net.getOutboundPacket(1));
+        const packet0 = unwrap(sim0._netInternal.getOutboundPacket(1));
         outbound0.push(packet0);
-        const packet1 = unwrap(sim1.net.getOutboundPacket(0));
+        const packet1 = unwrap(sim1._netInternal.getOutboundPacket(0));
         outbound1.push(packet1);
 
         // Step both sims
@@ -634,13 +634,13 @@ describe("tapes", () => {
             outbound0.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim1.net.receivePacket(packet0);
+          sim1._netInternal.receivePacket(packet0);
 
           const packet1 = unwrap(
             outbound1.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim0.net.receivePacket(packet1);
+          sim0._netInternal.receivePacket(packet1);
         }
       }
 

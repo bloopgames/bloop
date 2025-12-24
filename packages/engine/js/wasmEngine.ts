@@ -152,4 +152,27 @@ export type WasmEngine = {
    * Get ack for a peer (latest frame they acked from us)
    */
   get_peer_ack: (peer: number) => number;
+
+  // Network events
+  /**
+   * Emit NetJoinOk event - successfully joined a room
+   * @param room_code_ptr Pointer to room code string in WASM memory
+   * @param len Length of the room code (max 8)
+   */
+  emit_net_join_ok: (room_code_ptr: EnginePointer, len: number) => void;
+  /**
+   * Emit NetJoinFail event - failed to join a room
+   * @param reason Reason code (0=unknown, 1=timeout, 2=room_full, etc.)
+   */
+  emit_net_join_fail: (reason: number) => void;
+  /**
+   * Emit NetPeerJoin event - a peer joined the room
+   * @param peer_id Numeric peer ID (0-11)
+   */
+  emit_net_peer_join: (peer_id: number) => void;
+  /**
+   * Emit NetPeerLeave event - a peer left the room
+   * @param peer_id Numeric peer ID (0-11)
+   */
+  emit_net_peer_leave: (peer_id: number) => void;
 };

@@ -35,7 +35,7 @@ Public launch of Bloop during birthday week (Jan 5-10, 2026) with:
 
 ### Share
 - [ ] Post to Void discord for feedback
-- [ ] Playtests with Paul and Ben
+- [x] Playtests with Paul and Ben
 
 ---
 

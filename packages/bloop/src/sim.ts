@@ -4,6 +4,9 @@ import {
   keyToKeyCode,
   type MouseButton,
   mouseButtonToMouseButtonCode,
+  NetContext,
+  type NetEvent,
+  type NetEventType,
   SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
   SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
@@ -90,10 +93,16 @@ export class Sim {
   #isPaused: boolean = false;
 
   /**
-   * Network API for packet management in multiplayer sessions.
-   * Use this to send/receive packets and query peer network state.
+   * Shared network context - same instance as game.context.net.
+   * Provides access to network state (status, roomCode, wants, etc.)
    */
-  readonly net: Net;
+  readonly net: NetContext;
+
+  /**
+   * Internal network API for packet management (used by platform).
+   * @internal
+   */
+  readonly _netInternal: Net;
 
   /**
    * Callback fired when tape buffer fills up and recording stops.
@@ -104,7 +113,7 @@ export class Sim {
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
-    opts?: { serialize?: SerializeFn },
+    opts?: { serialize?: SerializeFn; netContext?: NetContext },
   ) {
     this.wasm = wasm;
     this.#memory = memory;
@@ -115,7 +124,8 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
-    this.net = new Net(wasm, memory);
+    this.net = opts?.netContext ?? new NetContext();
+    this._netInternal = new Net(wasm, memory);
   }
 
   step(ms?: number): number {
@@ -356,6 +366,45 @@ export class Sim {
     },
     mousewheel: (x: number, y: number, peerId: number = 0): void => {
       this.wasm.emit_mousewheel(x, y, peerId);
+    },
+    /**
+     * Emit a network event (join:ok, peer:join, etc.)
+     * Events are queued in the engine and processed during the next tick.
+     */
+    network: <T extends NetEventType>(
+      type: T,
+      data: Extract<NetEvent, { type: T }>["data"],
+    ): void => {
+      switch (type) {
+        case "join:ok": {
+          const roomCode = (data as { roomCode: string }).roomCode;
+          const encoded = new TextEncoder().encode(roomCode);
+          const ptr = this.wasm.alloc(encoded.length);
+          new Uint8Array(this.#memory.buffer, ptr, encoded.length).set(encoded);
+          this.wasm.emit_net_join_ok(ptr, encoded.length);
+          this.wasm.free(ptr, encoded.length);
+          break;
+        }
+        case "join:fail":
+          this.wasm.emit_net_join_fail(0); // reason code: unknown
+          break;
+        case "peer:join": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_join(peerId);
+          break;
+        }
+        case "peer:leave": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_leave(peerId);
+          break;
+        }
+        case "session:start":
+        case "session:end":
+          // These are handled by sessionInit/sessionEnd
+          break;
+      }
+      // Note: Events are dispatched to game systems via bloop.ts systemsCallback
+      // when the event buffer is processed during tick(), not here.
     },
   };
 

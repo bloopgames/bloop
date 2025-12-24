@@ -119,6 +119,51 @@ pub const Event = extern struct {
             .payload = .{ .peer_id = 0 },
         };
     }
+
+    /// Network event: successfully joined a room
+    pub inline fn netJoinOk(room_code: [8]u8) Event {
+        return Event{
+            .kind = .NetJoinOk,
+            .device = .None,
+            .payload = .{ .room_code = room_code },
+        };
+    }
+
+    /// Network event: failed to join a room
+    pub inline fn netJoinFail(reason: NetJoinFailReason) Event {
+        return Event{
+            .kind = .NetJoinFail,
+            .device = .None,
+            .payload = .{ .join_fail_reason = reason },
+        };
+    }
+
+    /// Network event: a peer joined the room
+    pub inline fn netPeerJoin(peer_id: u8) Event {
+        return Event{
+            .kind = .NetPeerJoin,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
+
+    /// Network event: a peer left the room
+    pub inline fn netPeerLeave(peer_id: u8) Event {
+        return Event{
+            .kind = .NetPeerLeave,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
+};
+
+/// Reason for join failure
+pub const NetJoinFailReason = enum(u8) {
+    unknown = 0,
+    timeout = 1,
+    room_full = 2,
+    room_not_found = 3,
+    already_in_room = 4,
 };
 
 pub const EventPayload = extern union {
@@ -129,6 +174,10 @@ pub const EventPayload = extern union {
     frame_number: u32,
     /// Used by SessionInit (peer_count) and SessionSetLocalPeer/ConnectPeer/DisconnectPeer (peer_id)
     peer_id: u8,
+    /// Room code for NetJoinOk (8 bytes, null-terminated)
+    room_code: [8]u8,
+    /// Reason for NetJoinFail
+    join_fail_reason: NetJoinFailReason,
 };
 
 pub const EventType = enum(u8) {
@@ -147,10 +196,22 @@ pub const EventType = enum(u8) {
     SessionConnectPeer,
     SessionDisconnectPeer,
     SessionEnd,
+    /// Network events (emitted by platform, stored in tape)
+    NetJoinOk,
+    NetJoinFail,
+    NetPeerJoin,
+    NetPeerLeave,
 
     pub fn isSessionEvent(self: EventType) bool {
         return switch (self) {
             .SessionInit, .SessionSetLocalPeer, .SessionConnectPeer, .SessionDisconnectPeer, .SessionEnd => true,
+            else => false,
+        };
+    }
+
+    pub fn isNetEvent(self: EventType) bool {
+        return switch (self) {
+            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave => true,
             else => false,
         };
     }
