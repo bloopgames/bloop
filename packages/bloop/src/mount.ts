@@ -1,7 +1,6 @@
 import {
   DEFAULT_WASM_URL,
   type EnginePointer,
-  NetContext,
   type WasmEngine,
 } from "@bloopjs/engine";
 import { type EngineHooks, Sim } from "./sim";
