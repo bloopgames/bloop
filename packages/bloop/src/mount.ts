@@ -13,8 +13,6 @@ import { assert } from "./util";
  */
 export type Mountable = {
   hooks: EngineHooks;
-  /** Get the shared NetContext instance */
-  getNet(): NetContext;
 };
 
 /**
@@ -108,7 +106,6 @@ export async function mount(
   const enginePointer = wasm.initialize();
   sim = new Sim(wasm, memory, {
     serialize: mountable.hooks.serialize,
-    netContext: mountable.getNet(),
   });
 
   if (startRecording) {

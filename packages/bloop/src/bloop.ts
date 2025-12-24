@@ -1,8 +1,6 @@
 import {
   type EnginePointer,
   Enums,
-  EVENT_PAYLOAD_ALIGN,
-  EVENT_PAYLOAD_SIZE,
   EVENTS_OFFSET,
   INPUT_CTX_OFFSET,
   InputContext,
@@ -101,14 +99,6 @@ export class Bloop<GS extends BloopSchema> {
    */
   get context(): Readonly<Context<GS>> {
     return this.#context;
-  }
-
-  /**
-   * Get the shared NetContext instance.
-   * This is used by mount to share the same NetContext with Sim.
-   */
-  getNet(): NetContext {
-    return this.#context.net;
   }
 
   /**
