@@ -1,0 +1,26 @@
+name: Deploy Games
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'games/**'
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+      - name: Setup zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "master"
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Deploy games
+        run: bun run deploy-games
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
