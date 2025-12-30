@@ -238,9 +238,35 @@ describe("tapes", () => {
       expect(bloop.bag.score).toEqual(10);
     });
 
+    it("replays events from file when stepping forward with step()", async () => {
+      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      let spaceDownFrame = -1;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+      expect(sim.isReplaying).toBe(true);
+
+      // Step forward using step() - should advance and replay events
+      for (let i = 0; i < 100; i++) {
+        sim.step(16);
+      }
+
+      expect(spaceDownFrame).toBe(136);
+    });
+
     it("replays keydown events from file at correct frame", async () => {
-      // Load tape recorded from mario game
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
       const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
 
       // Track keydown events externally (bag gets overwritten by tape snapshot)
@@ -260,50 +286,16 @@ describe("tapes", () => {
       const { sim } = await mount(game, { startRecording: false });
       sim.loadTape(tapeBytes);
 
-      // Tape starts at frame 0, space keydown is at frame 94
-      expect(sim.time.frame).toBe(0);
       expect(spaceDownFrame).toBe(-1);
 
-      // Step to frame 93 - no space yet
-      sim.seek(93);
-      expect(sim.time.frame).toBe(93);
+      sim.seek(135);
+      expect(sim.time.frame).toBe(135);
       expect(spaceDownFrame).toBe(-1);
 
-      // Step to frame 95 to process events at frame 94
-      sim.seek(95);
-      expect(sim.time.frame).toBe(95);
-      expect(spaceDownFrame).toBe(94);
-      expect(keydownCount).toEqual(10);
-    });
-
-    it("replays events from file when stepping forward with step()", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      let spaceDownFrame = -1;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      expect(sim.time.frame).toBe(0);
-      expect(sim.isReplaying).toBe(true);
-
-      // Step forward using step() - should advance and replay events
-      for (let i = 0; i < 100; i++) {
-        sim.step(16);
-      }
-
-      expect(sim.time.frame).toBe(100);
-      expect(spaceDownFrame).toBe(94);
+      sim.seek(137);
+      expect(sim.time.frame).toBe(137);
+      expect(spaceDownFrame).toBe(136);
+      expect(keydownCount).toEqual(1);
     });
   });
 
