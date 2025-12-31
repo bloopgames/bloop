@@ -1,5 +1,3 @@
-import { createNetWants, type NetWants } from "../net-wants";
-
 /**
  * Network status values matching Zig NetStatus enum
  */
@@ -9,6 +7,21 @@ export type NetStatus =
   | "join:pending"
   | "connected"
   | "disconnected";
+
+export type NetWants = {
+  roomCode?: string;
+  disconnect?: boolean;
+};
+
+export type NetEvent =
+  | { type: "join:ok"; data: { roomCode: string } }
+  | { type: "join:fail"; data: { reason: string } }
+  | { type: "peer:join"; data: { peerId: number } }
+  | { type: "peer:leave"; data: { peerId: number } }
+  | { type: "session:start"; data: Record<string, never> }
+  | { type: "session:end"; data: Record<string, never> };
+
+export type NetEventType = Extract<NetEvent, { type: string }>["type"];
 
 const STATUS_MAP: Record<number, NetStatus> = {
   0: "offline",
@@ -35,7 +48,7 @@ export class NetContext {
   dataView?: DataView;
 
   /** Game code writes to this, platform reads it */
-  wants: NetWants = createNetWants();
+  wants: NetWants = {};
 
   constructor(dataView?: DataView) {
     this.dataView = dataView;

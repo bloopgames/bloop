@@ -113,7 +113,7 @@ export class Sim {
   constructor(
     wasm: WasmEngine,
     memory: WebAssembly.Memory,
-    opts?: { serialize?: SerializeFn; netContext?: NetContext },
+    opts?: { serialize?: SerializeFn },
   ) {
     this.wasm = wasm;
     this.#memory = memory;
@@ -124,7 +124,7 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
-    this.net = opts?.netContext ?? new NetContext();
+    this.net = new NetContext();
     this._netInternal = new Net(wasm, memory);
   }
 

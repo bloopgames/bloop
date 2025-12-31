@@ -4,8 +4,6 @@ export * from "./contexts/netContext";
 export * from "./contexts/timeContext";
 export * from "./inputs";
 export * from "./tape";
-export * from "./net-events";
-export * from "./net-wants";
 export type * from "./wasmEngine";
 
 /**
