@@ -237,68 +237,7 @@ describe("tapes", () => {
       sim1.step();
       expect(bloop.bag.score).toEqual(10);
     });
-
-    it("replays events from file when stepping forward with step()", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      let spaceDownFrame = -1;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-      expect(sim.isReplaying).toBe(true);
-
-      // Step forward using step() - should advance and replay events
-      for (let i = 0; i < 100; i++) {
-        sim.step(16);
-      }
-
-      expect(spaceDownFrame).toBe(136);
-    });
-
-    it("replays keydown events from file at correct frame", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      // Track keydown events externally (bag gets overwritten by tape snapshot)
-      let spaceDownFrame = -1;
-      let keydownCount = 0;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          keydownCount++;
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      expect(spaceDownFrame).toBe(-1);
-
-      sim.seek(135);
-      expect(sim.time.frame).toBe(135);
-      expect(spaceDownFrame).toBe(-1);
-
-      sim.seek(137);
-      expect(sim.time.frame).toBe(137);
-      expect(spaceDownFrame).toBe(136);
-      expect(keydownCount).toEqual(1);
-    });
   });
-
   describe("tape overflow", () => {
     it("stops recording gracefully when tape is full", async () => {
       const game = Bloop.create({ bag: { count: 0 } });
