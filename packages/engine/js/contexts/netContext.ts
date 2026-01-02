@@ -8,10 +8,6 @@ export type NetStatus =
   | "connected"
   | "disconnected";
 
-export type NetWants = {
-  roomCode?: string;
-  disconnect?: boolean;
-};
 
 export type NetEvent =
   | { type: "join:ok"; data: { roomCode: string } }
@@ -46,9 +42,6 @@ const STATUS_MAP: Record<number, NetStatus> = {
  */
 export class NetContext {
   dataView?: DataView;
-
-  /** Game code writes to this, platform reads it */
-  wants: NetWants = {};
 
   constructor(dataView?: DataView) {
     this.dataView = dataView;
@@ -123,5 +116,51 @@ export class NetContext {
       bytes.push(byte);
     }
     return String.fromCharCode(...bytes);
+  }
+
+  /** Game code sets this to request joining a room */
+  get wantsRoomCode(): string | undefined {
+    if (!this.#hasValidBuffer()) {
+      return undefined;
+    }
+    // Read 8 bytes starting at offset 20, convert to string until null terminator
+    const bytes: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const byte = this.dataView!.getUint8(20 + i);
+      if (byte === 0) break;
+      bytes.push(byte);
+    }
+    return bytes.length > 0 ? String.fromCharCode(...bytes) : undefined;
+  }
+
+  set wantsRoomCode(code: string | undefined) {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    // Clear first
+    for (let i = 0; i < 8; i++) {
+      this.dataView!.setUint8(20 + i, 0);
+    }
+    if (code) {
+      // Write up to 7 chars (leave room for null terminator)
+      for (let i = 0; i < Math.min(code.length, 7); i++) {
+        this.dataView!.setUint8(20 + i, code.charCodeAt(i));
+      }
+    }
+  }
+
+  /** Game code sets this to request disconnection */
+  get wantsDisconnect(): boolean {
+    if (!this.#hasValidBuffer()) {
+      return false;
+    }
+    return this.dataView!.getUint8(28) !== 0;
+  }
+
+  set wantsDisconnect(value: boolean) {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    this.dataView!.setUint8(28, value ? 1 : 0);
   }
 }

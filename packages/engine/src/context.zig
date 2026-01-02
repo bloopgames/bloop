@@ -18,6 +18,10 @@ pub const NetCtx = extern struct {
     match_frame: u32,
     session_start_frame: u32 = 0,
     room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 }, // null-terminated room code
+    // Game code writes to these, platform reads them
+    wants_room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 }, // offset 20
+    wants_disconnect: u8 = 0, // offset 28
+    _padding: [3]u8 = .{ 0, 0, 0 }, // alignment padding to 32 bytes
 };
 
 pub const MAX_PLAYERS: u8 = 12;

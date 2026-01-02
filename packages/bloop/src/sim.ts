@@ -93,10 +93,10 @@ export class Sim {
   #isPaused: boolean = false;
 
   /**
-   * Shared network context - same instance as game.context.net.
-   * Provides access to network state (status, roomCode, wants, etc.)
+   * Shared network context - reads from same WASM memory as game.context.net.
+   * Provides access to network state (status, roomCode, wantsRoomCode, etc.)
    */
-  readonly net: NetContext;
+  #net: NetContext;
 
   /**
    * Internal network API for packet management (used by platform).
@@ -124,7 +124,7 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
-    this.net = new NetContext();
+    this.#net = new NetContext();
     this._netInternal = new Net(wasm, memory);
   }
 
@@ -330,6 +330,20 @@ export class Sim {
       );
     }
     return this.#time;
+  }
+
+  get net(): NetContext {
+    if (
+      !this.#net.dataView ||
+      this.#net.dataView.buffer !== this.#memory.buffer
+    ) {
+      // update the data view to the latest memory buffer
+      this.#net.dataView = new DataView(
+        this.#memory.buffer,
+        this.wasm.get_net_ctx(),
+      );
+    }
+    return this.#net;
   }
 
   get buffer(): ArrayBuffer {

@@ -144,15 +144,8 @@ describe("netcode integration", () => {
 
     game0.system("netcode", {
       update({ net }) {
-        // available statuses:
-        // "offline" - no internet connection
-        // "local" - internet connection, not in a room
-        // "join:pending" - attempting to join a room
-        // "join:ok" - successfully joined room
-        // "join:fail" - failed to join room
-        // "disconnected" - was in a room, but disconnected
         if (net.status === "local") {
-          net.wants.roomCode = "TEST";
+          net.wantsRoomCode = "TEST";
         }
       },
 
@@ -164,7 +157,7 @@ describe("netcode integration", () => {
     game1.system("netcode", {
       keydown({ event, net }) {
         if (event.key === "Enter") {
-          net.wants.roomCode = "TEST";
+          net.wantsRoomCode = "TEST";
         }
       },
     });
@@ -173,21 +166,21 @@ describe("netcode integration", () => {
     const { sim: sim1 } = await mount(game1);
 
     sim0.step();
-    expect(sim0.net.wants.roomCode).toEqual("TEST");
+    expect(sim0.net.wantsRoomCode).toEqual("TEST");
     sim0.emit.network("join:ok", { roomCode: "TEST" });
     sim0.step();
     expect(game0.context.net.roomCode).toEqual("TEST");
 
-    expect(sim1.net.wants.roomCode).toBeUndefined();
+    expect(sim1.net.wantsRoomCode).toBeUndefined();
     sim1.emit.keydown("Enter");
     sim1.step();
-    expect(sim1.net.wants.roomCode).toEqual("TEST");
+    expect(sim1.net.wantsRoomCode).toEqual("TEST");
     sim1.emit.network("join:ok", { roomCode: "TEST" });
     sim0.emit.network("peer:join", { peerId: 1 });
     sim1.emit.network("peer:join", { peerId: 0 });
-    expect(game1.context.net.roomCode).toEqual("");
+    expect(sim1.net.roomCode).toEqual("");
     sim1.step();
-    expect(game1.context.net.roomCode).toEqual("TEST");
+    expect(sim1.net.roomCode).toEqual("TEST");
 
     sim0.step();
 
