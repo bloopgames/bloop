@@ -31,7 +31,7 @@ pub const Snapshot = extern struct {
         const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
 
         const snapshot: *Snapshot = @ptrCast(bytes.ptr);
-        snapshot.*.version = 1;
+        snapshot.*.version = 2;
         snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
         snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
         snapshot.*.events_len = @sizeOf(EventBuffer);
@@ -422,7 +422,7 @@ pub const Tape = struct {
 test "snapshot headers with no user data" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0);
     defer std.testing.allocator.destroy(snapshot);
-    try std.testing.expectEqual(1, snapshot.version);
+    try std.testing.expectEqual(2, snapshot.version);
     try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx), snapshot.time_len);
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);

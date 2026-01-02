@@ -417,6 +417,35 @@ pub export fn get_peer_ack(peer: u8) u16 {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Network event exports
+// ─────────────────────────────────────────────────────────────
+
+/// Emit NetJoinOk event - successfully joined a room
+/// room_code_ptr points to a UTF-8 string, len is the byte length (max 8)
+pub export fn emit_net_join_ok(room_code_ptr: [*]const u8, len: u32) void {
+    var room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
+    const copy_len = @min(len, 8);
+    @memcpy(room_code[0..copy_len], room_code_ptr[0..copy_len]);
+    engine.?.emit_net_join_ok(room_code);
+}
+
+/// Emit NetJoinFail event - failed to join a room
+/// reason is a NetJoinFailReason enum value (0=unknown, 1=timeout, etc.)
+pub export fn emit_net_join_fail(reason: u8) void {
+    engine.?.emit_net_join_fail(@enumFromInt(reason));
+}
+
+/// Emit NetPeerJoin event - a peer joined the room
+pub export fn emit_net_peer_join(peer_id: u8) void {
+    engine.?.emit_net_peer_join(peer_id);
+}
+
+/// Emit NetPeerLeave event - a peer left the room
+pub export fn emit_net_peer_leave(peer_id: u8) void {
+    engine.?.emit_net_peer_leave(peer_id);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────
 

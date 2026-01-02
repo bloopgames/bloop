@@ -79,7 +79,15 @@ pub const VCR = struct {
         self.is_replaying = true;
 
         // Return initial snapshot for caller to restore
-        return self.tape.?.closest_snapshot(0);
+        const snapshot = self.tape.?.closest_snapshot(0);
+
+        // Validate snapshot version - version 2 added room_code to NetCtx
+        if (snapshot.version != 2) {
+            Log.log("Snapshot version mismatch: expected 2, got {d}", .{snapshot.version});
+            return error.UnsupportedVersion;
+        }
+
+        return snapshot;
     }
 
     /// Get the current tape buffer (for serialization)

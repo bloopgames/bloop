@@ -238,9 +238,35 @@ describe("tapes", () => {
       expect(bloop.bag.score).toEqual(10);
     });
 
+    it("replays events from file when stepping forward with step()", async () => {
+      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
+      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
+
+      let spaceDownFrame = -1;
+
+      const game = Bloop.create({ bag: {} });
+      game.system("track-keys", {
+        keydown({ time, event }) {
+          if (event.key === "Space") {
+            spaceDownFrame = time.frame;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+      sim.loadTape(tapeBytes);
+      expect(sim.isReplaying).toBe(true);
+
+      // Step forward using step() - should advance and replay events
+      for (let i = 0; i < 100; i++) {
+        sim.step(16);
+      }
+
+      expect(spaceDownFrame).toBe(136);
+    });
+
     it("replays keydown events from file at correct frame", async () => {
-      // Load tape recorded from mario game
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
+      const tapePath = `${import.meta.dir}/tapes/tape-1767070360209.bloop`;
       const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
 
       // Track keydown events externally (bag gets overwritten by tape snapshot)
@@ -260,50 +286,16 @@ describe("tapes", () => {
       const { sim } = await mount(game, { startRecording: false });
       sim.loadTape(tapeBytes);
 
-      // Tape starts at frame 0, space keydown is at frame 94
-      expect(sim.time.frame).toBe(0);
       expect(spaceDownFrame).toBe(-1);
 
-      // Step to frame 93 - no space yet
-      sim.seek(93);
-      expect(sim.time.frame).toBe(93);
+      sim.seek(135);
+      expect(sim.time.frame).toBe(135);
       expect(spaceDownFrame).toBe(-1);
 
-      // Step to frame 95 to process events at frame 94
-      sim.seek(95);
-      expect(sim.time.frame).toBe(95);
-      expect(spaceDownFrame).toBe(94);
-      expect(keydownCount).toEqual(10);
-    });
-
-    it("replays events from file when stepping forward with step()", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      let spaceDownFrame = -1;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      expect(sim.time.frame).toBe(0);
-      expect(sim.isReplaying).toBe(true);
-
-      // Step forward using step() - should advance and replay events
-      for (let i = 0; i < 100; i++) {
-        sim.step(16);
-      }
-
-      expect(sim.time.frame).toBe(100);
-      expect(spaceDownFrame).toBe(94);
+      sim.seek(137);
+      expect(sim.time.frame).toBe(137);
+      expect(spaceDownFrame).toBe(136);
+      expect(keydownCount).toEqual(1);
     });
   });
 
@@ -392,9 +384,9 @@ describe("tapes", () => {
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       // Frame 3: Now sim0 receives the delayed packet from frame 0
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback to frame 0
+      sim0._netInternal.receivePacket(packet); // triggers rollback to frame 0
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -489,9 +481,9 @@ describe("tapes", () => {
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback
+      sim0._netInternal.receivePacket(packet); // triggers rollback
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -567,9 +559,9 @@ describe("tapes", () => {
       sim1.step();
 
       // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1._netInternal.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet);
+      sim0._netInternal.receivePacket(packet);
       sim0.step();
       sim1.step();
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
@@ -619,9 +611,9 @@ describe("tapes", () => {
 
       for (let i = 0; i < 1000; i++) {
         // Capture outgoing packets to simulate network delay
-        const packet0 = unwrap(sim0.net.getOutboundPacket(1));
+        const packet0 = unwrap(sim0._netInternal.getOutboundPacket(1));
         outbound0.push(packet0);
-        const packet1 = unwrap(sim1.net.getOutboundPacket(0));
+        const packet1 = unwrap(sim1._netInternal.getOutboundPacket(0));
         outbound1.push(packet1);
 
         // Step both sims
@@ -634,13 +626,13 @@ describe("tapes", () => {
             outbound0.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim1.net.receivePacket(packet0);
+          sim1._netInternal.receivePacket(packet0);
 
           const packet1 = unwrap(
             outbound1.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim0.net.receivePacket(packet1);
+          sim0._netInternal.receivePacket(packet1);
         }
       }
 

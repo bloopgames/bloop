@@ -8,8 +8,10 @@ const Ses = @import("netcode/session.zig");
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const NetCtx = Ctx.NetCtx;
+const NetStatus = Ctx.NetStatus;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
+const EventType = Events.EventType;
 const InputBuffer = IB.InputBuffer;
 
 pub const hz = 1000 / 60;
@@ -76,7 +78,15 @@ pub const Sim = struct {
 
         // Allocate NetCtx (small struct exposed to game systems)
         const net_ctx = try allocator.create(NetCtx);
-        net_ctx.* = .{ .peer_count = input_buffer.peer_count, .match_frame = 0 };
+        net_ctx.* = .{
+            .peer_count = input_buffer.peer_count,
+            .local_peer_id = 0,
+            .in_session = 0,
+            .status = @intFromEnum(Ctx.NetStatus.local),
+            .match_frame = 0,
+            .session_start_frame = 0,
+            .room_code = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
+        };
 
         return Sim{
             .time = time,
@@ -164,7 +174,34 @@ pub const Sim = struct {
 
     fn process_events(self: *Sim) void {
         for (self.events.events[0..self.events.count]) |event| {
-            self.inputs.process_event(event);
+            switch (event.kind) {
+                .NetJoinOk => {
+                    self.net_ctx.status = @intFromEnum(NetStatus.connected);
+                    @memcpy(&self.net_ctx.room_code, &event.payload.room_code);
+                    self.net_ctx.peer_count = 1; // Self is first peer
+                },
+                .NetJoinFail => {
+                    self.net_ctx.status = @intFromEnum(NetStatus.local);
+                },
+                .NetPeerJoin => {
+                    self.net_ctx.peer_count += 1;
+                    if (self.net_ctx.peer_count >= 2) {
+                        self.net_ctx.in_session = 1;
+                    }
+                },
+                .NetPeerLeave => {
+                    if (self.net_ctx.peer_count > 0) {
+                        self.net_ctx.peer_count -= 1;
+                    }
+                    if (self.net_ctx.peer_count <= 1) {
+                        self.net_ctx.in_session = 0;
+                    }
+                },
+                else => {
+                    // Input events
+                    self.inputs.process_event(event);
+                },
+            }
         }
     }
 
