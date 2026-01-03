@@ -94,7 +94,7 @@ export class Sim {
 
   /**
    * Shared network context - reads from same WASM memory as game.context.net.
-   * Provides access to network state (status, roomCode, wantsRoomCode, etc.)
+   * Provides access to network state (status, peers, roomCode, wantsRoomCode, etc.)
    */
   #net: NetContext;
 
@@ -444,5 +444,48 @@ export class Sim {
    */
   sessionEnd(): void {
     this.wasm.session_end();
+  }
+
+  /**
+   * Initialize a multiplayer session using event-based API.
+   * Emits NetJoinOk event and sets up rollback infrastructure.
+   *
+   * @param peerCount Number of peers in the session
+   * @param localPeerId Local peer ID (0-11)
+   * @param userDataLen Size of user data to include in snapshots
+   */
+  // TODO: replace with join:ok and peer:join events
+  emitNetSessionInit(
+    peerCount: number,
+    localPeerId: number,
+    userDataLen: number = 0,
+  ): void {
+    const serializer = this.#serialize ? this.#serialize() : null;
+    const size = userDataLen || (serializer ? serializer.size : 0);
+    const result = this.wasm.emit_net_session_init(
+      peerCount,
+      localPeerId,
+      size,
+    );
+    if (result !== 0) {
+      throw new Error(`Failed to initialize session, error code=${result}`);
+    }
+  }
+
+  /**
+   * End the current session using event-based API.
+   * Emits NetPeerLeave events for all connected peers.
+   */
+  emitNetSessionEnd(): void {
+    this.wasm.emit_net_session_end();
+  }
+
+  /**
+   * Assign local peer ID for the session.
+   *
+   * @param peerId Local peer ID (0-11)
+   */
+  emitNetPeerAssignLocalId(peerId: number): void {
+    this.wasm.emit_net_peer_assign_local_id(peerId);
   }
 }

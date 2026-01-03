@@ -21,7 +21,16 @@ pub const NetCtx = extern struct {
     // Game code writes to these, platform reads them
     wants_room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 }, // offset 20
     wants_disconnect: u8 = 0, // offset 28
-    _padding: [3]u8 = .{ 0, 0, 0 }, // alignment padding to 32 bytes
+
+    // Per-peer connection state (12 bytes)
+    peer_connected: [12]u8 = [_]u8{0} ** 12, // bool as u8 for alignment
+
+    // Per-peer seq/ack tracking (48 bytes each = 144 bytes total)
+    peer_remote_seq: [12]u16 = [_]u16{0} ** 12, // Latest frame received from each peer
+    peer_remote_ack: [12]u16 = [_]u16{0} ** 12, // Latest frame each peer acked from us
+    peer_local_seq: [12]u16 = [_]u16{0} ** 12, // Our latest frame sent to each peer
+
+    _padding: [3]u8 = .{ 0, 0, 0 }, // alignment padding
 };
 
 pub const MAX_PLAYERS: u8 = 12;
@@ -132,4 +141,62 @@ test "peerIdToPlayerIndex maps peer IDs directly" {
 
 test "peerIdToPlayerIndex maps LOCAL_PEER to player 0" {
     try std.testing.expectEqual(@as(u8, 0), InputCtx.peerIdToPlayerIndex(Events.LOCAL_PEER));
+}
+
+test "NetCtx peer_connected tracking" {
+    var net_ctx = NetCtx{
+        .peer_count = 0,
+        .match_frame = 0,
+    };
+
+    // Initially all peers disconnected
+    for (net_ctx.peer_connected) |connected| {
+        try std.testing.expectEqual(@as(u8, 0), connected);
+    }
+
+    // Mark peer 0 and 1 as connected
+    net_ctx.peer_connected[0] = 1;
+    net_ctx.peer_connected[1] = 1;
+
+    try std.testing.expectEqual(@as(u8, 1), net_ctx.peer_connected[0]);
+    try std.testing.expectEqual(@as(u8, 1), net_ctx.peer_connected[1]);
+    try std.testing.expectEqual(@as(u8, 0), net_ctx.peer_connected[2]);
+
+    // Disconnect peer 0
+    net_ctx.peer_connected[0] = 0;
+    try std.testing.expectEqual(@as(u8, 0), net_ctx.peer_connected[0]);
+    try std.testing.expectEqual(@as(u8, 1), net_ctx.peer_connected[1]);
+}
+
+test "NetCtx seq/ack updates" {
+    var net_ctx = NetCtx{
+        .peer_count = 2,
+        .match_frame = 0,
+    };
+
+    // Initially all seq/ack are 0
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_remote_seq[0]);
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_remote_ack[0]);
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_local_seq[0]);
+
+    // Update seq/ack for peer 1
+    net_ctx.peer_remote_seq[1] = 100;
+    net_ctx.peer_remote_ack[1] = 50;
+    net_ctx.peer_local_seq[1] = 75;
+
+    try std.testing.expectEqual(@as(u16, 100), net_ctx.peer_remote_seq[1]);
+    try std.testing.expectEqual(@as(u16, 50), net_ctx.peer_remote_ack[1]);
+    try std.testing.expectEqual(@as(u16, 75), net_ctx.peer_local_seq[1]);
+
+    // Peer 0 should still be 0
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_remote_seq[0]);
+
+    // Reset peer 1 (on disconnect)
+    net_ctx.peer_remote_seq[1] = 0;
+    net_ctx.peer_remote_ack[1] = 0;
+    net_ctx.peer_local_seq[1] = 0;
+
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_remote_seq[1]);
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_remote_ack[1]);
+    try std.testing.expectEqual(@as(u16, 0), net_ctx.peer_local_seq[1]);
 }

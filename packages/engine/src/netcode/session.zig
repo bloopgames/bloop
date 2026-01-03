@@ -14,8 +14,6 @@ pub const Session = struct {
     start_frame: u32 = 0,
     /// Number of peers in this session
     peer_count: u8 = 0,
-    /// Local peer ID for this client
-    local_peer_id: u8 = 0,
     /// Whether a session is currently active
     active: bool = false,
     /// Last confirmed frame (relative to session start)
@@ -30,22 +28,15 @@ pub const Session = struct {
         self.confirmed_frame = 0;
         self.stats = .{};
         self.active = true;
-        // Note: local_peer_id is set separately via setLocalPeer
     }
 
     /// End the current session
     pub fn end(self: *Session) void {
         self.start_frame = 0;
         self.peer_count = 0;
-        self.local_peer_id = 0;
         self.confirmed_frame = 0;
         self.stats = .{};
         self.active = false;
-    }
-
-    /// Set the local peer ID for this client
-    pub fn setLocalPeer(self: *Session, peer_id: u8) void {
-        self.local_peer_id = peer_id;
     }
 
     /// Get current match frame (frames since session start)
@@ -176,14 +167,4 @@ test "Session confirmFrame without resimulation" {
 
     try std.testing.expectEqual(@as(u32, 5), session.confirmed_frame);
     try std.testing.expectEqual(@as(u32, 0), session.stats.total_rollbacks);
-}
-
-test "Session setLocalPeer" {
-    var session = Session{};
-
-    try std.testing.expectEqual(@as(u8, 0), session.local_peer_id);
-
-    session.setLocalPeer(3);
-
-    try std.testing.expectEqual(@as(u8, 3), session.local_peer_id);
 }

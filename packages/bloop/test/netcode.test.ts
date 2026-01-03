@@ -52,9 +52,6 @@ describe("netcode integration", () => {
       return game;
     });
 
-    sim0.step();
-    sim1.step();
-
     // Peer 1 clicks - should register as player 1 locally
     sim1.emit.mousedown("Left", 1);
     sim1.step();

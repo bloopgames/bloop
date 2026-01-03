@@ -175,4 +175,27 @@ export type WasmEngine = {
    * @param peer_id Numeric peer ID (0-11)
    */
   emit_net_peer_leave: (peer_id: number) => void;
+
+  // New event-based session API
+  /**
+   * Initialize a session with explicit peer count and local peer ID (event-based)
+   * @param peer_count Number of peers in the session
+   * @param local_peer_id Local peer ID (0-11)
+   * @param user_data_len Size of user data to include in snapshots
+   * @returns 0 on success, 1 on failure
+   */
+  emit_net_session_init: (
+    peer_count: number,
+    local_peer_id: number,
+    user_data_len: number,
+  ) => EngineOk;
+  /**
+   * End the current session (emits disconnect events for all peers)
+   */
+  emit_net_session_end: () => void;
+  /**
+   * Assign local peer ID (for session setup)
+   * @param peer_id Local peer ID (0-11)
+   */
+  emit_net_peer_assign_local_id: (peer_id: number) => void;
 };

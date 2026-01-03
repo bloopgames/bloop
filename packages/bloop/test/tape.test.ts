@@ -575,13 +575,14 @@ describe("tapes", () => {
         }
       }
 
-      expect(sim0.time.frame).toEqual(1000);
+      // Should have stepped 1000 frames after initial 1 frame step during session setup
+      expect(sim0.time.frame).toEqual(1001);
 
       const tape = sim0.saveTape();
 
       const header = readTapeHeader(tape);
       expect(header.startFrame).toBe(0);
-      expect(header.frameCount).toBe(1001); // 1 initial frame + 1000 steps
+      expect(header.frameCount).toBe(1002); // 1 initial frame + 1000 steps
     });
   });
 });

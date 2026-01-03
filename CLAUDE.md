@@ -142,7 +142,7 @@ it("test name", async () => {
 
 * This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
 
-* In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
+* In typescript code, avoid returning a default value for unexpected conditions unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
 
 ```ts
 if (this.sim?.isRecording) {
@@ -178,3 +178,5 @@ function someHelperFunction() { ... }
 ```
 
 * Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
+
+* In zig code, NEVER return early or return default values when encountering unexpected conditions. Use @panic to crash immediately. This will help catch bugs early during development.

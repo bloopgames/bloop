@@ -383,6 +383,25 @@ pub export fn session_peer_disconnect(peer_id: u8) void {
     engine.?.disconnectPeer(peer_id);
 }
 
+/// Initialize a session with explicit peer count and local peer ID (event-based)
+pub export fn emit_net_session_init(peer_count: u8, local_peer_id: u8, user_data_len: u32) u8 {
+    engine.?.emitNetSessionInit(peer_count, local_peer_id, user_data_len) catch {
+        wasm_log("Failed to initialize session");
+        return 1;
+    };
+    return 0;
+}
+
+/// End the current session (emits disconnect events for all peers)
+pub export fn emit_net_session_end() void {
+    engine.?.emitNetSessionEnd();
+}
+
+/// Assign local peer ID (for session setup)
+pub export fn emit_net_peer_assign_local_id(peer_id: u8) void {
+    engine.?.emitNetPeerAssignLocalId(peer_id);
+}
+
 /// Build an outbound packet for a target peer
 /// Call get_outbound_packet to get the pointer
 /// Call get_outbound_packet_len to get the length

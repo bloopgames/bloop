@@ -179,22 +179,40 @@ pub const Sim = struct {
                     self.net_ctx.status = @intFromEnum(NetStatus.connected);
                     @memcpy(&self.net_ctx.room_code, &event.payload.room_code);
                     self.net_ctx.peer_count = 1; // Self is first peer
+
+                    // Mark local peer as connected
+                    self.net_ctx.peer_connected[self.net_ctx.local_peer_id] = 1;
                 },
                 .NetJoinFail => {
                     self.net_ctx.status = @intFromEnum(NetStatus.local);
                 },
                 .NetPeerJoin => {
-                    self.net_ctx.peer_count += 1;
-                    if (self.net_ctx.peer_count >= 2) {
-                        self.net_ctx.in_session = 1;
+                    const peer_id = event.payload.peer_id;
+                    if (peer_id < Ctx.MAX_PLAYERS) {
+                        // Mark peer as connected
+                        self.net_ctx.peer_connected[peer_id] = 1;
+
+                        self.net_ctx.peer_count += 1;
+                        if (self.net_ctx.peer_count >= 2) {
+                            self.net_ctx.in_session = 1;
+                        }
                     }
                 },
                 .NetPeerLeave => {
-                    if (self.net_ctx.peer_count > 0) {
-                        self.net_ctx.peer_count -= 1;
-                    }
-                    if (self.net_ctx.peer_count <= 1) {
-                        self.net_ctx.in_session = 0;
+                    const peer_id = event.payload.peer_id;
+                    if (peer_id < Ctx.MAX_PLAYERS) {
+                        // Disconnect peer and reset seq/ack
+                        self.net_ctx.peer_connected[peer_id] = 0;
+                        self.net_ctx.peer_remote_seq[peer_id] = 0;
+                        self.net_ctx.peer_remote_ack[peer_id] = 0;
+                        self.net_ctx.peer_local_seq[peer_id] = 0;
+
+                        if (self.net_ctx.peer_count > 0) {
+                            self.net_ctx.peer_count -= 1;
+                        }
+                        if (self.net_ctx.peer_count <= 1) {
+                            self.net_ctx.in_session = 0;
+                        }
                     }
                 },
                 else => {

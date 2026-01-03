@@ -9,15 +9,10 @@ export enum EventType {
   MouseUp = 5,
   MouseWheel = 6,
   FrameStart = 7,
-  SessionInit = 8,
-  SessionSetLocalPeer = 9,
-  SessionConnectPeer = 10,
-  SessionDisconnectPeer = 11,
-  SessionEnd = 12,
-  NetJoinOk = 13,
-  NetJoinFail = 14,
-  NetPeerJoin = 15,
-  NetPeerLeave = 16,
+  NetJoinOk = 8,
+  NetJoinFail = 9,
+  NetPeerJoin = 10,
+  NetPeerLeave = 11,
 }
 
 export enum MouseButton {

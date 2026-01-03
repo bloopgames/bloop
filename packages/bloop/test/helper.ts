@@ -26,13 +26,15 @@ export function setupGames<S extends BloopSchema>(
 }
 
 export function setupSession(sim0: Sim, sim1: Sim) {
-  sim0.sessionInit(2);
-  sim0._netInternal.setLocalPeer(0);
-  sim0._netInternal.connectPeer(1);
+  sim0.emitNetSessionInit(2, 0, 0);
+  sim0.emit.network("peer:join", { peerId: 1 });
 
-  sim1.sessionInit(2);
-  sim1._netInternal.setLocalPeer(1);
-  sim1._netInternal.connectPeer(0);
+  sim1.emitNetSessionInit(2, 1, 0);
+  sim1.emit.network("peer:join", { peerId: 0 });
+
+  // Process network events
+  sim0.step();
+  sim1.step();
 }
 
 export function stepBoth(sim0: Sim, sim1: Sim) {
