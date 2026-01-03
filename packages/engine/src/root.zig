@@ -163,7 +163,7 @@ pub const Engine = struct {
         while (self.accumulator >= hz) {
             // Replay tape data during replay mode
             if (self.vcr.is_replaying) {
-                self.replayTapeSessionEvents();
+                self.replayTapeNetEvents();
                 self.replayTapePackets();
                 self.replayTapeInputs();
             }
@@ -177,7 +177,6 @@ pub const Engine = struct {
             if (self.session.active) {
                 self.sessionStep();
             } else {
-                // Non-session mode: beforeTickListener syncs net_ctx
                 self.sim.tick(false);
             }
 
@@ -367,7 +366,7 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Session lifecycle (new event-based API)
+    // Session lifecycle
     // ─────────────────────────────────────────────────────────────
 
     /// Initialize session - sets up InputBuffer, NetCtx, and snapshot
@@ -413,7 +412,7 @@ pub const Engine = struct {
         // Emit disconnect events for all connected peers
         for (0..Transport.MAX_PEERS) |i| {
             if (self.sim.net_ctx.peer_connected[i] == 1) {
-                self.emitNetEvent(Event.netPeerLeave(@intCast(i)));
+                self.appendNetEvent(Event.netPeerLeave(@intCast(i)));
             }
         }
 
@@ -444,11 +443,6 @@ pub const Engine = struct {
         self.sim.net_ctx.in_session = 0;
         self.sim.net_ctx.peer_count = 0;
         self.sim.net_ctx.session_start_frame = 0;
-    }
-
-    /// Assign local peer ID (for session setup before init)
-    pub fn emitNetPeerAssignLocalId(self: *Engine, peer_id: u8) void {
-        self.sim.net_ctx.local_peer_id = peer_id;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -575,67 +569,35 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Event emission
+    // Input event emission
     // ─────────────────────────────────────────────────────────────
 
     pub fn emit_keydown(self: *Engine, key: Events.Key, peer_id: u8) void {
-        self.appendEvent(Event.keyDown(key, peer_id, .LocalKeyboard));
+        self.appendInputEvent(Event.keyDown(key, peer_id, .LocalKeyboard));
     }
 
     pub fn emit_keyup(self: *Engine, key: Events.Key, peer_id: u8) void {
-        self.appendEvent(Event.keyUp(key, peer_id, .LocalKeyboard));
+        self.appendInputEvent(Event.keyUp(key, peer_id, .LocalKeyboard));
     }
 
     pub fn emit_mousedown(self: *Engine, button: Events.MouseButton, peer_id: u8) void {
-        self.appendEvent(Event.mouseDown(button, peer_id, .LocalMouse));
+        self.appendInputEvent(Event.mouseDown(button, peer_id, .LocalMouse));
     }
 
     pub fn emit_mouseup(self: *Engine, button: Events.MouseButton, peer_id: u8) void {
-        self.appendEvent(Event.mouseUp(button, peer_id, .LocalMouse));
+        self.appendInputEvent(Event.mouseUp(button, peer_id, .LocalMouse));
     }
 
     pub fn emit_mousemove(self: *Engine, x: f32, y: f32, peer_id: u8) void {
-        self.appendEvent(Event.mouseMove(x, y, peer_id, .LocalMouse));
+        self.appendInputEvent(Event.mouseMove(x, y, peer_id, .LocalMouse));
     }
 
     pub fn emit_mousewheel(self: *Engine, delta_x: f32, delta_y: f32, peer_id: u8) void {
-        self.appendEvent(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Network event emission
-    // ─────────────────────────────────────────────────────────────
-
-    /// Queue a network event for processing in next tick
-    fn emitNetEvent(self: *Engine, event: Event) void {
-        if (self.pending_net_events_count < MAX_PENDING_NET_EVENTS) {
-            self.pending_net_events[self.pending_net_events_count] = event;
-            self.pending_net_events_count += 1;
-        }
-    }
-
-    /// Emit NetJoinOk event - successfully joined a room
-    pub fn emit_net_join_ok(self: *Engine, room_code: [8]u8) void {
-        self.emitNetEvent(Event.netJoinOk(room_code));
-    }
-
-    /// Emit NetJoinFail event - failed to join a room
-    pub fn emit_net_join_fail(self: *Engine, reason: Events.NetJoinFailReason) void {
-        self.emitNetEvent(Event.netJoinFail(reason));
-    }
-
-    /// Emit NetPeerJoin event - a peer joined the room
-    pub fn emit_net_peer_join(self: *Engine, peer_id: u8) void {
-        self.emitNetEvent(Event.netPeerJoin(peer_id));
-    }
-
-    /// Emit NetPeerLeave event - a peer left the room
-    pub fn emit_net_peer_leave(self: *Engine, peer_id: u8) void {
-        self.emitNetEvent(Event.netPeerLeave(peer_id));
+        self.appendInputEvent(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
     }
 
     /// Append a fresh local event. Writes to Engine's canonical InputBuffer.
-    fn appendEvent(self: *Engine, event: Event) void {
+    fn appendInputEvent(self: *Engine, event: Event) void {
         // Calculate match_frame for the upcoming tick
         const match_frame = if (self.session.active)
             self.session.getMatchFrame(self.sim.time.frame) + 1
@@ -658,6 +620,45 @@ pub const Engine = struct {
             const match_frame_u16: u16 = @intCast(match_frame);
             self.net.extendUnackedWindow(match_frame_u16);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Network event emission
+    // ─────────────────────────────────────────────────────────────
+
+    /// Queue a network event for processing in next tick
+    fn appendNetEvent(self: *Engine, event: Event) void {
+        if (self.pending_net_events_count >= MAX_PENDING_NET_EVENTS) {
+            Log.log("Pending network event buffer full, can't process event of kind {}", .{event.kind});
+            @panic("Pending network event buffer full");
+        }
+        self.pending_net_events[self.pending_net_events_count] = event;
+        self.pending_net_events_count += 1;
+    }
+
+    /// Emit NetJoinOk event - successfully joined a room
+    pub fn emit_net_join_ok(self: *Engine, room_code: [8]u8) void {
+        self.appendNetEvent(Event.netJoinOk(room_code));
+    }
+
+    /// Emit NetJoinFail event - failed to join a room
+    pub fn emit_net_join_fail(self: *Engine, reason: Events.NetJoinFailReason) void {
+        self.appendNetEvent(Event.netJoinFail(reason));
+    }
+
+    /// Emit NetPeerJoin event - a peer joined the room
+    pub fn emit_net_peer_join(self: *Engine, peer_id: u8) void {
+        self.appendNetEvent(Event.netPeerJoin(peer_id));
+    }
+
+    /// Emit NetPeerLeave event - a peer left the room
+    pub fn emit_net_peer_leave(self: *Engine, peer_id: u8) void {
+        self.appendNetEvent(Event.netPeerLeave(peer_id));
+    }
+
+    /// Assign local peer ID (for session setup)
+    pub fn emit_net_peer_assign_local_id(self: *Engine, peer_id: u8) void {
+        self.appendNetEvent(Event.netPeerAssignLocalId(peer_id));
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -728,12 +729,12 @@ pub const Engine = struct {
 
     /// Replay network events from tape for the current frame.
     /// Routes them through pending_net_events to be processed by process_events().
-    fn replayTapeSessionEvents(self: *Engine) void {
+    fn replayTapeNetEvents(self: *Engine) void {
         const tape_events = self.vcr.getEventsForFrame(self.sim.time.frame);
         for (tape_events) |event| {
             if (event.kind.isNetEvent()) {
                 // Queue to pending_net_events (processed in process_events)
-                self.emitNetEvent(event);
+                self.appendNetEvent(event);
             }
         }
     }

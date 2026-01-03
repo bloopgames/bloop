@@ -115,6 +115,15 @@ pub const Event = extern struct {
             .payload = .{ .peer_id = peer_id },
         };
     }
+
+    /// Network event: assign local peer ID
+    pub inline fn netPeerAssignLocalId(peer_id: u8) Event {
+        return Event{
+            .kind = .NetPeerAssignLocalId,
+            .device = .None,
+            .payload = .{ .peer_id = peer_id },
+        };
+    }
 };
 
 /// Reason for join failure
@@ -155,6 +164,7 @@ pub const EventType = enum(u8) {
     NetJoinFail,
     NetPeerJoin,
     NetPeerLeave,
+    NetPeerAssignLocalId,
 
     pub fn isSessionEvent(self: EventType) bool {
         _ = self;
@@ -163,7 +173,7 @@ pub const EventType = enum(u8) {
 
     pub fn isNetEvent(self: EventType) bool {
         return switch (self) {
-            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave => true,
+            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId => true,
             else => false,
         };
     }

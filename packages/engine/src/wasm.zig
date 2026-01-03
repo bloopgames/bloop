@@ -373,11 +373,6 @@ pub export fn emit_net_session_end() void {
     engine.?.emitNetSessionEnd();
 }
 
-/// Assign local peer ID (for session setup)
-pub export fn emit_net_peer_assign_local_id(peer_id: u8) void {
-    engine.?.emitNetPeerAssignLocalId(peer_id);
-}
-
 /// Build an outbound packet for a target peer
 /// Call get_outbound_packet to get the pointer
 /// Call get_outbound_packet_len to get the length
@@ -428,6 +423,11 @@ pub export fn emit_net_peer_join(peer_id: u8) void {
 /// Emit NetPeerLeave event - a peer left the room
 pub export fn emit_net_peer_leave(peer_id: u8) void {
     engine.?.emit_net_peer_leave(peer_id);
+}
+
+/// Assign local peer ID (for session setup)
+pub export fn emit_net_peer_assign_local_id(peer_id: u8) void {
+    engine.?.emit_net_peer_assign_local_id(peer_id);
 }
 
 // ─────────────────────────────────────────────────────────────

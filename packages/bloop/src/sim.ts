@@ -128,6 +128,14 @@ export class Sim {
     this._netInternal = new Net(wasm, memory);
   }
 
+  /**
+   * Step simulation forward by a given number of milliseconds.
+   * If ms is not provided, defaults to 16ms (60fps).
+   *
+   * Note: this will not advance time if the sim is paused.
+   *
+   * @returns Number of frames actually advanced
+   */
   step(ms?: number): number {
     if (this.#isPaused) {
       return 0;
@@ -157,18 +165,30 @@ export class Sim {
     this.restore(source.snapshot());
   }
 
+  /**
+   * Pause the simulation entirely
+   */
   pause() {
     this.#isPaused = true;
   }
 
+  /**
+   * Unpause the simulation
+   */
   unpause() {
     this.#isPaused = false;
   }
 
+  /**
+   * Whether the simulation is currently paused
+   */
   get isPaused(): boolean {
     return this.#isPaused;
   }
 
+  /**
+   * Step back one frame
+   */
   stepBack() {
     if (this.time.frame === 0) {
       return;
@@ -178,8 +198,11 @@ export class Sim {
   }
 
   /**
-   * Seek to the start of a given frame
-   * @param frame - frame number to replay to
+   * Seek to the start of a given frame.
+   *
+   * Note that this will mute console output during the seek if rewinding.
+   *
+   * @param frame - frame number to replay up to
    */
   seek(frame: number, inclusive?: boolean) {
     assert(

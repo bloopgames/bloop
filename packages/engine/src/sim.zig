@@ -215,6 +215,13 @@ pub const Sim = struct {
                         }
                     }
                 },
+                .NetPeerAssignLocalId => {
+                    const peer_id = event.payload.peer_id;
+                    if (peer_id >= Ctx.MAX_PLAYERS) {
+                        @panic("Invalid local peer ID");
+                    }
+                    self.net_ctx.local_peer_id = peer_id;
+                },
                 else => {
                     // Input events
                     self.inputs.process_event(event);
