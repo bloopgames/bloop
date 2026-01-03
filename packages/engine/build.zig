@@ -54,7 +54,7 @@ pub fn build(b: *std.Build) void {
         "build_outbound_packet",
         "get_outbound_packet",
         "get_outbound_packet_len",
-        "receive_packet",
+        "emit_receive_packet",
         // Network events
         "emit_net_join_ok",
         "emit_net_join_fail",

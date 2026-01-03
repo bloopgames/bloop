@@ -163,7 +163,7 @@ function someHelperFunction() { ... }
 
 ## Crash Loud and Early
 
-This codebase follows "crash-only" design. Invalid states should trigger immediate panics, not silent no-ops.
+This codebase follows "crash-first" design. Invalid states should trigger immediate panics, not silent no-ops.
 
 WRONG (silent failure):
 if (valid_condition) { do_thing(); }

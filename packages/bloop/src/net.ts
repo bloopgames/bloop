@@ -75,7 +75,7 @@ export class Net {
     memoryView.set(data);
 
     // Process the packet
-    const result = this.#wasm.receive_packet(ptr, data.byteLength);
+    const result = this.#wasm.emit_receive_packet(ptr, data.byteLength);
 
     // Free the allocated memory
     this.#wasm.free(ptr, data.byteLength);

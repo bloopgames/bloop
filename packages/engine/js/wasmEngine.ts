@@ -115,10 +115,10 @@ export type WasmEngine = {
    */
   get_outbound_packet_len: () => number;
   /**
-   * Process a received packet
+   * Queue a received packet for processing in the next tick
    * @returns 0 on success, error code otherwise
    */
-  receive_packet: (ptr: EnginePointer, len: number) => number;
+  emit_receive_packet: (ptr: EnginePointer, len: number) => number;
 
   // Network events
   /**

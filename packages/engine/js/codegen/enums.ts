@@ -14,6 +14,7 @@ export enum EventType {
   NetPeerJoin = 10,
   NetPeerLeave = 11,
   NetPeerAssignLocalId = 12,
+  NetPacketReceived = 13,
 }
 
 export enum MouseButton {

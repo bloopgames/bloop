@@ -124,6 +124,15 @@ pub const Event = extern struct {
             .payload = .{ .peer_id = peer_id },
         };
     }
+
+    /// Network event: packet received from a peer
+    pub inline fn netPacketReceived(ptr: u32, len: u16, peer_id: u8) Event {
+        return Event{
+            .kind = .NetPacketReceived,
+            .device = .None,
+            .payload = .{ .packet_ref = .{ .ptr = ptr, .len = len, .peer_id = peer_id } },
+        };
+    }
 };
 
 /// Reason for join failure
@@ -147,6 +156,13 @@ pub const EventPayload = extern union {
     room_code: [8]u8,
     /// Reason for NetJoinFail
     join_fail_reason: NetJoinFailReason,
+    /// Reference to packet data for NetPacketReceived
+    packet_ref: extern struct {
+        ptr: u32, // WASM pointer to packet data
+        len: u16, // packet length
+        peer_id: u8, // sender peer ID
+        _pad: u8 = 0, // alignment padding
+    },
 };
 
 pub const EventType = enum(u8) {
@@ -165,6 +181,7 @@ pub const EventType = enum(u8) {
     NetPeerJoin,
     NetPeerLeave,
     NetPeerAssignLocalId,
+    NetPacketReceived,
 
     pub fn isSessionEvent(self: EventType) bool {
         _ = self;
@@ -173,7 +190,7 @@ pub const EventType = enum(u8) {
 
     pub fn isNetEvent(self: EventType) bool {
         return switch (self) {
-            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId => true,
+            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId, .NetPacketReceived => true,
             else => false,
         };
     }

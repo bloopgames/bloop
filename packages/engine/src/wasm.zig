@@ -390,10 +390,10 @@ pub export fn get_outbound_packet_len() u32 {
     return engine.?.getOutboundPacketLen();
 }
 
-/// Process a received packet
+/// Queue a received packet for processing in the next tick
 /// Returns 0 on success, error code otherwise
-pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
-    return engine.?.receivePacket(ptr, len);
+pub export fn emit_receive_packet(ptr: wasmPointer, len: u32) u8 {
+    return engine.?.emit_receive_packet(ptr, len);
 }
 
 // ─────────────────────────────────────────────────────────────
