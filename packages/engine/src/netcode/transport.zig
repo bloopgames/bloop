@@ -272,20 +272,6 @@ pub const NetState = struct {
         self.outbound_len = 0;
     }
 
-    /// Set local peer ID (no-op, now read from net_ctx)
-    pub fn setLocalPeer(self: *NetState, peer_id: u8) void {
-        _ = self;
-        _ = peer_id;
-        // No-op - local_peer_id now lives in net_ctx
-    }
-
-    /// Connect a peer (no-op, now managed via events → NetCtx)
-    pub fn connectPeer(self: *NetState, peer_id: u8) void {
-        _ = self;
-        _ = peer_id;
-        // No-op - connection state now lives in net_ctx
-    }
-
     /// Disconnect a peer (reset unacked window only)
     pub fn disconnectPeer(self: *NetState, peer_id: u8) void {
         if (peer_id < MAX_PEERS) {

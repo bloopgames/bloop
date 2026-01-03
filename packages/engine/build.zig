@@ -49,18 +49,12 @@ pub fn build(b: *std.Build) void {
         // Session / Rollback
         "session_init",
         "session_end",
-        "session_emit_inputs",
         "get_net_ctx",
         // Network / Packets
-        "session_set_local_peer",
-        "session_peer_connect",
-        "session_peer_disconnect",
         "build_outbound_packet",
         "get_outbound_packet",
         "get_outbound_packet_len",
         "receive_packet",
-        "get_peer_seq",
-        "get_peer_ack",
         // Network events
         "emit_net_join_ok",
         "emit_net_join_fail",

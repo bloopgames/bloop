@@ -7,8 +7,6 @@ import { assert } from "./util";
  * This class provides methods for:
  * - Building outbound packets to send to peers
  * - Processing received packets
- * - Querying peer network state (seq/ack/unacked)
- * - Managing peer connections
  *
  * Access via `sim.net` after initializing a session.
  */
@@ -19,30 +17,6 @@ export class Net {
   constructor(wasm: WasmEngine, memory: WebAssembly.Memory) {
     this.#wasm = wasm;
     this.#memory = memory;
-  }
-
-  /**
-   * Set the local peer ID for packet encoding.
-   * Call this after session init to identify which peer we are.
-   */
-  setLocalPeer(peerId: number): void {
-    this.#wasm.session_set_local_peer(peerId);
-  }
-
-  /**
-   * Mark a peer as connected for packet management.
-   * Call this when a peer joins the session.
-   */
-  connectPeer(peerId: number): void {
-    this.#wasm.session_peer_connect(peerId);
-  }
-
-  /**
-   * Mark a peer as disconnected.
-   * Call this when a peer leaves the session.
-   */
-  disconnectPeer(peerId: number): void {
-    this.#wasm.session_peer_disconnect(peerId);
   }
 
   /**
@@ -118,21 +92,5 @@ export class Net {
         errorMessages[result] ?? `Unknown packet error: ${result}`,
       );
     }
-  }
-
-  /**
-   * Get network state for a specific peer.
-   *
-   * @param peer - Peer ID to query
-   * @returns Object with seq and ack
-   */
-  getPeerState(peer: number): {
-    seq: number;
-    ack: number;
-  } {
-    return {
-      seq: this.#wasm.get_peer_seq(peer),
-      ack: this.#wasm.get_peer_ack(peer),
-    };
   }
 }

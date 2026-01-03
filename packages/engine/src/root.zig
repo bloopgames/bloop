@@ -336,7 +336,6 @@ pub const Engine = struct {
                 .input_buffer = self.input_buffer,
                 .net_ctx = self.sim.net_ctx,
             };
-            self.net.setLocalPeer(snapshot.net.local_peer_id);
 
             // Take initial confirmed snapshot for rollback
             self.confirmed_snapshot = self.sim.take_snapshot(snapshot.user_data_len) catch null;
@@ -521,31 +520,6 @@ pub const Engine = struct {
         self.sim.net_ctx.session_start_frame = 0;
     }
 
-    /// Emit inputs for a peer at a given match frame
-    pub fn sessionEmitInputs(self: *Engine, peer: u8, match_frame: u32, events: []const Event) void {
-        self.input_buffer.emit(peer, match_frame, events);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Peer management
-    // ─────────────────────────────────────────────────────────────
-
-    /// Set local peer ID for packet encoding
-    pub fn setLocalPeer(self: *Engine, peer_id: u8) void {
-        self.net.setLocalPeer(peer_id);
-        self.sim.net_ctx.local_peer_id = peer_id;
-    }
-
-    /// Mark a peer as connected
-    pub fn connectPeer(self: *Engine, peer_id: u8) void {
-        self.net.connectPeer(peer_id);
-    }
-
-    /// Mark a peer as disconnected
-    pub fn disconnectPeer(self: *Engine, peer_id: u8) void {
-        self.net.disconnectPeer(peer_id);
-    }
-
     // ─────────────────────────────────────────────────────────────
     // Network packets
     // ─────────────────────────────────────────────────────────────
@@ -597,22 +571,6 @@ pub const Engine = struct {
                 Transport.DecodeError.InvalidEventCount => return 4,
             }
         };
-        return 0;
-    }
-
-    /// Get seq for a peer (latest frame received from them)
-    pub fn getPeerSeq(self: *const Engine, peer: u8) u16 {
-        if (peer < Transport.MAX_PEERS) {
-            return self.sim.net_ctx.peer_remote_seq[peer];
-        }
-        return 0;
-    }
-
-    /// Get ack for a peer (latest frame they acked from us)
-    pub fn getPeerAck(self: *const Engine, peer: u8) u16 {
-        if (peer < Transport.MAX_PEERS) {
-            return self.sim.net_ctx.peer_remote_ack[peer];
-        }
         return 0;
     }
 
@@ -944,16 +902,13 @@ test "Engine session lifecycle" {
     // Not in session initially
     try std.testing.expectEqual(false, engine.inSession());
 
-    // Initialize session
-    try engine.sessionInit(2, 0);
+    // Initialize session with peer_count=2, local_peer_id=0
+    try engine.emitNetSessionInit(2, 0, 0);
     try std.testing.expectEqual(true, engine.inSession());
 
-    // Set local peer
-    engine.setLocalPeer(0);
-
-    // Connect both peers
-    engine.connectPeer(0);
-    engine.connectPeer(1);
+    // Connect both peers via events
+    engine.emit_net_peer_join(0);
+    engine.emit_net_peer_join(1);
 
     // Advance some frames
     _ = engine.advance(hz * 3);

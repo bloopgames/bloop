@@ -350,15 +350,6 @@ pub export fn session_end() void {
     engine.?.sessionEnd();
 }
 
-/// Emit inputs for a peer at a given match frame
-/// events_ptr points to an array of Event structs
-/// events_len is the number of events (not bytes)
-pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPointer, events_len: u32) void {
-    const events: [*]const Events.Event = @ptrFromInt(events_ptr);
-    const events_slice = events[0..events_len];
-    engine.?.sessionEmitInputs(peer, match_frame, events_slice);
-}
-
 /// Get pointer to net context struct
 pub export fn get_net_ctx() usize {
     return @intFromPtr(engine.?.sim.net_ctx);
@@ -367,21 +358,6 @@ pub export fn get_net_ctx() usize {
 // ─────────────────────────────────────────────────────────────
 // Network / Packet exports
 // ─────────────────────────────────────────────────────────────
-
-/// Set local peer ID for packet encoding
-pub export fn session_set_local_peer(peer_id: u8) void {
-    engine.?.setLocalPeer(peer_id);
-}
-
-/// Mark a peer as connected
-pub export fn session_peer_connect(peer_id: u8) void {
-    engine.?.connectPeer(peer_id);
-}
-
-/// Mark a peer as disconnected
-pub export fn session_peer_disconnect(peer_id: u8) void {
-    engine.?.disconnectPeer(peer_id);
-}
 
 /// Initialize a session with explicit peer count and local peer ID (event-based)
 pub export fn emit_net_session_init(peer_count: u8, local_peer_id: u8, user_data_len: u32) u8 {
@@ -423,16 +399,6 @@ pub export fn get_outbound_packet_len() u32 {
 /// Returns 0 on success, error code otherwise
 pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
     return engine.?.receivePacket(ptr, len);
-}
-
-/// Get seq for a peer (latest frame received from them)
-pub export fn get_peer_seq(peer: u8) u16 {
-    return engine.?.getPeerSeq(peer);
-}
-
-/// Get ack for a peer (latest frame they acked from us)
-pub export fn get_peer_ack(peer: u8) u16 {
-    return engine.?.getPeerAck(peer);
 }
 
 // ─────────────────────────────────────────────────────────────
