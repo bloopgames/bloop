@@ -351,12 +351,12 @@ pub export fn get_net_ctx() usize {
 
 /// Initialize a session (derives peer count/local ID from prior events)
 pub export fn emit_net_session_init() void {
-    engine.?.emitNetSessionInit();
+    engine.?.emit_net_session_init();
 }
 
 /// End the current session (emits disconnect events for all peers)
 pub export fn emit_net_session_end() void {
-    engine.?.emitNetSessionEnd();
+    engine.?.emit_net_session_end();
 }
 
 /// Build an outbound packet for a target peer

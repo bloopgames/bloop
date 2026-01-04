@@ -153,10 +153,7 @@ pub const Engine = struct {
                 // Mark peer as connected
                 self.sim.net_ctx.peer_connected[peer_id] = 1;
 
-                // Only increment peer_count if not already in session.
-                // When session was initialized via emitNetSessionInit, peer_count is
-                // already set correctly and peer:join events just mark peers as connected.
-                if (self.sim.net_ctx.in_session == 0) {
+                if (!self.session.active) {
                     self.sim.net_ctx.peer_count += 1;
                     if (self.sim.net_ctx.peer_count >= 2) {
                         self.sim.net_ctx.in_session = 1;
@@ -491,18 +488,14 @@ pub const Engine = struct {
         return self.session.active;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Session lifecycle
-    // ─────────────────────────────────────────────────────────────
-
     /// Initialize session - queues NetSessionInit event.
     /// Requires peer:join and assign-local-id events to be emitted first.
-    pub fn emitNetSessionInit(self: *Engine) void {
+    pub fn emit_net_session_init(self: *Engine) void {
         self.appendNetEvent(Event.netSessionInit());
     }
 
     /// End session - emits NetPeerLeave for all connected peers
-    pub fn emitNetSessionEnd(self: *Engine) void {
+    pub fn emit_net_session_end(self: *Engine) void {
         // Emit disconnect events for all connected peers
         for (0..Transport.MAX_PEERS) |i| {
             if (self.sim.net_ctx.peer_connected[i] == 1) {
@@ -1042,7 +1035,7 @@ test "Engine session lifecycle" {
     engine.emit_net_peer_assign_local_id(0);
     engine.emit_net_peer_join(0);
     engine.emit_net_peer_join(1);
-    engine.emitNetSessionInit();
+    engine.emit_net_session_init();
 
     // Advance to process events
     _ = engine.advance(hz);

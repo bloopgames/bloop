@@ -40,7 +40,7 @@ export function joinRollbackRoom(
 
   function receivePackets() {
     for (const packetData of incomingPackets) {
-      app.sim._netInternal.receivePacket(packetData);
+      app.sim.emit.packet(packetData);
 
       if (remotePeerId == null) {
         return;
@@ -97,7 +97,7 @@ export function joinRollbackRoom(
     onDataChannelClose(peerId, reliable) {
       console.log(`Data channel closed: ${peerId} (reliable: ${reliable})`);
       if (!reliable && remotePeerId !== null) {
-        app.sim._netInternal.disconnectPeer(remotePeerId);
+        app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
         opts?.onSessionEnd?.();
       }
@@ -119,12 +119,11 @@ export function joinRollbackRoom(
         remoteStringPeerId = peerId;
         Debug.setRemoteId(remotePeerId);
 
-        // Initialize the session in the engine (2 players)
-        app.sim.sessionInit(2);
-
         // Set up local and remote peers in net state
-        app.sim._netInternal.setLocalPeer(localPeerId);
-        app.sim._netInternal.connectPeer(remotePeerId);
+        app.sim.emit.network("peer:join", { peerId: localPeerId });
+        app.sim.emit.network("peer:join", { peerId: remotePeerId });
+        app.sim.emit.network("peer:assign_local_id", { peerId: localPeerId });
+        app.sim.emit.network("session:start", {});
 
         sessionActive = true;
         console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
@@ -146,7 +145,7 @@ export function joinRollbackRoom(
     onPeerDisconnected(peerId) {
       Debug.removePeer(peerId);
       if (remotePeerId !== null && peerId === remoteStringPeerId) {
-        app.sim._netInternal.disconnectPeer(remotePeerId);
+        app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
         opts?.onSessionEnd?.();
       }

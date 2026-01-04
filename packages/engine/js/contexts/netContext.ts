@@ -95,7 +95,10 @@ export class NetContext {
     return this.dataView!.getUint32(4, true);
   }
 
-  /** Session start frame (absolute frame number) */
+  /**
+   * The number of frames since the game booted that the session started.
+   * Match frame is calculated relative to this.
+   */
   get sessionStartFrame(): number {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
