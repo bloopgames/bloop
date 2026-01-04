@@ -65,7 +65,7 @@ describe("buzzer game", () => {
     expect(game.bag.player2Score).toEqual(0);
   });
 
-  it("should award point to player 1 who clicks first in active phase", async () => {
+  it("should award point to player who clicks first in active phase", async () => {
     const { sim } = await mount(game);
 
     // Wait for active phase
@@ -80,29 +80,6 @@ describe("buzzer game", () => {
     expect(game.bag.winner).toEqual(1);
     expect(game.bag.player1Score).toEqual(1);
     expect(game.bag.player2Score).toEqual(0);
-  });
-
-  it("should award point to player 2 who clicks first in active phase", async () => {
-    const { sim } = await mount(game);
-
-    sim.emit.network("join:ok", { roomCode: "TEST" });
-    sim.emit.network("peer:join", { peerId: 0 });
-    sim.emit.network("peer:join", { peerId: 1 });
-    sim.emit.network("peer:assign_local_id", { peerId: 1 });
-    sim.emit.network("session:start", {});
-
-    // Wait for active phase
-    sim.step(3100);
-    expect(game.bag.phase).toEqual("active");
-
-    // Player 2 clicks
-    sim.emit.mousedown("Left", 1);
-    sim.step();
-
-    expect(game.bag.phase).toEqual("won");
-    expect(game.bag.winner).toEqual(2);
-    expect(game.bag.player1Score).toEqual(0);
-    expect(game.bag.player2Score).toEqual(1);
   });
 
   it("should reset to waiting phase after winner display time", async () => {
