@@ -443,62 +443,51 @@ export class Sim {
           break;
         }
         case "session:start":
+          this.wasm.emit_net_session_init();
+          break;
         case "session:end":
-          // These are handled by sessionInit/sessionEnd
+          this.wasm.emit_net_session_end();
           break;
       }
     },
+
+    packet: (data: Uint8Array): void => {
+      if (data.length === 0) {
+        return;
+      }
+
+      // Allocate memory and copy packet
+      const ptr = this.wasm.alloc(data.byteLength);
+      assert(
+        ptr > 0,
+        `Failed to allocate ${data.byteLength} bytes for received packet`,
+      );
+
+      const memoryView = new Uint8Array(
+        this.#memory.buffer,
+        ptr,
+        data.byteLength,
+      );
+      memoryView.set(data);
+
+      // Process the packet
+      const result = this.wasm.emit_receive_packet(ptr, data.byteLength);
+
+      // Free the allocated memory
+      this.wasm.free(ptr, data.byteLength);
+
+      // Check result
+      if (result !== 0) {
+        const errorMessages: Record<number, string> = {
+          1: "No active session",
+          2: "Buffer too small",
+          3: "Unsupported packet version",
+          4: "Invalid event count",
+        };
+        throw new Error(
+          errorMessages[result] ?? `Unknown packet error: ${result}`,
+        );
+      }
+    },
   };
-
-  // ─────────────────────────────────────────────────────────────
-  // Session / Rollback
-  // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Initialize a multiplayer session with rollback support.
-   * Captures current frame as session start frame.
-   *
-   * @param peerCount Number of peers in the session
-   */
-  sessionInit(peerCount: number): void {
-    const serializer = this.#serialize ? this.#serialize() : null;
-    const size = serializer ? serializer.size : 0;
-    const result = this.wasm.session_init(peerCount, size);
-    assert(result === 0, `failed to initialize session, error code=${result}`);
-  }
-
-  /**
-   * End the current session and clean up rollback state.
-   */
-  sessionEnd(): void {
-    this.wasm.session_end();
-  }
-
-  /**
-   * Initialize a multiplayer session using event-based API.
-   * Sets up rollback infrastructure and takes initial confirmed snapshot.
-   *
-   * Requires peer:assign-local-id and peer:join events to be emitted first.
-   * Those events set the local_peer_id and peer_count used by this function.
-   */
-  emitNetSessionInit(): void {
-    this.wasm.emit_net_session_init();
-  }
-
-  /**
-   * End the current session using event-based API.
-   * Emits NetPeerLeave events for all connected peers.
-   */
-  emitNetSessionEnd(): void {
-    this.wasm.emit_net_session_end();
-  }
-
-  /**
-   * Assign local peer ID for the session.
-   *
-   * @param peerId Local peer ID (0-11)
-   */
-  emitNetPeerAssignLocalId(peerId: number): void {
-    this.wasm.emit_net_peer_assign_local_id(peerId);
-  }
 }

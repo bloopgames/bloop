@@ -32,7 +32,7 @@ describe("netcode integration", () => {
     expect(packet0.length).toBeGreaterThan(0);
 
     // sim1 receives the packet
-    sim1._netInternal.receivePacket(packet0);
+    sim1.emit.packet(packet0);
     sim1.step();
 
     // On sim1, the remote event from peer 0 should be routed to player 0
@@ -65,7 +65,7 @@ describe("netcode integration", () => {
     expect(packet1.length).toBeGreaterThan(0);
 
     // sim0 receives the packet
-    sim0._netInternal.receivePacket(packet1);
+    sim0.emit.packet(packet1);
     sim0.step();
 
     // On sim0, the remote event from peer 1 should be routed to player 1
@@ -98,10 +98,10 @@ describe("netcode integration", () => {
     // send and receive packets to trigger rollback
     const packet = sim0._netInternal.getOutboundPacket(1);
     assert(packet);
-    sim1._netInternal.receivePacket(packet);
+    sim1.emit.packet(packet);
     const packet1 = sim1._netInternal.getOutboundPacket(0);
     assert(packet1);
-    sim0._netInternal.receivePacket(packet1);
+    sim0.emit.packet(packet1);
 
     sim0.step();
     sim1.step();

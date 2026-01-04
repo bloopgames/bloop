@@ -26,28 +26,24 @@ export function setupGames<S extends BloopSchema>(
 }
 
 export function setupSession(sim0: Sim, sim1: Sim) {
-  // Set local peer ID and emit peer joins BEFORE session init
+  // Set local peer ID and emit peer joins BEFORE session start
   sim0.emit.network("peer:assign_local_id", { peerId: 0 });
   sim0.emit.network("peer:join", { peerId: 0 });
   sim0.emit.network("peer:join", { peerId: 1 });
-  sim0.emitNetSessionInit();
+  sim0.emit.network("session:start", {});
 
   sim1.emit.network("peer:assign_local_id", { peerId: 1 });
   sim1.emit.network("peer:join", { peerId: 0 });
   sim1.emit.network("peer:join", { peerId: 1 });
-  sim1.emitNetSessionInit();
+  sim1.emit.network("session:start", {});
 
   sim0.step();
   sim1.step();
 }
 
 export function stepBoth(sim0: Sim, sim1: Sim) {
-  sim0._netInternal.receivePacket(
-    unwrap(sim1._netInternal.getOutboundPacket(0)),
-  );
-  sim1._netInternal.receivePacket(
-    unwrap(sim0._netInternal.getOutboundPacket(1)),
-  );
+  sim0.emit.packet(unwrap(sim1._netInternal.getOutboundPacket(0)));
+  sim1.emit.packet(unwrap(sim0._netInternal.getOutboundPacket(1)));
   sim0.step();
   sim1.step();
 }
