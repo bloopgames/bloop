@@ -96,36 +96,11 @@ export type WasmEngine = {
    */
   session_end: () => void;
   /**
-   * Emit inputs for a peer at a given match frame
-   * @param peer Peer ID (0-indexed)
-   * @param match_frame Frame number relative to session start
-   * @param events_ptr Pointer to Event array in WASM memory
-   * @param events_len Number of events
-   */
-  session_emit_inputs: (
-    peer: number,
-    match_frame: number,
-    events_ptr: EnginePointer,
-    events_len: number,
-  ) => void;
-  /**
    * Get pointer to net context struct
    */
   get_net_ctx: () => EnginePointer;
 
   // Network / Packets
-  /**
-   * Set local peer ID for packet encoding
-   */
-  session_set_local_peer: (peer_id: number) => void;
-  /**
-   * Mark a peer as connected for packet management
-   */
-  session_peer_connect: (peer_id: number) => void;
-  /**
-   * Mark a peer as disconnected
-   */
-  session_peer_disconnect: (peer_id: number) => void;
   /**
    * Build an outbound packet for a target peer
    * Call get_outbound_packet() and get_outbound_packet_len() to retrieve the packet
@@ -139,17 +114,46 @@ export type WasmEngine = {
    * Get length of the outbound packet
    */
   get_outbound_packet_len: () => number;
+
+  // Network events
   /**
-   * Process a received packet
+   * Emit NetJoinOk event - successfully joined a room
+   * @param room_code_ptr Pointer to room code string in WASM memory
+   * @param len Length of the room code (max 8)
+   */
+  emit_net_join_ok: (room_code_ptr: EnginePointer, len: number) => void;
+  /**
+   * Emit NetJoinFail event - failed to join a room
+   * @param reason Reason code (0=unknown, 1=timeout, 2=room_full, etc.)
+   */
+  emit_net_join_fail: (reason: number) => void;
+  /**
+   * Emit NetPeerJoin event - a peer joined the room
+   * @param peer_id Numeric peer ID (0-11)
+   */
+  emit_net_peer_join: (peer_id: number) => void;
+  /**
+   * Emit NetPeerLeave event - a peer left the room
+   * @param peer_id Numeric peer ID (0-11)
+   */
+  emit_net_peer_leave: (peer_id: number) => void;
+  /**
+   * Queue a received packet for processing in the next tick
    * @returns 0 on success, error code otherwise
    */
-  receive_packet: (ptr: EnginePointer, len: number) => number;
+  emit_receive_packet: (ptr: EnginePointer, len: number) => EngineOk;
+
   /**
-   * Get seq for a peer (latest frame received from them)
+   * Initialize a session (derives peer count/local ID from prior events)
    */
-  get_peer_seq: (peer: number) => number;
+  emit_net_session_init: () => void;
   /**
-   * Get ack for a peer (latest frame they acked from us)
+   * End the current session (emits disconnect events for all peers)
    */
-  get_peer_ack: (peer: number) => number;
+  emit_net_session_end: () => void;
+  /**
+   * Assign local peer ID (for session setup)
+   * @param peer_id Local peer ID (0-11)
+   */
+  emit_net_peer_assign_local_id: (peer_id: number) => void;
 };

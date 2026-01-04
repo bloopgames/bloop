@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop, mount } from "../src/mod";
+import { assert, Bloop, mount, unwrap } from "../src/mod";
 import { startOnlineMatch } from "./helper";
 
 describe("netcode integration", () => {
@@ -27,12 +27,12 @@ describe("netcode integration", () => {
     expect(game0.bag.p1Clicks).toBe(0);
 
     // Get packet from sim0 to send to sim1
-    const packet0 = sim0.net.getOutboundPacket(1);
+    const packet0 = sim0.getOutboundPacket(1);
     assert(packet0, "Packet from sim0 to sim1 should not be null");
     expect(packet0.length).toBeGreaterThan(0);
 
     // sim1 receives the packet
-    sim1.net.receivePacket(packet0);
+    sim1.emit.packet(packet0);
     sim1.step();
 
     // On sim1, the remote event from peer 0 should be routed to player 0
@@ -52,9 +52,6 @@ describe("netcode integration", () => {
       return game;
     });
 
-    sim0.step();
-    sim1.step();
-
     // Peer 1 clicks - should register as player 1 locally
     sim1.emit.mousedown("Left", 1);
     sim1.step();
@@ -63,12 +60,12 @@ describe("netcode integration", () => {
     expect(game1.bag.p1Clicks).toBe(1);
 
     // Get packet from sim1 to send to sim0
-    const packet1 = sim1.net.getOutboundPacket(0);
+    const packet1 = sim1.getOutboundPacket(0);
     assert(packet1, "Packet from sim1 to sim0 should not be null");
     expect(packet1.length).toBeGreaterThan(0);
 
     // sim0 receives the packet
-    sim0.net.receivePacket(packet1);
+    sim0.emit.packet(packet1);
     sim0.step();
 
     // On sim0, the remote event from peer 1 should be routed to player 1
@@ -99,12 +96,12 @@ describe("netcode integration", () => {
     expect(game0.bag.bCount).toBe(1);
 
     // send and receive packets to trigger rollback
-    const packet = sim0.net.getOutboundPacket(1);
+    const packet = sim0.getOutboundPacket(1);
     assert(packet);
-    sim1.net.receivePacket(packet);
-    const packet1 = sim1.net.getOutboundPacket(0);
+    sim1.emit.packet(packet);
+    const packet1 = sim1.getOutboundPacket(0);
     assert(packet1);
-    sim0.net.receivePacket(packet1);
+    sim0.emit.packet(packet1);
 
     sim0.step();
     sim1.step();
@@ -132,5 +129,153 @@ describe("netcode integration", () => {
 
     expect(game.bag.count).toEqual(1);
     expect(game.bag.inSession).toEqual(false);
+  });
+
+  it("can connect via room code", async () => {
+    const game0 = Bloop.create({
+      bag: {
+        events: [] as [string, any][],
+      },
+    });
+    const game1 = Bloop.create();
+
+    game0.system("netcode", {
+      update({ net }) {
+        if (net.status === "local") {
+          net.wantsRoomCode = "TEST";
+        }
+      },
+
+      netcode({ event }) {
+        game0.bag.events.push([event.type, event.data]);
+      },
+    });
+
+    game1.system("netcode", {
+      keydown({ event, net }) {
+        if (event.key === "Enter") {
+          net.wantsRoomCode = "TEST";
+        }
+      },
+    });
+
+    const { sim: sim0 } = await mount(game0);
+    const { sim: sim1 } = await mount(game1);
+
+    sim0.step();
+    expect(sim0.net.wantsRoomCode).toEqual("TEST");
+    sim0.emit.network("join:ok", { roomCode: "TEST" });
+    sim0.step();
+    expect(game0.context.net.roomCode).toEqual("TEST");
+
+    expect(sim1.net.wantsRoomCode).toBeUndefined();
+    sim1.emit.keydown("Enter");
+    sim1.step();
+    expect(sim1.net.wantsRoomCode).toEqual("TEST");
+    sim1.emit.network("join:ok", { roomCode: "TEST" });
+    sim0.emit.network("peer:join", { peerId: 1 });
+    sim1.emit.network("peer:join", { peerId: 0 });
+    expect(sim1.net.roomCode).toEqual("");
+    sim1.step();
+    expect(sim1.net.roomCode).toEqual("TEST");
+
+    sim0.step();
+
+    expect(game0.context.net.isInSession).toEqual(true);
+    expect(game1.context.net.isInSession).toEqual(true);
+
+    expect(game0.context.net.peerCount).toEqual(2);
+    expect(game1.context.net.peerCount).toEqual(2);
+
+    expect(game0.bag.events[0]![0]).toEqual("join:ok");
+    expect(game0.bag.events[0]![1]).toEqual({ roomCode: "TEST" });
+
+    expect(game0.bag.events[1]![0]).toEqual("peer:join");
+    expect(game0.bag.events[1]![1]).toEqual({ peerId: 1 });
+  });
+
+  it("maintains peer data", async () => {
+    const [sim0, sim1, game0, game1] = await startOnlineMatch(() => {
+      const game = Bloop.create({
+        bag: {
+          local: { ack: -2, seq: -2 },
+          remote: { ack: -2, seq: -2 },
+        },
+      });
+
+      game.system("track-peers", {
+        update({ bag, net }) {
+          for (const peer of net.peers) {
+            if (peer.isLocal) {
+              bag.local = { ack: peer.ack, seq: peer.seq };
+            } else {
+              bag.remote = { ack: peer.ack, seq: peer.seq };
+            }
+          }
+        },
+      });
+      return game;
+    });
+
+    const matchFrame = game0.context.net.matchFrame;
+
+    expect(game0.bag.local.seq).toEqual(matchFrame);
+    expect(game0.bag.local.ack).toEqual(-1);
+    expect(game0.bag.remote.seq).toEqual(-1);
+    expect(game0.bag.remote.ack).toEqual(-1);
+
+    const packet0 = unwrap(
+      sim1.getOutboundPacket(0),
+      "peer 1 to peer 0 has no packet",
+    );
+    const packet1 = unwrap(
+      sim0.getOutboundPacket(1),
+      "peer 0 to peer 1 has no packet",
+    );
+
+    // 2-frame delay before we receive the first packet.
+    // Our local seq should advance, but we haven't gotten any packets yet so ack is still -1
+    sim0.step();
+    sim1.step();
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(matchFrame + 2);
+    expect(game0.bag.local.ack).toEqual(-1);
+    expect(game0.bag.remote.seq).toEqual(-1);
+    expect(game0.bag.remote.ack).toEqual(-1);
+
+    // When we receive the packet from the first match frame, it should update our ack and their seq
+    sim0.emit.packet(packet0);
+    sim1.emit.packet(packet1);
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(matchFrame + 3);
+    expect(game0.bag.local.ack).toEqual(matchFrame);
+    expect(game0.bag.remote.seq).toEqual(matchFrame);
+    expect(game0.bag.remote.ack).toEqual(-1);
+    const receiveFrame = matchFrame + 3;
+
+    // If we fast forward to when the packet arrives with an ack of our latest seq, it should
+    // update the data correctly.
+    const packet2_0 = unwrap(
+      sim1.getOutboundPacket(0),
+      "peer 1 to peer 0 has no packet",
+    );
+    const packet2_1 = unwrap(
+      sim0.getOutboundPacket(1),
+      "peer 0 to peer 1 has no packet",
+    );
+    sim0.step();
+    sim1.step();
+    sim0.step();
+    sim1.step();
+    sim0.emit.packet(packet2_0);
+    sim1.emit.packet(packet2_1);
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(receiveFrame + 3);
+    expect(game0.bag.local.ack).toEqual(receiveFrame);
+    expect(game0.bag.remote.seq).toEqual(receiveFrame);
+    expect(game0.bag.remote.ack).toEqual(matchFrame);
   });
 });

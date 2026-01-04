@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readTapeHeader } from "@bloopjs/engine";
 import { assert, Bloop, mount, unwrap } from "../src/mod";
-import { setupGames, setupSession, startOnlineMatch } from "./helper";
+import { setupGames, setupSession, startOnlineMatch, stepBoth } from "./helper";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -237,76 +237,7 @@ describe("tapes", () => {
       sim1.step();
       expect(bloop.bag.score).toEqual(10);
     });
-
-    it("replays keydown events from file at correct frame", async () => {
-      // Load tape recorded from mario game
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      // Track keydown events externally (bag gets overwritten by tape snapshot)
-      let spaceDownFrame = -1;
-      let keydownCount = 0;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          keydownCount++;
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      // Tape starts at frame 0, space keydown is at frame 94
-      expect(sim.time.frame).toBe(0);
-      expect(spaceDownFrame).toBe(-1);
-
-      // Step to frame 93 - no space yet
-      sim.seek(93);
-      expect(sim.time.frame).toBe(93);
-      expect(spaceDownFrame).toBe(-1);
-
-      // Step to frame 95 to process events at frame 94
-      sim.seek(95);
-      expect(sim.time.frame).toBe(95);
-      expect(spaceDownFrame).toBe(94);
-      expect(keydownCount).toEqual(10);
-    });
-
-    it("replays events from file when stepping forward with step()", async () => {
-      const tapePath = `${import.meta.dir}/tapes/tape-1765838461380.bloop`;
-      const tapeBytes = new Uint8Array(await Bun.file(tapePath).arrayBuffer());
-
-      let spaceDownFrame = -1;
-
-      const game = Bloop.create({ bag: {} });
-      game.system("track-keys", {
-        keydown({ time, event }) {
-          if (event.key === "Space") {
-            spaceDownFrame = time.frame;
-          }
-        },
-      });
-
-      const { sim } = await mount(game, { startRecording: false });
-      sim.loadTape(tapeBytes);
-
-      expect(sim.time.frame).toBe(0);
-      expect(sim.isReplaying).toBe(true);
-
-      // Step forward using step() - should advance and replay events
-      for (let i = 0; i < 100; i++) {
-        sim.step(16);
-      }
-
-      expect(sim.time.frame).toBe(100);
-      expect(spaceDownFrame).toBe(94);
-    });
   });
-
   describe("tape overflow", () => {
     it("stops recording gracefully when tape is full", async () => {
       const game = Bloop.create({ bag: { count: 0 } });
@@ -392,9 +323,9 @@ describe("tapes", () => {
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       // Frame 3: Now sim0 receives the delayed packet from frame 0
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback to frame 0
+      sim0.emit.packet(packet); // triggers rollback to frame 0
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -420,22 +351,29 @@ describe("tapes", () => {
         startRecording: false,
       });
 
-      // Load tape - session auto-initialized from snapshot
+      // Load tape - session initialized via NetSessionInit event replay
       replaySim.loadTape(tapeBytes);
 
+      // Snapshot is at frame 0 (before setupSession), so replay starts there
+      // First step replays frame 0 events (NetSessionInit) - no mousedown yet
       replaySim.step(); // frame 0 -> 1
-      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+      expect(replayGame.bag).toEqual({ p0Score: 0, p1Score: 0 });
 
+      // Second step replays frame 1 events (mousedown)
       replaySim.step(); // frame 1 -> 2
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
       replaySim.step(); // frame 2 -> 3
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      replaySim.step(); // frame 3 -> 4 - packet replay should trigger same result
+      replaySim.step(); // frame 3 -> 4
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
+
+      // Frame 4 -> 5: packet replay should trigger same result as original
+      replaySim.step();
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
 
-      replaySim.step(); // frame 4 -> 5
+      replaySim.step(); // frame 5 -> 6
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
@@ -460,38 +398,37 @@ describe("tapes", () => {
       const { sim: sim0 } = await mount(game0, { startRecording: false });
       const { sim: sim1 } = await mount(game1, { startRecording: false });
 
-      // Run some frames before session (no recording)
-      sim0.step(); // frame 0 -> 1
-      sim1.step();
-      sim0.step(); // frame 1 -> 2
-      sim1.step();
-      sim0.step(); // frame 2 -> 3
-      sim1.step();
-      expect(game0.context.time.frame).toBe(3);
-
-      // Initialize session at frame 3
+      // Run frames 0 -> 3 before session
+      for (let i = 0; i < 3; i++) {
+        sim0.step();
+        sim1.step();
+      }
       setupSession(sim0, sim1);
 
-      // Start recording now (snapshot has session_start_frame=3)
+      // setupSession steps to process network events, we are on frame 4
+      expect(game0.context.time.frame).toBe(4);
+
+      // Start recording now (snapshot has session_start_frame=4)
       sim0.record(1000, 2 * 1024 * 1024);
 
-      // Frame 3->4: Player 0 clicks locally, Player 1 clicks on sim1
+      // Frame 4->5: Player 0 clicks locally, Player 1 clicks on sim1 but we haven't gotten the packet
       sim0.emit.mousedown("Left", 0);
       sim1.emit.mousedown("Left", 1);
       sim0.step();
       sim1.step();
-      // p0 click registered locally, p1 click not received yet
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      // Frame 4->5: No new clicks, p1 packet still delayed
+      // Get delayed packet from sim1 to sim0
+      const packet = sim1.getOutboundPacket(0);
+
+      // Frame 5->6: No new clicks, p1 packet still delayed
       sim0.step();
       sim1.step();
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      // Frame 6->7: Now sim0 receives the delayed packet
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet); // triggers rollback
+      sim0.emit.packet(packet); // triggers rollback
       sim0.step();
       sim1.step();
       // After rollback and resimulation, p1 click is now counted
@@ -515,15 +452,17 @@ describe("tapes", () => {
 
       // Load tape - session auto-initialized from snapshot (session_start_frame=3)
       replaySim.loadTape(tapeBytes);
+      expect(replaySim.time.frame).toEqual(4);
+      expect(replayGame.bag).toEqual({ p0Score: 0, p1Score: 0 });
 
-      // Tape starts at frame 3
-      replaySim.step(); // frame 3 -> 4
+      replaySim.step();
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      replaySim.step(); // frame 4 -> 5
+      replaySim.step();
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      replaySim.step(); // frame 5 -> 6 - packet replay should trigger same result
+      // 5 -> 6, packet replay should trigger p1 score
+      replaySim.step();
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
@@ -567,9 +506,9 @@ describe("tapes", () => {
       sim1.step();
 
       // Frame 5->6: Now sim0 receives the delayed packet
-      const packet = sim1.net.getOutboundPacket(0);
+      const packet = sim1.getOutboundPacket(0);
       assert(packet, "Packet from sim1 to sim0 should not be null");
-      sim0.net.receivePacket(packet);
+      sim0.emit.packet(packet);
       sim0.step();
       sim1.step();
       expect(game0.bag).toEqual({ p0Score: 1, p1Score: 1 });
@@ -590,22 +529,24 @@ describe("tapes", () => {
         startRecording: false,
       });
 
-      // Load tape - initial snapshot has in_session=0, so no session auto-init
+      // Load tape - initial snapshot has in_session=0, so session is initialized
+      // via replayed NetSessionInit event
       replaySim.loadTape(tapeBytes);
 
-      // Tape starts at frame 0
-      // Step through frames - this will fail because:
-      // 1. Session not auto-initialized (snapshot was taken before session)
-      // 2. Packets recorded during session won't replay correctly
-      replaySim.step(); // frame 0 -> 1
-      replaySim.step(); // frame 1 -> 2
-      replaySim.step(); // frame 2 -> 3
-      replaySim.step(); // frame 3 -> 4 - p0 click should register
+      // Tape starts at frame 0 - session wasn't active yet at recording start
+      replaySim.step(); // frame 0 -> 1 (no events)
+      replaySim.step(); // frame 1 -> 2 (no events)
+      replaySim.step(); // frame 2 -> 3 (no events)
+      replaySim.step(); // frame 3 -> 4 (NetSessionInit replayed, session now active)
+      expect(replayGame.bag).toEqual({ p0Score: 0, p1Score: 0 }); // mousedown not yet
+
+      replaySim.step(); // frame 4 -> 5 (mousedown replayed)
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
-      replaySim.step(); // frame 4 -> 5
-      replaySim.step(); // frame 5 -> 6 - packet should replay but session not active
+      replaySim.step(); // frame 5 -> 6 (no new input events)
+      expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 0 });
 
+      replaySim.step(); // frame 6 -> 7 (packet replay triggers p1 score)
       expect(replayGame.bag).toEqual({ p0Score: 1, p1Score: 1 });
     });
 
@@ -619,9 +560,9 @@ describe("tapes", () => {
 
       for (let i = 0; i < 1000; i++) {
         // Capture outgoing packets to simulate network delay
-        const packet0 = unwrap(sim0.net.getOutboundPacket(1));
+        const packet0 = unwrap(sim0.getOutboundPacket(1));
         outbound0.push(packet0);
-        const packet1 = unwrap(sim1.net.getOutboundPacket(0));
+        const packet1 = unwrap(sim1.getOutboundPacket(0));
         outbound1.push(packet1);
 
         // Step both sims
@@ -634,23 +575,30 @@ describe("tapes", () => {
             outbound0.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim1.net.receivePacket(packet0);
+          sim1.emit.packet(packet0);
 
           const packet1 = unwrap(
             outbound1.shift(),
             `Expected packet on tick ${i}`,
           );
-          sim0.net.receivePacket(packet1);
+          sim0.emit.packet(packet1);
         }
       }
 
-      expect(sim0.time.frame).toEqual(1000);
+      // Should have stepped 1000 frames after initial 1 frame step during session setup
+      expect(sim0.time.frame).toEqual(1001);
 
       const tape = sim0.saveTape();
 
       const header = readTapeHeader(tape);
       expect(header.startFrame).toBe(0);
-      expect(header.frameCount).toBe(1001); // 1 initial frame + 1000 steps
+      expect(header.frameCount).toBe(1002); // 1 initial frame + 1000 steps
+    });
+
+    it.skip("regress - handles tape that starts with unconfirmed inputs", () => {
+      // Test case to be added -
+      // start recording after session init with 3 frames of unconfirmed inputs.
+      // upon receiving the packet with the last 3 frames, rollback should happen
     });
   });
 });

@@ -1,11 +1,11 @@
 ---
 # bloop-32f8
 title: Design and implement netcode API
-status: todo
+status: completed
 type: feature
 priority: high
 created_at: 2025-12-18T23:00:37Z
-updated_at: 2025-12-22T17:08:02Z
+updated_at: 2025-12-23T19:09:11Z
 parent: bloop-dbi0
 ---
 
