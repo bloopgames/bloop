@@ -1,3 +1,4 @@
+import { unwrap } from "@bloopjs/bloop";
 import type { App } from "../App.ts";
 import * as Debug from "../debugui/mod.ts";
 import { logger } from "./logs.ts";
@@ -40,13 +41,16 @@ export function joinRollbackRoom(
 
   function receivePackets() {
     for (const packetData of incomingPackets) {
-      app.sim.net.receivePacket(packetData);
+      app.sim.emit.packet(packetData);
 
       if (remotePeerId == null) {
         return;
       }
 
-      const peerState = app.sim.net.getPeerState(remotePeerId);
+      const peerState = unwrap(
+        app.sim.net.peers[remotePeerId],
+        `Remote peer state not found for peerId ${remotePeerId}`,
+      );
       Debug.updatePeer(remoteStringPeerId!, {
         ack: peerState.ack,
         seq: peerState.seq,
@@ -70,7 +74,7 @@ export function joinRollbackRoom(
       return;
     }
 
-    const packet = app.sim.net.getOutboundPacket(remotePeerId);
+    const packet = app.sim.getOutboundPacket(remotePeerId);
 
     if (!packet) {
       console.warn("[netcode] No packet to send");
@@ -97,7 +101,7 @@ export function joinRollbackRoom(
     onDataChannelClose(peerId, reliable) {
       console.log(`Data channel closed: ${peerId} (reliable: ${reliable})`);
       if (!reliable && remotePeerId !== null) {
-        app.sim.net.disconnectPeer(remotePeerId);
+        app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
         opts?.onSessionEnd?.();
       }
@@ -119,12 +123,11 @@ export function joinRollbackRoom(
         remoteStringPeerId = peerId;
         Debug.setRemoteId(remotePeerId);
 
-        // Initialize the session in the engine (2 players)
-        app.sim.sessionInit(2);
-
         // Set up local and remote peers in net state
-        app.sim.net.setLocalPeer(localPeerId);
-        app.sim.net.connectPeer(remotePeerId);
+        app.sim.emit.network("peer:join", { peerId: localPeerId });
+        app.sim.emit.network("peer:join", { peerId: remotePeerId });
+        app.sim.emit.network("peer:assign_local_id", { peerId: localPeerId });
+        app.sim.emit.network("session:start", {});
 
         sessionActive = true;
         console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
@@ -146,7 +149,7 @@ export function joinRollbackRoom(
     onPeerDisconnected(peerId) {
       Debug.removePeer(peerId);
       if (remotePeerId !== null && peerId === remoteStringPeerId) {
-        app.sim.net.disconnectPeer(remotePeerId);
+        app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
         opts?.onSessionEnd?.();
       }

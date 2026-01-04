@@ -4,13 +4,15 @@ pub fn build(b: *std.Build) void {
     const target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSmall });
 
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("src/wasm.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "bloop",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/wasm.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_module = root_module,
     });
 
     exe.entry = .disabled;
@@ -45,22 +47,24 @@ pub fn build(b: *std.Build) void {
         "emit_mousewheel",
         // Context accessors
         "get_time_ctx",
+        "get_net_ctx",
         "get_events_ptr",
         // Session / Rollback
-        "session_init",
         "session_end",
-        "session_emit_inputs",
-        "get_net_ctx",
         // Network / Packets
-        "session_set_local_peer",
-        "session_peer_connect",
-        "session_peer_disconnect",
         "build_outbound_packet",
         "get_outbound_packet",
         "get_outbound_packet_len",
-        "receive_packet",
-        "get_peer_seq",
-        "get_peer_ack",
+        "emit_receive_packet",
+        // Network events
+        "emit_net_join_ok",
+        "emit_net_join_fail",
+        "emit_net_peer_join",
+        "emit_net_peer_leave",
+        "emit_net_peer_assign_local_id",
+        // Event-based session API
+        "emit_net_session_init",
+        "emit_net_session_end",
     };
 
     // read memory from JS side

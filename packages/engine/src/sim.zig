@@ -4,12 +4,15 @@ const Events = @import("events.zig");
 const Tapes = @import("tapes/tapes.zig");
 const IB = @import("input_buffer.zig");
 const Ses = @import("netcode/session.zig");
+const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const NetCtx = Ctx.NetCtx;
+const NetStatus = Ctx.NetStatus;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
+const EventType = Events.EventType;
 const InputBuffer = IB.InputBuffer;
 
 pub const hz = 1000 / 60;
@@ -76,7 +79,15 @@ pub const Sim = struct {
 
         // Allocate NetCtx (small struct exposed to game systems)
         const net_ctx = try allocator.create(NetCtx);
-        net_ctx.* = .{ .peer_count = input_buffer.peer_count, .match_frame = 0 };
+        net_ctx.* = .{
+            .peer_count = input_buffer.peer_count,
+            .local_peer_id = 0,
+            .in_session = 0,
+            .status = @intFromEnum(Ctx.NetStatus.local),
+            .match_frame = 0,
+            .session_start_frame = 0,
+            .room_code = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
+        };
 
         return Sim{
             .time = time,
@@ -113,6 +124,8 @@ pub const Sim = struct {
     /// Reads match_frame and peer_count from net_ctx (synced by Engine before tick).
     /// @param is_resimulating: true if this is a resim frame during rollback
     pub fn tick(self: *Sim, is_resimulating: bool) void {
+        Log.debug("Sim tick: frame={} resim={}", .{ self.time.frame, is_resimulating });
+
         // Call before_tick listener (Engine syncs net_ctx here)
         if (self.listeners.before_tick) |before_tick| {
             before_tick(self.listeners.context.?);
@@ -164,6 +177,10 @@ pub const Sim = struct {
 
     fn process_events(self: *Sim) void {
         for (self.events.events[0..self.events.count]) |event| {
+            // Skip net events - already processed by Engine in flushPendingNetEvents
+            if (event.kind.isNetEvent()) continue;
+
+            // Process input events
             self.inputs.process_event(event);
         }
     }
@@ -470,4 +487,3 @@ test "snapshot preserves input state" {
     try std.testing.expectEqual(100.0, ctx.sim.inputs.players[0].mouse_ctx.x);
     try std.testing.expectEqual(200.0, ctx.sim.inputs.players[0].mouse_ctx.y);
 }
-

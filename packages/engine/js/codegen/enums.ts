@@ -9,11 +9,13 @@ export enum EventType {
   MouseUp = 5,
   MouseWheel = 6,
   FrameStart = 7,
-  SessionInit = 8,
-  SessionSetLocalPeer = 9,
-  SessionConnectPeer = 10,
-  SessionDisconnectPeer = 11,
-  SessionEnd = 12,
+  NetJoinOk = 8,
+  NetJoinFail = 9,
+  NetPeerJoin = 10,
+  NetPeerLeave = 11,
+  NetPeerAssignLocalId = 12,
+  NetPacketReceived = 13,
+  NetSessionInit = 14,
 }
 
 export enum MouseButton {
@@ -256,5 +258,13 @@ export enum InputSource {
   RemotePeer10 = 138,
   RemotePeer11 = 139,
   Unmapped = 255,
+}
+
+export enum NetJoinFailReason {
+  unknown = 0,
+  timeout = 1,
+  room_full = 2,
+  room_not_found = 3,
+  already_in_room = 4,
 }
 

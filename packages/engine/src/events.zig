@@ -80,45 +80,77 @@ pub const Event = extern struct {
         };
     }
 
-    pub inline fn sessionInit(peer_count: u8) Event {
+    /// Network event: successfully joined a room
+    pub inline fn netJoinOk(room_code: [8]u8) Event {
         return Event{
-            .kind = .SessionInit,
+            .kind = .NetJoinOk,
             .device = .None,
-            .payload = .{ .peer_id = peer_count },
+            .payload = .{ .room_code = room_code },
         };
     }
 
-    pub inline fn sessionSetLocalPeer(peer_id: u8) Event {
+    /// Network event: failed to join a room
+    pub inline fn netJoinFail(reason: NetJoinFailReason) Event {
         return Event{
-            .kind = .SessionSetLocalPeer,
+            .kind = .NetJoinFail,
+            .device = .None,
+            .payload = .{ .join_fail_reason = reason },
+        };
+    }
+
+    /// Network event: a peer joined the room
+    pub inline fn netPeerJoin(peer_id: u8) Event {
+        return Event{
+            .kind = .NetPeerJoin,
             .device = .None,
             .payload = .{ .peer_id = peer_id },
         };
     }
 
-    pub inline fn sessionConnectPeer(peer_id: u8) Event {
+    /// Network event: a peer left the room
+    pub inline fn netPeerLeave(peer_id: u8) Event {
         return Event{
-            .kind = .SessionConnectPeer,
+            .kind = .NetPeerLeave,
             .device = .None,
             .payload = .{ .peer_id = peer_id },
         };
     }
 
-    pub inline fn sessionDisconnectPeer(peer_id: u8) Event {
+    /// Network event: assign local peer ID
+    pub inline fn netPeerAssignLocalId(peer_id: u8) Event {
         return Event{
-            .kind = .SessionDisconnectPeer,
+            .kind = .NetPeerAssignLocalId,
             .device = .None,
             .payload = .{ .peer_id = peer_id },
         };
     }
 
-    pub inline fn sessionEnd() Event {
+    /// Network event: packet received from a peer
+    pub inline fn netPacketReceived(ptr: u32, len: u16, peer_id: u8) Event {
         return Event{
-            .kind = .SessionEnd,
+            .kind = .NetPacketReceived,
             .device = .None,
-            .payload = .{ .peer_id = 0 },
+            .payload = .{ .packet_ref = .{ .ptr = ptr, .len = len, .peer_id = peer_id } },
         };
     }
+
+    /// Network event: session initialization (no payload - derives from context)
+    pub inline fn netSessionInit() Event {
+        return Event{
+            .kind = .NetSessionInit,
+            .device = .None,
+            .payload = .{ .peer_id = 0 }, // Unused - values derived from context
+        };
+    }
+};
+
+/// Reason for join failure
+pub const NetJoinFailReason = enum(u8) {
+    unknown = 0,
+    timeout = 1,
+    room_full = 2,
+    room_not_found = 3,
+    already_in_room = 4,
 };
 
 pub const EventPayload = extern union {
@@ -127,8 +159,26 @@ pub const EventPayload = extern union {
     mouse_move: extern struct { x: f32, y: f32 },
     delta: extern struct { delta_x: f32, delta_y: f32 },
     frame_number: u32,
-    /// Used by SessionInit (peer_count) and SessionSetLocalPeer/ConnectPeer/DisconnectPeer (peer_id)
+    /// Used by NetPeerJoin/NetPeerLeave (peer_id)
     peer_id: u8,
+    /// Room code for NetJoinOk (8 bytes, null-terminated)
+    room_code: [8]u8,
+    /// Reason for NetJoinFail
+    join_fail_reason: NetJoinFailReason,
+    /// Reference to packet data for NetPacketReceived
+    packet_ref: extern struct {
+        ptr: u32, // WASM pointer to packet data
+        len: u16, // packet length
+        peer_id: u8, // sender peer ID
+        _pad: u8 = 0, // alignment padding
+    },
+    /// Session initialization parameters for NetSessionInit
+    session_init: extern struct {
+        peer_count: u8,
+        local_peer_id: u8,
+        _pad: u16 = 0, // alignment padding
+        start_frame: u32,
+    },
 };
 
 pub const EventType = enum(u8) {
@@ -141,16 +191,24 @@ pub const EventType = enum(u8) {
     MouseWheel,
     /// Frame is complete. Frame number payload indicates which frame has completed its events
     FrameStart,
-    /// Session lifecycle events
-    SessionInit,
-    SessionSetLocalPeer,
-    SessionConnectPeer,
-    SessionDisconnectPeer,
-    SessionEnd,
+    /// Network events (emitted by platform, stored in tape)
+    NetJoinOk,
+    NetJoinFail,
+    NetPeerJoin,
+    NetPeerLeave,
+    NetPeerAssignLocalId,
+    NetPacketReceived,
+    /// Session initialization event (recorded to tape for replay)
+    NetSessionInit,
 
     pub fn isSessionEvent(self: EventType) bool {
+        _ = self;
+        return false; // All session events removed
+    }
+
+    pub fn isNetEvent(self: EventType) bool {
         return switch (self) {
-            .SessionInit, .SessionSetLocalPeer, .SessionConnectPeer, .SessionDisconnectPeer, .SessionEnd => true,
+            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId, .NetPacketReceived, .NetSessionInit => true,
             else => false,
         };
     }
