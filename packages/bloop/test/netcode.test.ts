@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { assert, Bloop, mount } from "../src/mod";
+import { assert, Bloop, mount, unwrap } from "../src/mod";
 import { startOnlineMatch } from "./helper";
 
 describe("netcode integration", () => {
@@ -192,5 +192,90 @@ describe("netcode integration", () => {
 
     expect(game0.bag.events[1]![0]).toEqual("peer:join");
     expect(game0.bag.events[1]![1]).toEqual({ peerId: 1 });
+  });
+
+  it("maintains peer data", async () => {
+    const [sim0, sim1, game0, game1] = await startOnlineMatch(() => {
+      const game = Bloop.create({
+        bag: {
+          local: { ack: -2, seq: -2 },
+          remote: { ack: -2, seq: -2 },
+        },
+      });
+
+      game.system("track-peers", {
+        update({ bag, net }) {
+          for (const peer of net.peers) {
+            if (peer.isLocal) {
+              bag.local = { ack: peer.ack, seq: peer.seq };
+            } else {
+              bag.remote = { ack: peer.ack, seq: peer.seq };
+            }
+          }
+        },
+      });
+      return game;
+    });
+
+    const matchFrame = game0.context.net.matchFrame;
+
+    expect(game0.bag.local.seq).toEqual(matchFrame);
+    expect(game0.bag.local.ack).toEqual(-1);
+    expect(game0.bag.remote.seq).toEqual(-1);
+    expect(game0.bag.remote.ack).toEqual(-1);
+
+    const packet0 = unwrap(
+      sim1.getOutboundPacket(0),
+      "peer 1 to peer 0 has no packet",
+    );
+    const packet1 = unwrap(
+      sim0.getOutboundPacket(1),
+      "peer 0 to peer 1 has no packet",
+    );
+
+    // 2-frame delay before we receive the first packet.
+    // Our local seq should advance, but we haven't gotten any packets yet so ack is still -1
+    sim0.step();
+    sim1.step();
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(matchFrame + 2);
+    expect(game0.bag.local.ack).toEqual(-1);
+    expect(game0.bag.remote.seq).toEqual(-1);
+    expect(game0.bag.remote.ack).toEqual(-1);
+
+    // When we receive the packet from the first match frame, it should update our ack and their seq
+    sim0.emit.packet(packet0);
+    sim1.emit.packet(packet1);
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(matchFrame + 3);
+    expect(game0.bag.local.ack).toEqual(matchFrame);
+    expect(game0.bag.remote.seq).toEqual(matchFrame);
+    expect(game0.bag.remote.ack).toEqual(-1);
+    const receiveFrame = matchFrame + 3;
+
+    // If we fast forward to when the packet arrives with an ack of our latest seq, it should
+    // update the data correctly.
+    const packet2_0 = unwrap(
+      sim1.getOutboundPacket(0),
+      "peer 1 to peer 0 has no packet",
+    );
+    const packet2_1 = unwrap(
+      sim0.getOutboundPacket(1),
+      "peer 0 to peer 1 has no packet",
+    );
+    sim0.step();
+    sim1.step();
+    sim0.step();
+    sim1.step();
+    sim0.emit.packet(packet2_0);
+    sim1.emit.packet(packet2_1);
+    sim0.step();
+    sim1.step();
+    expect(game0.bag.local.seq).toEqual(receiveFrame + 3);
+    expect(game0.bag.local.ack).toEqual(receiveFrame);
+    expect(game0.bag.remote.seq).toEqual(receiveFrame);
+    expect(game0.bag.remote.ack).toEqual(matchFrame);
   });
 });
