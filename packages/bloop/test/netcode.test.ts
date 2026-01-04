@@ -27,7 +27,7 @@ describe("netcode integration", () => {
     expect(game0.bag.p1Clicks).toBe(0);
 
     // Get packet from sim0 to send to sim1
-    const packet0 = sim0._netInternal.getOutboundPacket(1);
+    const packet0 = sim0.getOutboundPacket(1);
     assert(packet0, "Packet from sim0 to sim1 should not be null");
     expect(packet0.length).toBeGreaterThan(0);
 
@@ -60,7 +60,7 @@ describe("netcode integration", () => {
     expect(game1.bag.p1Clicks).toBe(1);
 
     // Get packet from sim1 to send to sim0
-    const packet1 = sim1._netInternal.getOutboundPacket(0);
+    const packet1 = sim1.getOutboundPacket(0);
     assert(packet1, "Packet from sim1 to sim0 should not be null");
     expect(packet1.length).toBeGreaterThan(0);
 
@@ -96,10 +96,10 @@ describe("netcode integration", () => {
     expect(game0.bag.bCount).toBe(1);
 
     // send and receive packets to trigger rollback
-    const packet = sim0._netInternal.getOutboundPacket(1);
+    const packet = sim0.getOutboundPacket(1);
     assert(packet);
     sim1.emit.packet(packet);
-    const packet1 = sim1._netInternal.getOutboundPacket(0);
+    const packet1 = sim1.getOutboundPacket(0);
     assert(packet1);
     sim0.emit.packet(packet1);
 

@@ -42,8 +42,8 @@ export function setupSession(sim0: Sim, sim1: Sim) {
 }
 
 export function stepBoth(sim0: Sim, sim1: Sim) {
-  sim0.emit.packet(unwrap(sim1._netInternal.getOutboundPacket(0)));
-  sim1.emit.packet(unwrap(sim0._netInternal.getOutboundPacket(1)));
+  sim0.emit.packet(unwrap(sim1.getOutboundPacket(0)));
+  sim1.emit.packet(unwrap(sim0.getOutboundPacket(1)));
   sim0.step();
   sim1.step();
 }

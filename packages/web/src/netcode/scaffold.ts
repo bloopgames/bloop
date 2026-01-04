@@ -70,7 +70,7 @@ export function joinRollbackRoom(
       return;
     }
 
-    const packet = app.sim._netInternal.getOutboundPacket(remotePeerId);
+    const packet = app.sim.getOutboundPacket(remotePeerId);
 
     if (!packet) {
       console.warn("[netcode] No packet to send");
