@@ -114,11 +114,6 @@ export type WasmEngine = {
    * Get length of the outbound packet
    */
   get_outbound_packet_len: () => number;
-  /**
-   * Queue a received packet for processing in the next tick
-   * @returns 0 on success, error code otherwise
-   */
-  emit_receive_packet: (ptr: EnginePointer, len: number) => number;
 
   // Network events
   /**
@@ -142,20 +137,16 @@ export type WasmEngine = {
    * @param peer_id Numeric peer ID (0-11)
    */
   emit_net_peer_leave: (peer_id: number) => void;
-
-  // New event-based session API
   /**
-   * Initialize a session with explicit peer count and local peer ID (event-based)
-   * @param peer_count Number of peers in the session
-   * @param local_peer_id Local peer ID (0-11)
-   * @param user_data_len Size of user data to include in snapshots
-   * @returns 0 on success, 1 on failure
+   * Queue a received packet for processing in the next tick
+   * @returns 0 on success, error code otherwise
    */
-  emit_net_session_init: (
-    peer_count: number,
-    local_peer_id: number,
-    user_data_len: number,
-  ) => EngineOk;
+  emit_receive_packet: (ptr: EnginePointer, len: number) => EngineOk;
+
+  /**
+   * Initialize a session (derives peer count/local ID from prior events)
+   */
+  emit_net_session_init: () => void;
   /**
    * End the current session (emits disconnect events for all peers)
    */

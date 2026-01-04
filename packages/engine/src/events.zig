@@ -134,12 +134,12 @@ pub const Event = extern struct {
         };
     }
 
-    /// Network event: session initialization
-    pub inline fn netSessionInit(peer_count: u8, local_peer_id: u8, start_frame: u32) Event {
+    /// Network event: session initialization (no payload - derives from context)
+    pub inline fn netSessionInit() Event {
         return Event{
             .kind = .NetSessionInit,
             .device = .None,
-            .payload = .{ .session_init = .{ .peer_count = peer_count, .local_peer_id = local_peer_id, .start_frame = start_frame } },
+            .payload = .{ .peer_id = 0 }, // Unused - values derived from context
         };
     }
 };

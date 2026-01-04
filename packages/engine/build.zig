@@ -45,11 +45,10 @@ pub fn build(b: *std.Build) void {
         "emit_mousewheel",
         // Context accessors
         "get_time_ctx",
+        "get_net_ctx",
         "get_events_ptr",
         // Session / Rollback
-        "session_init",
         "session_end",
-        "get_net_ctx",
         // Network / Packets
         "build_outbound_packet",
         "get_outbound_packet",
@@ -60,10 +59,10 @@ pub fn build(b: *std.Build) void {
         "emit_net_join_fail",
         "emit_net_peer_join",
         "emit_net_peer_leave",
-        // New event-based session API
+        "emit_net_peer_assign_local_id",
+        // Event-based session API
         "emit_net_session_init",
         "emit_net_session_end",
-        "emit_net_peer_assign_local_id",
     };
 
     // read memory from JS side

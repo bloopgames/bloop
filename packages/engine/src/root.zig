@@ -58,8 +58,8 @@ pub const Engine = struct {
         // Allocate canonical InputBuffer (single source of truth for all inputs)
         const input_buffer = try allocator.create(InputBuffer);
         input_buffer.* = .{};
-        // Default: MAX_PEERS to support local multiplayer testing (session mode will reinit)
-        input_buffer.init(IB.MAX_PEERS, 0);
+        // Default: 1 peer for local play (session mode will reinit with actual peer count)
+        input_buffer.init(1, 0);
 
         // Allocate NetState on heap (now much smaller - no unacked_frames copies)
         const net = try allocator.create(NetState);
@@ -147,36 +147,38 @@ pub const Engine = struct {
             },
             .NetPeerJoin => {
                 const peer_id = event.payload.peer_id;
-                if (peer_id < Ctx.MAX_PLAYERS) {
-                    // Mark peer as connected
-                    self.sim.net_ctx.peer_connected[peer_id] = 1;
+                if (peer_id >= Ctx.MAX_PLAYERS) {
+                    @panic("Invalid peer ID on NetPeerJoin");
+                }
+                // Mark peer as connected
+                self.sim.net_ctx.peer_connected[peer_id] = 1;
 
-                    // Only increment peer_count if not already in session.
-                    // When session was initialized via emitNetSessionInit, peer_count is
-                    // already set correctly and peer:join events just mark peers as connected.
-                    if (self.sim.net_ctx.in_session == 0) {
-                        self.sim.net_ctx.peer_count += 1;
-                        if (self.sim.net_ctx.peer_count >= 2) {
-                            self.sim.net_ctx.in_session = 1;
-                        }
+                // Only increment peer_count if not already in session.
+                // When session was initialized via emitNetSessionInit, peer_count is
+                // already set correctly and peer:join events just mark peers as connected.
+                if (self.sim.net_ctx.in_session == 0) {
+                    self.sim.net_ctx.peer_count += 1;
+                    if (self.sim.net_ctx.peer_count >= 2) {
+                        self.sim.net_ctx.in_session = 1;
                     }
                 }
             },
             .NetPeerLeave => {
                 const peer_id = event.payload.peer_id;
-                if (peer_id < Ctx.MAX_PLAYERS) {
-                    // Disconnect peer and reset seq/ack
-                    self.sim.net_ctx.peer_connected[peer_id] = 0;
-                    self.sim.net_ctx.peer_remote_seq[peer_id] = 0;
-                    self.sim.net_ctx.peer_remote_ack[peer_id] = 0;
-                    self.sim.net_ctx.peer_local_seq[peer_id] = 0;
+                if (peer_id >= Ctx.MAX_PLAYERS) {
+                    @panic("Invalid peer ID on NetPeerLeave");
+                }
+                // Disconnect peer and reset seq/ack
+                self.sim.net_ctx.peer_connected[peer_id] = 0;
+                self.sim.net_ctx.peer_remote_seq[peer_id] = 0;
+                self.sim.net_ctx.peer_remote_ack[peer_id] = 0;
+                self.sim.net_ctx.peer_local_seq[peer_id] = 0;
 
-                    if (self.sim.net_ctx.peer_count > 0) {
-                        self.sim.net_ctx.peer_count -= 1;
-                    }
-                    if (self.sim.net_ctx.peer_count <= 1) {
-                        self.sim.net_ctx.in_session = 0;
-                    }
+                if (self.sim.net_ctx.peer_count > 0) {
+                    self.sim.net_ctx.peer_count -= 1;
+                }
+                if (self.sim.net_ctx.peer_count <= 1) {
+                    self.sim.net_ctx.in_session = 0;
                 }
             },
             .NetPeerAssignLocalId => {
@@ -186,13 +188,11 @@ pub const Engine = struct {
                 }
                 self.sim.net_ctx.local_peer_id = peer_id;
             },
-            .NetPacketReceived => {
-                // Packets are processed synchronously in emit_receive_packet (while memory is valid).
-                // This case is for tape replay - packet data is in VCR-owned memory.
-            },
             .NetSessionInit => {
-                // Session initialization from tape replay
-                const session_params = event.payload.session_init;
+                // Derive session params from context (set by prior peer:join and assign-local-id events)
+                const local_peer_id = self.sim.net_ctx.local_peer_id;
+                const peer_count = self.sim.net_ctx.peer_count;
+                const start_frame = self.sim.time.frame;
 
                 // Clean up existing confirmed snapshot if any
                 if (self.confirmed_snapshot) |snap| {
@@ -205,18 +205,16 @@ pub const Engine = struct {
                 // Preserve observer (tape recording) across session init
                 const saved_observer = self.input_buffer.observer;
                 self.input_buffer.* = .{};
-                self.input_buffer.init(session_params.peer_count, session_params.start_frame);
+                self.input_buffer.init(peer_count, start_frame);
                 self.input_buffer.observer = saved_observer;
 
                 // Initialize session state
-                self.session.start(session_params.start_frame, session_params.peer_count);
+                self.session.start(start_frame, peer_count);
 
                 // Update net_ctx
-                self.sim.net_ctx.local_peer_id = session_params.local_peer_id;
-                self.sim.net_ctx.peer_count = session_params.peer_count;
                 self.sim.net_ctx.in_session = 1;
-                self.sim.net_ctx.session_start_frame = session_params.start_frame;
-                self.sim.net_ctx.peer_connected[session_params.local_peer_id] = 1;
+                self.sim.net_ctx.session_start_frame = start_frame;
+                self.sim.net_ctx.peer_connected[local_peer_id] = 1;
 
                 // Reinitialize NetState with NetCtx reference
                 self.net.* = .{
@@ -225,7 +223,7 @@ pub const Engine = struct {
                     .net_ctx = self.sim.net_ctx,
                 };
 
-                // Take initial confirmed snapshot for rollback
+                // Take confirmed snapshot (after prior peer:join events already processed)
                 self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
             },
             else => {},
@@ -499,48 +497,10 @@ pub const Engine = struct {
     // Session lifecycle
     // ─────────────────────────────────────────────────────────────
 
-    /// Initialize session - sets up InputBuffer, NetCtx, and snapshot
-    /// Records a NetSessionInit event to tape for replay support.
-    pub fn emitNetSessionInit(self: *Engine, peer_count: u8, local_peer_id: u8, user_data_len: u32) !void {
-        // Record session init event to tape BEFORE state changes
-        // This allows tape replay to reconstruct the session
-        const event = Event.netSessionInit(peer_count, local_peer_id, self.sim.time.frame);
-        _ = self.vcr.recordEvent(event);
-
-        // Clean up existing confirmed snapshot if any
-        if (self.confirmed_snapshot) |snap| {
-            snap.deinit(self.allocator);
-            self.confirmed_snapshot = null;
-        }
-        self.net.deinit();
-
-        // Reinitialize InputBuffer for the new session
-        // Preserve observer (tape recording) across session init
-        const saved_observer = self.input_buffer.observer;
-        self.input_buffer.* = .{};
-        self.input_buffer.init(peer_count, self.sim.time.frame);
-        self.input_buffer.observer = saved_observer;
-
-        // Initialize session state
-        self.session.start(self.sim.time.frame, peer_count);
-
-        // Update net_ctx
-        self.sim.net_ctx.local_peer_id = local_peer_id;
-        self.sim.net_ctx.peer_count = peer_count; // Use caller-provided count for proper snapshot
-        self.sim.net_ctx.in_session = 1;
-        self.sim.net_ctx.session_start_frame = self.sim.time.frame;
-        self.sim.net_ctx.peer_connected[local_peer_id] = 1;
-
-        // Reinitialize NetState with NetCtx reference
-        self.net.* = .{
-            .allocator = self.allocator,
-            .input_buffer = self.input_buffer,
-            .net_ctx = self.sim.net_ctx,
-        };
-
-        // Take initial snapshot
-        const snap = try self.sim.take_snapshot(user_data_len);
-        self.confirmed_snapshot = snap;
+    /// Initialize session - queues NetSessionInit event.
+    /// Requires peer:join and assign-local-id events to be emitted first.
+    pub fn emitNetSessionInit(self: *Engine) void {
+        self.appendNetEvent(Event.netSessionInit());
     }
 
     /// End session - emits NetPeerLeave for all connected peers
@@ -584,42 +544,6 @@ pub const Engine = struct {
     // ─────────────────────────────────────────────────────────────
     // Session lifecycle (legacy direct API - will be removed)
     // ─────────────────────────────────────────────────────────────
-
-    /// Initialize a multiplayer session with rollback support
-    pub fn sessionInit(self: *Engine, peer_count_arg: u8, user_data_len: u32) !void {
-        // Clean up existing confirmed snapshot if any
-        if (self.confirmed_snapshot) |snap| {
-            snap.deinit(self.allocator);
-            self.confirmed_snapshot = null;
-        }
-        self.net.deinit();
-
-        // Reinitialize InputBuffer for the new session
-        // Preserve observer (tape recording) across session init
-        const saved_observer = self.input_buffer.observer;
-        self.input_buffer.* = .{};
-        self.input_buffer.init(peer_count_arg, self.sim.time.frame);
-        self.input_buffer.observer = saved_observer;
-
-        // Initialize session state
-        self.session.start(self.sim.time.frame, peer_count_arg);
-
-        // Reinitialize net state (references the same InputBuffer)
-        self.net.* = .{
-            .allocator = self.allocator,
-            .input_buffer = self.input_buffer,
-            .net_ctx = self.sim.net_ctx,
-        };
-
-        // Update net_ctx for snapshots (captured in take_snapshot)
-        self.sim.net_ctx.peer_count = peer_count_arg;
-        self.sim.net_ctx.in_session = 1;
-        self.sim.net_ctx.session_start_frame = self.sim.time.frame;
-
-        // Take initial confirmed snapshot (after session is active so it's captured)
-        const snap = try self.sim.take_snapshot(user_data_len);
-        self.confirmed_snapshot = snap;
-    }
 
     /// End the current session
     pub fn sessionEnd(self: *Engine) void {
@@ -768,8 +692,13 @@ pub const Engine = struct {
     // Network event emission
     // ─────────────────────────────────────────────────────────────
 
-    /// Queue a network event for processing in next tick
+    /// Queue a network event for processing in next tick.
+    /// Also records to tape (except NetPacketReceived which is recorded separately).
     fn appendNetEvent(self: *Engine, event: Event) void {
+        if (event.kind != .NetPacketReceived and self.vcr.is_recording and !self.vcr.is_replaying) {
+            _ = self.vcr.recordEvent(event);
+        }
+
         if (self.pending_net_events_count >= MAX_PENDING_NET_EVENTS) {
             Log.log("Pending network event buffer full, can't process event of kind {}", .{event.kind});
             @panic("Pending network event buffer full");
@@ -968,13 +897,11 @@ pub const Engine = struct {
             else
                 self.sim.time.frame + 1;
 
-            const peer_id = if (self.session.active) self.sim.net_ctx.local_peer_id else 0;
-
-            var local_event = event;
-            local_event.peer_id = peer_id;
+            // Use the peer_id from the tape event (preserves original peer)
+            const peer_id = event.peer_id;
 
             // Write to InputBuffer - tick will read from there
-            self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
+            self.input_buffer.emit(peer_id, match_frame, &[_]Event{event});
         }
     }
 
@@ -982,11 +909,10 @@ pub const Engine = struct {
     // Tape Observer
     // ─────────────────────────────────────────────────────────────
 
-    /// Observer callback for InputBuffer - records local peer inputs to tape.
+    /// Observer callback for InputBuffer - record local peer inputs to tape.
     fn tapeInputObserver(ctx: *anyopaque, peer: u8, _: u32, event: Event) void {
         const self: *Engine = @ptrCast(@alignCast(ctx));
 
-        // Only record local peer's inputs - remote inputs come from packet replay
         if (peer != self.sim.net_ctx.local_peer_id) return;
 
         // Only record if we're recording and not replaying
@@ -1108,15 +1034,17 @@ test "Engine session lifecycle" {
     // Not in session initially
     try std.testing.expectEqual(false, engine.inSession());
 
-    // Initialize session with peer_count=2, local_peer_id=0
-    try engine.emitNetSessionInit(2, 0, 0);
-    try std.testing.expectEqual(true, engine.inSession());
-
-    // Connect both peers via events
+    // Set up session via events (must happen before session init)
+    engine.emit_net_peer_assign_local_id(0);
     engine.emit_net_peer_join(0);
     engine.emit_net_peer_join(1);
+    engine.emitNetSessionInit();
 
-    // Advance some frames
+    // Advance to process events
+    _ = engine.advance(hz);
+    try std.testing.expectEqual(true, engine.inSession());
+
+    // Advance some more frames
     _ = engine.advance(hz * 3);
 
     // End session

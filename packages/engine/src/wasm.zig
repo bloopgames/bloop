@@ -335,16 +335,6 @@ pub export fn get_events_ptr() wasmPointer {
 // Session / Rollback exports
 // ─────────────────────────────────────────────────────────────
 
-/// Initialize a multiplayer session with rollback support
-/// Captures current frame as session_start_frame
-pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
-    engine.?.sessionInit(peer_count, user_data_len) catch {
-        wasm_log("Failed to initialize session: Out of memory");
-        return 1;
-    };
-    return 0;
-}
-
 /// End the current session
 pub export fn session_end() void {
     engine.?.sessionEnd();
@@ -359,13 +349,9 @@ pub export fn get_net_ctx() usize {
 // Network / Packet exports
 // ─────────────────────────────────────────────────────────────
 
-/// Initialize a session with explicit peer count and local peer ID (event-based)
-pub export fn emit_net_session_init(peer_count: u8, local_peer_id: u8, user_data_len: u32) u8 {
-    engine.?.emitNetSessionInit(peer_count, local_peer_id, user_data_len) catch {
-        wasm_log("Failed to initialize session");
-        return 1;
-    };
-    return 0;
+/// Initialize a session (derives peer count/local ID from prior events)
+pub export fn emit_net_session_init() void {
+    engine.?.emitNetSessionInit();
 }
 
 /// End the current session (emits disconnect events for all peers)

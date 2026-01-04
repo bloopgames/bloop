@@ -408,7 +408,7 @@ export class Sim {
     },
     /**
      * Emit a network event (join:ok, peer:join, etc.)
-     * Events are queued in the engine and processed during the next tick.
+     * Events are queued in the engine and processed during the next tick's systemsCallback.
      */
     network: <T extends NetEventType>(
       type: T,
@@ -437,13 +437,16 @@ export class Sim {
           this.wasm.emit_net_peer_leave(peerId);
           break;
         }
+        case "peer:assign_local_id": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_assign_local_id(peerId);
+          break;
+        }
         case "session:start":
         case "session:end":
           // These are handled by sessionInit/sessionEnd
           break;
       }
-      // Note: Events are dispatched to game systems via bloop.ts systemsCallback
-      // when the event buffer is processed during tick(), not here.
     },
   };
 
@@ -473,28 +476,13 @@ export class Sim {
 
   /**
    * Initialize a multiplayer session using event-based API.
-   * Emits NetJoinOk event and sets up rollback infrastructure.
+   * Sets up rollback infrastructure and takes initial confirmed snapshot.
    *
-   * @param peerCount Number of peers in the session
-   * @param localPeerId Local peer ID (0-11)
-   * @param userDataLen Size of user data to include in snapshots
+   * Requires peer:assign-local-id and peer:join events to be emitted first.
+   * Those events set the local_peer_id and peer_count used by this function.
    */
-  // TODO: replace with join:ok and peer:join events
-  emitNetSessionInit(
-    peerCount: number,
-    localPeerId: number,
-    userDataLen: number = 0,
-  ): void {
-    const serializer = this.#serialize ? this.#serialize() : null;
-    const size = userDataLen || (serializer ? serializer.size : 0);
-    const result = this.wasm.emit_net_session_init(
-      peerCount,
-      localPeerId,
-      size,
-    );
-    if (result !== 0) {
-      throw new Error(`Failed to initialize session, error code=${result}`);
-    }
+  emitNetSessionInit(): void {
+    this.wasm.emit_net_session_init();
   }
 
   /**

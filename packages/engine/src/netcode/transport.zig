@@ -306,10 +306,10 @@ pub const NetState = struct {
             @panic("buildOutboundPacket: net_ctx is null");
         };
 
-        // Read peer state from NetCtx (single source of truth)
+        // Read peer state from NetCtx
         const connected = net_ctx.peer_connected[target_peer] == 1;
         if (!connected) {
-            Log.log("buildOutboundPacket: peer {} not connected (peer_count={}, local_peer_id={})", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id });
+            Log.log("buildOutboundPacket: peer {} not connected. peer_count={} local_peer_id={} connected={any}", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id, net_ctx.peer_connected });
             @panic("buildOutboundPacket: peer not connected");
         }
 
@@ -379,7 +379,6 @@ pub const NetState = struct {
         // Update local_seq in NetCtx
         net_ctx.peer_local_seq[target_peer] = current_match_frame;
     }
-
 };
 
 // ─────────────────────────────────────────────────────────────
