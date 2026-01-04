@@ -5,6 +5,8 @@ const Log = @import("log.zig");
 const root = @import("root.zig");
 const Engine = root.Engine;
 
+const verbose_logging = false;
+
 // ─────────────────────────────────────────────────────────────
 // WASM externs
 // ─────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
 }
 
 pub export fn initialize() wasmPointer {
-    Log.init(arena(), wasm_log);
+    Log.init(arena(), verbose_logging, wasm_log);
 
     // Validate Event struct layout for js-side assumptions
     // See EVENT_PAYLOAD_SIZE and EVENT_PAYLOAD_ALIGN in inputs.ts

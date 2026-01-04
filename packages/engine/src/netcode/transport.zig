@@ -286,7 +286,7 @@ pub const NetState = struct {
         const local_peer_id = net_ctx.local_peer_id;
 
         for (&self.peer_unacked, 0..) |*peer, i| {
-            const connected = net_ctx.peer_connected[i] == 1;
+            const connected = net_ctx.peers[i].connected == 1;
             if (connected and i != local_peer_id) {
                 peer.extendUnacked(match_frame);
             }
@@ -307,9 +307,9 @@ pub const NetState = struct {
         };
 
         // Read peer state from NetCtx
-        const connected = net_ctx.peer_connected[target_peer] == 1;
-        if (!connected) {
-            Log.log("buildOutboundPacket: peer {} not connected. peer_count={} local_peer_id={} connected={any}", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id, net_ctx.peer_connected });
+        const target = &net_ctx.peers[target_peer];
+        if (target.connected != 1) {
+            Log.log("buildOutboundPacket: peer {} not connected. peer_count={} local_peer_id={}", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id });
             @panic("buildOutboundPacket: peer not connected");
         }
 
@@ -320,7 +320,8 @@ pub const NetState = struct {
 
         const peer_window = &self.peer_unacked[target_peer];
         const local_peer_id = net_ctx.local_peer_id;
-        const remote_seq = net_ctx.peer_remote_seq[target_peer];
+        // Use 0xFFFF as sentinel for "no ack yet" when we haven't received packets from target
+        const remote_seq: u16 = if (target.packet_count == 0) 0xFFFF else target.seq;
 
         // Count events across all unacked frames (reading from InputBuffer)
         var total_events: usize = 0;
@@ -375,9 +376,6 @@ pub const NetState = struct {
         }
 
         self.outbound_len = @intCast(offset);
-
-        // Update local_seq in NetCtx
-        net_ctx.peer_local_seq[target_peer] = current_match_frame;
     }
 };
 
@@ -632,8 +630,8 @@ test "NetState extendUnackedWindow" {
         .match_frame = 0,
     };
     // Mark peers 1 and 2 as connected
-    net_ctx.peer_connected[1] = 1;
-    net_ctx.peer_connected[2] = 1;
+    net_ctx.peers[1].connected = 1;
+    net_ctx.peers[2].connected = 1;
 
     const net = try std.testing.allocator.create(NetState);
     net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
@@ -669,7 +667,7 @@ test "NetState buildOutboundPacket reads from NetCtx" {
         .match_frame = 0,
     };
     // Mark peer 1 as connected
-    net_ctx.peer_connected[1] = 1;
+    net_ctx.peers[1].connected = 1;
 
     const net = try std.testing.allocator.create(NetState);
     net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer, .net_ctx = &net_ctx };
@@ -698,9 +696,6 @@ test "NetState buildOutboundPacket reads from NetCtx" {
     try std.testing.expectEqual(@as(u8, 0), header.peer_id); // our local peer
     try std.testing.expectEqual(@as(u16, 5), header.frame_seq);
     try std.testing.expectEqual(@as(u8, 2), header.event_count); // 2 events (1 per frame)
-
-    // Verify local_seq updated in NetCtx
-    try std.testing.expectEqual(@as(u16, 5), net_ctx.peer_local_seq[1]);
 }
 
 // Note: receivePacket test removed - logic moved to Engine.processPacketEvent

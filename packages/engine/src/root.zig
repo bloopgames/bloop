@@ -140,7 +140,7 @@ pub const Engine = struct {
                 self.sim.net_ctx.peer_count = 1; // Self is first peer
 
                 // Mark local peer as connected
-                self.sim.net_ctx.peer_connected[self.sim.net_ctx.local_peer_id] = 1;
+                self.sim.net_ctx.peers[self.sim.net_ctx.local_peer_id].connected = 1;
             },
             .NetJoinFail => {
                 self.sim.net_ctx.status = @intFromEnum(NetStatus.local);
@@ -151,7 +151,7 @@ pub const Engine = struct {
                     @panic("Invalid peer ID on NetPeerJoin");
                 }
                 // Mark peer as connected
-                self.sim.net_ctx.peer_connected[peer_id] = 1;
+                self.sim.net_ctx.peers[peer_id].connected = 1;
 
                 // TODO: this guard should not be here
                 if (self.sim.net_ctx.in_session == 0) {
@@ -166,11 +166,8 @@ pub const Engine = struct {
                 if (peer_id >= Ctx.MAX_PLAYERS) {
                     @panic("Invalid peer ID on NetPeerLeave");
                 }
-                // Disconnect peer and reset seq/ack
-                self.sim.net_ctx.peer_connected[peer_id] = 0;
-                self.sim.net_ctx.peer_remote_seq[peer_id] = 0;
-                self.sim.net_ctx.peer_remote_ack[peer_id] = 0;
-                self.sim.net_ctx.peer_local_seq[peer_id] = 0;
+                // Disconnect peer and reset state
+                self.sim.net_ctx.peers[peer_id] = .{};
 
                 if (self.sim.net_ctx.peer_count > 0) {
                     self.sim.net_ctx.peer_count -= 1;
@@ -212,7 +209,7 @@ pub const Engine = struct {
                 // Update net_ctx
                 self.sim.net_ctx.in_session = 1;
                 self.sim.net_ctx.session_start_frame = start_frame;
-                self.sim.net_ctx.peer_connected[local_peer_id] = 1;
+                self.sim.net_ctx.peers[local_peer_id].connected = 1;
 
                 // Reinitialize NetState with NetCtx reference
                 self.net.* = .{
@@ -331,9 +328,13 @@ pub const Engine = struct {
             }
 
             // 1. Restore to confirmed state
+            // TODO: don't special-case net_ctx peers - process network events
+            // from the events buffer when resimulating instead
+            const saved_peers = self.sim.net_ctx.peers;
             if (self.confirmed_snapshot) |snap| {
                 self.sim.restore(snap);
             }
+            self.sim.net_ctx.peers = saved_peers;
 
             // 2. Resim confirmed frames with all peer inputs
             var frames_resimmed: u32 = 0;
@@ -499,7 +500,7 @@ pub const Engine = struct {
     pub fn emit_net_session_end(self: *Engine) void {
         // Emit disconnect events for all connected peers
         for (0..Transport.MAX_PEERS) |i| {
-            if (self.sim.net_ctx.peer_connected[i] == 1) {
+            if (self.sim.net_ctx.peers[i].connected == 1) {
                 self.appendNetEvent(Event.netPeerLeave(@intCast(i)));
             }
         }
@@ -691,6 +692,8 @@ pub const Engine = struct {
             _ = self.vcr.recordEvent(event);
         }
 
+        Log.debug("Appending net event peer_id={} kind={}", .{ event.peer_id, event.kind });
+
         if (self.pending_net_events_count >= MAX_PENDING_NET_EVENTS) {
             Log.log("Pending network event buffer full, can't process event of kind {}", .{event.kind});
             @panic("Pending network event buffer full");
@@ -827,22 +830,38 @@ pub const Engine = struct {
         }
 
         const net_ctx = self.sim.net_ctx;
+        const peer = &net_ctx.peers[header.peer_id];
 
-        // Capture old remote_seq before updating to filter duplicate events
-        const old_remote_seq = net_ctx.peer_remote_seq[header.peer_id];
+        // Capture old seq before updating to filter duplicate events
+        const old_seq = peer.seq;
 
         // Update seq/ack in NetCtx (single source of truth)
-        if (header.frame_seq > net_ctx.peer_remote_seq[header.peer_id]) {
-            net_ctx.peer_remote_seq[header.peer_id] = header.frame_seq;
+        if (header.frame_seq > peer.seq or peer.packet_count == 0) {
+            peer.seq = header.frame_seq;
         }
 
-        // Update remote_ack - what frame they've received from us
-        if (header.frame_ack > net_ctx.peer_remote_ack[header.peer_id]) {
-            net_ctx.peer_remote_ack[header.peer_id] = header.frame_ack;
+        // Update ack - what frame they've received from us
+        // 0xFFFF is sentinel for "no ack yet" - don't count it
+        if (header.frame_ack != 0xFFFF) {
+            if (header.frame_ack > peer.ack or peer.ack_count == 0) {
+                peer.ack = header.frame_ack;
+                // Increment ack count (saturate at 255)
+                if (peer.ack_count < 255) {
+                    peer.ack_count += 1;
+                }
+            }
         }
 
-        // Trim our unacked buffer up to the acked frame
-        self.net.peer_unacked[header.peer_id].trimAcked(header.frame_ack);
+        // Increment packet count (saturate at 255)
+        if (peer.packet_count < 255) {
+            Log.log("[ENGINE] Incrementing packet_count={} for peer={}", .{ peer.packet_count + 1, header.peer_id });
+            peer.packet_count += 1;
+        }
+
+        // Trim our unacked buffer up to the acked frame (skip if sentinel value)
+        if (header.frame_ack != 0xFFFF) {
+            self.net.peer_unacked[header.peer_id].trimAcked(header.frame_ack);
+        }
 
         // Decode and store events in InputBuffer
         var offset: usize = Transport.HEADER_SIZE;
@@ -861,7 +880,7 @@ pub const Engine = struct {
             // Only add events for frames we haven't received yet.
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
-            if (wire_event.frame > old_remote_seq) {
+            if (wire_event.frame > old_seq) {
                 Log.debug("Processing input event from packet: peer={} match_frame={} engine_frame={} kind={}", .{
                     header.peer_id,
                     wire_event.frame,

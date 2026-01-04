@@ -1,3 +1,4 @@
+import { unwrap } from "@bloopjs/bloop";
 import type { App } from "../App.ts";
 import * as Debug from "../debugui/mod.ts";
 import { logger } from "./logs.ts";
@@ -46,7 +47,10 @@ export function joinRollbackRoom(
         return;
       }
 
-      const peerState = app.sim._netInternal.getPeerState(remotePeerId);
+      const peerState = unwrap(
+        app.sim.net.peers[remotePeerId],
+        `Remote peer state not found for peerId ${remotePeerId}`,
+      );
       Debug.updatePeer(remoteStringPeerId!, {
         ack: peerState.ack,
         seq: peerState.seq,

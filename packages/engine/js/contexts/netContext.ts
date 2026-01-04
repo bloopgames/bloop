@@ -19,6 +19,26 @@ export type NetEvent =
 
 export type NetEventType = Extract<NetEvent, { type: string }>["type"];
 
+/**
+ * Peer synchronization state for netcode
+ */
+export type PeerInfo = {
+  isLocal: boolean;
+  seq: number; // -1 if no packets received
+  ack: number; // -1 if no packets received
+};
+
+const MAX_PEERS = 12;
+const PEERS_ARRAY_OFFSET = 32; // After _pad at offset 29-31
+const PEER_CTX_SIZE = 8; // connected(1) + packet_count(1) + seq(2) + ack(2) + ack_count(1) + pad(1)
+
+// Offsets within PeerCtx struct
+const PEER_CONNECTED_OFFSET = 0;
+const PEER_PACKET_COUNT_OFFSET = 1;
+const PEER_SEQ_OFFSET = 2;
+const PEER_ACK_OFFSET = 4;
+const PEER_ACK_COUNT_OFFSET = 6;
+
 const STATUS_MAP: Record<number, NetStatus> = {
   0: "offline",
   1: "local",
@@ -42,6 +62,14 @@ const STATUS_MAP: Record<number, NetStatus> = {
  */
 export class NetContext {
   dataView?: DataView;
+
+  // Pre-allocated peer objects to avoid GC pressure
+  #peers: PeerInfo[] = Array.from({ length: MAX_PEERS }, () => ({
+    isLocal: false,
+    seq: -1,
+    ack: -1,
+  }));
+  #peersResult: PeerInfo[] = []; // Reused return array
 
   constructor(dataView?: DataView) {
     this.dataView = dataView;
@@ -165,5 +193,66 @@ export class NetContext {
       throw new Error("NetContext dataView is not valid");
     }
     this.dataView!.setUint8(28, value ? 1 : 0);
+  }
+
+  /**
+   * Get all connected peers in the session.
+   * Returns peer info with seq/ack values.
+   *
+   * For the local peer:
+   * - seq = matchFrame (our current frame)
+   * - ack = minimum seq across all connected remote peers (-1 if none)
+   *
+   * For remote peers:
+   * - seq = their latest frame we've received (-1 if none)
+   * - ack = the frame they've acknowledged from us (-1 if none)
+   */
+  get peers(): PeerInfo[] {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+
+    const dv = this.dataView!;
+    const localPeerId = this.localPeerId;
+    const matchFrame = this.matchFrame;
+
+    // Calculate local peer ack = min(seq) across connected remotes with packets
+    let minRemoteSeq = -1;
+    for (let i = 0; i < MAX_PEERS; i++) {
+      if (i === localPeerId) continue;
+      const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
+      if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
+      if (dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET) === 0) continue;
+      const seq = dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
+      if (minRemoteSeq === -1 || seq < minRemoteSeq) {
+        minRemoteSeq = seq;
+      }
+    }
+
+    // Update pre-allocated peer objects and build result array
+    this.#peersResult.length = 0;
+    for (let i = 0; i < MAX_PEERS; i++) {
+      const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
+      if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
+
+      const peer = this.#peers[i];
+      if (!peer) {
+        throw new Error(`Unexpected missing peer object at index ${i}`);
+      }
+      const isLocal = i === localPeerId;
+      peer.isLocal = isLocal;
+
+      if (isLocal) {
+        peer.seq = matchFrame;
+        peer.ack = minRemoteSeq;
+      } else {
+        const packetCount = dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET);
+        const ackCount = dv.getUint8(peerOffset + PEER_ACK_COUNT_OFFSET);
+        peer.seq = packetCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
+        peer.ack = ackCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_ACK_OFFSET, true);
+      }
+      this.#peersResult.push(peer);
+    }
+    return this.#peersResult;
   }
 }
