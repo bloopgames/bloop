@@ -4,12 +4,14 @@ import {
   keyToKeyCode,
   type MouseButton,
   mouseButtonToMouseButtonCode,
+  NetContext,
+  type NetEvent,
+  type NetEventType,
   SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
   SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
   type WasmEngine,
 } from "@bloopjs/engine";
-import { Net } from "./net";
 import { assert } from "./util";
 
 const originalConsole = (globalThis as any).console;
@@ -90,10 +92,10 @@ export class Sim {
   #isPaused: boolean = false;
 
   /**
-   * Network API for packet management in multiplayer sessions.
-   * Use this to send/receive packets and query peer network state.
+   * Shared network context - reads from same WASM memory as game.context.net.
+   * Provides access to network state (status, peers, roomCode, wantsRoomCode, etc.)
    */
-  readonly net: Net;
+  #net: NetContext;
 
   /**
    * Callback fired when tape buffer fills up and recording stops.
@@ -115,9 +117,17 @@ export class Sim {
     this.id = `${Math.floor(Math.random() * 1_000_000)}`;
 
     this.#serialize = opts?.serialize;
-    this.net = new Net(wasm, memory);
+    this.#net = new NetContext();
   }
 
+  /**
+   * Step simulation forward by a given number of milliseconds.
+   * If ms is not provided, defaults to 16ms (60fps).
+   *
+   * Note: this will not advance time if the sim is paused.
+   *
+   * @returns Number of frames actually advanced
+   */
   step(ms?: number): number {
     if (this.#isPaused) {
       return 0;
@@ -147,18 +157,30 @@ export class Sim {
     this.restore(source.snapshot());
   }
 
+  /**
+   * Pause the simulation entirely
+   */
   pause() {
     this.#isPaused = true;
   }
 
+  /**
+   * Unpause the simulation
+   */
   unpause() {
     this.#isPaused = false;
   }
 
+  /**
+   * Whether the simulation is currently paused
+   */
   get isPaused(): boolean {
     return this.#isPaused;
   }
 
+  /**
+   * Step back one frame
+   */
   stepBack() {
     if (this.time.frame === 0) {
       return;
@@ -168,8 +190,11 @@ export class Sim {
   }
 
   /**
-   * Seek to the start of a given frame
-   * @param frame - frame number to replay to
+   * Seek to the start of a given frame.
+   *
+   * Note that this will mute console output during the seek if rewinding.
+   *
+   * @param frame - frame number to replay up to
    */
   seek(frame: number, inclusive?: boolean) {
     assert(
@@ -268,7 +293,9 @@ export class Sim {
     memoryView.set(tape);
 
     // load the tape
-    this.wasm.stop_recording();
+    if (this.isRecording) {
+      this.wasm.stop_recording();
+    }
     const result = this.wasm.load_tape(tapePtr, tape.byteLength);
     assert(result === 0, `failed to load tape, error code=${result}`);
 
@@ -322,6 +349,20 @@ export class Sim {
     return this.#time;
   }
 
+  get net(): NetContext {
+    if (
+      !this.#net.dataView ||
+      this.#net.dataView.buffer !== this.#memory.buffer
+    ) {
+      // update the data view to the latest memory buffer
+      this.#net.dataView = new DataView(
+        this.#memory.buffer,
+        this.wasm.get_net_ctx(),
+      );
+    }
+    return this.#net;
+  }
+
   get buffer(): ArrayBuffer {
     return this.#memory.buffer;
   }
@@ -357,29 +398,120 @@ export class Sim {
     mousewheel: (x: number, y: number, peerId: number = 0): void => {
       this.wasm.emit_mousewheel(x, y, peerId);
     },
+    /**
+     * Emit a network event (join:ok, peer:join, etc.)
+     * Events are queued in the engine and processed during the next tick's systemsCallback.
+     */
+    network: <T extends NetEventType>(
+      type: T,
+      data: Extract<NetEvent, { type: T }>["data"],
+    ): void => {
+      switch (type) {
+        case "join:ok": {
+          const roomCode = (data as { roomCode: string }).roomCode;
+          const encoded = new TextEncoder().encode(roomCode);
+          const ptr = this.wasm.alloc(encoded.length);
+          new Uint8Array(this.#memory.buffer, ptr, encoded.length).set(encoded);
+          this.wasm.emit_net_join_ok(ptr, encoded.length);
+          this.wasm.free(ptr, encoded.length);
+          break;
+        }
+        case "join:fail":
+          this.wasm.emit_net_join_fail(0); // reason code: unknown
+          break;
+        case "peer:join": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_join(peerId);
+          break;
+        }
+        case "peer:leave": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_leave(peerId);
+          break;
+        }
+        case "peer:assign_local_id": {
+          const peerId = (data as { peerId: number }).peerId;
+          this.wasm.emit_net_peer_assign_local_id(peerId);
+          break;
+        }
+        case "session:start":
+          this.wasm.emit_net_session_init();
+          break;
+        case "session:end":
+          this.wasm.emit_net_session_end();
+          break;
+      }
+    },
+
+    /**
+     * Receive a packet from a peer
+     */
+    packet: (data: Uint8Array): void => {
+      if (data.length === 0) {
+        return;
+      }
+
+      // Allocate memory and copy packet
+      const ptr = this.wasm.alloc(data.byteLength);
+      assert(
+        ptr > 0,
+        `Failed to allocate ${data.byteLength} bytes for received packet`,
+      );
+
+      const memoryView = new Uint8Array(
+        this.#memory.buffer,
+        ptr,
+        data.byteLength,
+      );
+      memoryView.set(data);
+
+      // Process the packet
+      const result = this.wasm.emit_receive_packet(ptr, data.byteLength);
+
+      // Free the allocated memory
+      this.wasm.free(ptr, data.byteLength);
+
+      // Check result
+      if (result !== 0) {
+        const errorMessages: Record<number, string> = {
+          1: "No active session",
+          2: "Buffer too small",
+          3: "Unsupported packet version",
+          4: "Invalid event count",
+        };
+        throw new Error(
+          errorMessages[result] ?? `Unknown packet error: ${result}`,
+        );
+      }
+    },
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // Session / Rollback
-  // ─────────────────────────────────────────────────────────────
-
   /**
-   * Initialize a multiplayer session with rollback support.
-   * Captures current frame as session start frame.
+   * Get an outbound packet to send to a target peer.
+   * Returns a copy of the packet data (caller owns the returned buffer).
    *
-   * @param peerCount Number of peers in the session
+   * The packet contains all unacked inputs encoded in wire format.
+   *
+   * @param targetPeer - Peer ID to send the packet to
+   * @returns Packet data to send, or null if no packet available
    */
-  sessionInit(peerCount: number): void {
-    const serializer = this.#serialize ? this.#serialize() : null;
-    const size = serializer ? serializer.size : 0;
-    const result = this.wasm.session_init(peerCount, size);
-    assert(result === 0, `failed to initialize session, error code=${result}`);
-  }
+  getOutboundPacket(targetPeer: number): Uint8Array<ArrayBuffer> | null {
+    // Build the packet in engine memory
+    this.wasm.build_outbound_packet(targetPeer);
 
-  /**
-   * End the current session and clean up rollback state.
-   */
-  sessionEnd(): void {
-    this.wasm.session_end();
+    const len = this.wasm.get_outbound_packet_len();
+    if (len === 0) {
+      throw new Error(`No outbound packet available for peer ${targetPeer}`);
+    }
+
+    const ptr = this.wasm.get_outbound_packet();
+    assert(ptr > 0, `Invalid outbound packet pointer: ${ptr}`);
+
+    // Copy from WASM memory
+    const memoryView = new Uint8Array(this.#memory.buffer, ptr, len);
+    const copy = new Uint8Array(len);
+    copy.set(memoryView);
+
+    return copy;
   }
 }

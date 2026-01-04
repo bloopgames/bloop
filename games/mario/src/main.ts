@@ -20,7 +20,6 @@ if (!canvas) throw new Error("No canvas element found");
 
 const toodle = await Toodle.attach(canvas, {
   filter: "nearest",
-  backend: "webgpu",
   limits: { textureArrayLayers: 5 },
 });
 
@@ -65,15 +64,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Debug: Press G to toggle glitch effect
-const glitchEffect = createChromaticAberrationEffect(toodle);
-let glitchEnabled = false;
-window.addEventListener("keydown", (e) => {
-  if (e.key === "g") {
-    glitchEnabled = !glitchEnabled;
-    toodle.postprocess = glitchEnabled ? glitchEffect : null;
-  }
-});
+// Debug: Press G to toggle glitch effect on webgpu backend
+if (toodle.backend.type === "webgpu") {
+  const glitchEffect = createChromaticAberrationEffect(toodle);
+  let glitchEnabled = false;
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "g") {
+      glitchEnabled = !glitchEnabled;
+      toodle.postprocess = glitchEnabled ? glitchEffect : null;
+    }
+  });
+}
 
 game.system("title-input", {
   update({ bag, inputs }) {

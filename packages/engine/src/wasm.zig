@@ -5,6 +5,8 @@ const Log = @import("log.zig");
 const root = @import("root.zig");
 const Engine = root.Engine;
 
+const verbose_logging = false;
+
 // ─────────────────────────────────────────────────────────────
 // WASM externs
 // ─────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?
 }
 
 pub export fn initialize() wasmPointer {
-    Log.init(arena(), wasm_log);
+    Log.init(arena(), verbose_logging, wasm_log);
 
     // Validate Event struct layout for js-side assumptions
     // See EVENT_PAYLOAD_SIZE and EVENT_PAYLOAD_ALIGN in inputs.ts
@@ -191,7 +193,7 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
 
 pub export fn stop_recording() u8 {
     if (!engine.?.isRecording()) {
-        wasm_log("Not currently recording");
+        wasm_log("Tried to stop recording but we are not currently recording");
         return 2;
     }
     engine.?.stopRecording();
@@ -335,28 +337,9 @@ pub export fn get_events_ptr() wasmPointer {
 // Session / Rollback exports
 // ─────────────────────────────────────────────────────────────
 
-/// Initialize a multiplayer session with rollback support
-/// Captures current frame as session_start_frame
-pub export fn session_init(peer_count: u8, user_data_len: u32) u8 {
-    engine.?.sessionInit(peer_count, user_data_len) catch {
-        wasm_log("Failed to initialize session: Out of memory");
-        return 1;
-    };
-    return 0;
-}
-
 /// End the current session
 pub export fn session_end() void {
     engine.?.sessionEnd();
-}
-
-/// Emit inputs for a peer at a given match frame
-/// events_ptr points to an array of Event structs
-/// events_len is the number of events (not bytes)
-pub export fn session_emit_inputs(peer: u8, match_frame: u32, events_ptr: wasmPointer, events_len: u32) void {
-    const events: [*]const Events.Event = @ptrFromInt(events_ptr);
-    const events_slice = events[0..events_len];
-    engine.?.sessionEmitInputs(peer, match_frame, events_slice);
 }
 
 /// Get pointer to net context struct
@@ -368,19 +351,14 @@ pub export fn get_net_ctx() usize {
 // Network / Packet exports
 // ─────────────────────────────────────────────────────────────
 
-/// Set local peer ID for packet encoding
-pub export fn session_set_local_peer(peer_id: u8) void {
-    engine.?.setLocalPeer(peer_id);
+/// Initialize a session (derives peer count/local ID from prior events)
+pub export fn emit_net_session_init() void {
+    engine.?.emit_net_session_init();
 }
 
-/// Mark a peer as connected
-pub export fn session_peer_connect(peer_id: u8) void {
-    engine.?.connectPeer(peer_id);
-}
-
-/// Mark a peer as disconnected
-pub export fn session_peer_disconnect(peer_id: u8) void {
-    engine.?.disconnectPeer(peer_id);
+/// End the current session (emits disconnect events for all peers)
+pub export fn emit_net_session_end() void {
+    engine.?.emit_net_session_end();
 }
 
 /// Build an outbound packet for a target peer
@@ -400,20 +378,44 @@ pub export fn get_outbound_packet_len() u32 {
     return engine.?.getOutboundPacketLen();
 }
 
-/// Process a received packet
+/// Queue a received packet for processing in the next tick
 /// Returns 0 on success, error code otherwise
-pub export fn receive_packet(ptr: wasmPointer, len: u32) u8 {
-    return engine.?.receivePacket(ptr, len);
+pub export fn emit_receive_packet(ptr: wasmPointer, len: u32) u8 {
+    return engine.?.emit_receive_packet(ptr, len);
 }
 
-/// Get seq for a peer (latest frame received from them)
-pub export fn get_peer_seq(peer: u8) u16 {
-    return engine.?.getPeerSeq(peer);
+// ─────────────────────────────────────────────────────────────
+// Network event exports
+// ─────────────────────────────────────────────────────────────
+
+/// Emit NetJoinOk event - successfully joined a room
+/// room_code_ptr points to a UTF-8 string, len is the byte length (max 8)
+pub export fn emit_net_join_ok(room_code_ptr: [*]const u8, len: u32) void {
+    var room_code: [8]u8 = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
+    const copy_len = @min(len, 8);
+    @memcpy(room_code[0..copy_len], room_code_ptr[0..copy_len]);
+    engine.?.emit_net_join_ok(room_code);
 }
 
-/// Get ack for a peer (latest frame they acked from us)
-pub export fn get_peer_ack(peer: u8) u16 {
-    return engine.?.getPeerAck(peer);
+/// Emit NetJoinFail event - failed to join a room
+/// reason is a NetJoinFailReason enum value (0=unknown, 1=timeout, etc.)
+pub export fn emit_net_join_fail(reason: u8) void {
+    engine.?.emit_net_join_fail(@enumFromInt(reason));
+}
+
+/// Emit NetPeerJoin event - a peer joined the room
+pub export fn emit_net_peer_join(peer_id: u8) void {
+    engine.?.emit_net_peer_join(peer_id);
+}
+
+/// Emit NetPeerLeave event - a peer left the room
+pub export fn emit_net_peer_leave(peer_id: u8) void {
+    engine.?.emit_net_peer_leave(peer_id);
+}
+
+/// Assign local peer ID (for session setup)
+pub export fn emit_net_peer_assign_local_id(peer_id: u8) void {
+    engine.?.emit_net_peer_assign_local_id(peer_id);
 }
 
 // ─────────────────────────────────────────────────────────────

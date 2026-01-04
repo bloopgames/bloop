@@ -117,7 +117,6 @@ When exposing engine data to TypeScript, follow the established DataView pattern
 
 ### Bloop - packages/bloop (TypeScript user-facing apis)
 
-
 ## Testing Pattern
 
 ```typescript
@@ -142,23 +141,6 @@ it("test name", async () => {
 
 * This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0
 
-* In typescript code, avoid silently failing unless explicitly requested to swallow an error. Unexpected null/undefined values should use `assert` or `unwrap` from the `@bloopjs/bloop` package. During this phase of development it is better to crash at runtime than to continue in an invalid or unexpected state. Do NOT use blocks like
-
-```ts
-if (this.sim?.isRecording) {
-  // do something
-}
-```
-
-instead do this unless explicitly asked for a silent null guard:
-
-```ts
-// throws an error if this.sim is null/undefined
-if (unwrap(this.sim).isRecording) {
-  // do something
-}
-```
-
 * Prefer typescript types to interfaces wherever possible.
 
 
@@ -178,3 +160,22 @@ function someHelperFunction() { ... }
 ```
 
 * Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
+
+## Crash Loud and Early
+
+This codebase follows "crash-first" design. Invalid states should trigger immediate panics, not silent no-ops.
+
+WRONG (silent failure):
+if (valid_condition) { do_thing(); }
+
+RIGHT (explicit crash on invalid):
+if (!valid_condition) @panic("explanation");
+do_thing();
+
+Never silently skip logic or return default values (unless explicitly instructed to do so). If a condition "shouldn't happen," that's exactly when we need to crash to catch bugs early.
+
+Assert preconditions at function entry. Use @panic in zig or throw in ts for invariant violations.
+Treat "impossible" conditions as bugs that must crash, not edge cases to handle gracefully.
+
+Think of unexpected conditions as bugs in the caller, not runtime variations to handle.
+Crashing is the correct behavior—it surfaces bugs immediately and makes it easier to trace unexpected behavior rather than letting them propagate.

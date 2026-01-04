@@ -1,3 +1,4 @@
+import type { NetEvent } from "@bloopjs/engine";
 import type { Context } from "./context";
 import type { BloopSchema } from "./data/schema";
 import type {
@@ -45,6 +46,13 @@ export type System<GS extends BloopSchema = BloopSchema> = {
   mousewheel?: (
     context: Context<GS> & {
       event: MouseWheelEvent;
+    },
+  ) => void;
+
+  /** Handle network events (join:ok, peer:join, etc.) */
+  netcode?: (
+    context: Context<GS> & {
+      event: NetEvent;
     },
   ) => void;
 };

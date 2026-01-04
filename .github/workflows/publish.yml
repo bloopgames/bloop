@@ -43,7 +43,7 @@ jobs:
       - name: Setup zig
         uses: mlugg/setup-zig@v2
         with:
-          version: "master"
+          version: "0.16.0-dev.1303+ee0a0f119"
       - name: Ensure latest npm
         run: bun install -g npm@latest
       - name: Install dependencies

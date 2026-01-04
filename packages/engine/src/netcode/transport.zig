@@ -2,6 +2,7 @@ const std = @import("std");
 const Events = @import("../events.zig");
 const IB = @import("../input_buffer.zig");
 const Log = @import("../log.zig");
+const Ctx = @import("../context.zig");
 const Event = Events.Event;
 const EventType = Events.EventType;
 const InputSource = Events.InputSource;
@@ -198,43 +199,30 @@ pub fn packetSize(event_count: usize) usize {
 // Peer State
 // ─────────────────────────────────────────────────────────────
 
-/// Per-peer network state for packet management
-pub const PeerNetState = struct {
-    /// Our latest frame sent to this peer (for outbound seq)
-    local_seq: u16 = 0,
-    /// Latest frame we received from this peer
-    remote_seq: u16 = 0,
-    /// Latest frame they acknowledged from us
-    remote_ack: u16 = 0,
-    /// Whether this peer is connected
-    connected: bool = false,
-
-    /// View window into InputBuffer for unacked frames
+/// Per-peer unacked window tracking (transient state for packet building)
+/// Connection state (seq, ack, connected) now lives in NetCtx
+pub const PeerUnackedWindow = struct {
     /// Oldest unacked frame (in match frame space)
     unacked_start: u16 = 0,
     /// Next frame to be added (in match frame space)
     unacked_end: u16 = 0,
 
-    /// Reset state when peer disconnects or session ends
-    pub fn reset(self: *PeerNetState) void {
-        self.local_seq = 0;
-        self.remote_seq = 0;
-        self.remote_ack = 0;
-        self.connected = false;
+    /// Reset window when peer disconnects or session ends
+    pub fn reset(self: *PeerUnackedWindow) void {
         self.unacked_start = 0;
         self.unacked_end = 0;
     }
 
     /// Extend the unacked window to include a new frame.
     /// Events are already in InputBuffer from append_event - this just tracks the window.
-    pub fn extendUnacked(self: *PeerNetState, match_frame: u16) void {
+    pub fn extendUnacked(self: *PeerUnackedWindow, match_frame: u16) void {
         if (match_frame >= self.unacked_end) {
             self.unacked_end = match_frame + 1;
         }
     }
 
     /// Trim unacked frames that have been acknowledged
-    pub fn trimAcked(self: *PeerNetState, ack_frame: u16) void {
+    pub fn trimAcked(self: *PeerUnackedWindow, ack_frame: u16) void {
         // Advance start to one past the acked frame
         if (ack_frame >= self.unacked_start) {
             self.unacked_start = ack_frame + 1;
@@ -242,7 +230,7 @@ pub const PeerNetState = struct {
     }
 
     /// Get the number of unacked frames
-    pub fn unackedCount(self: *const PeerNetState) u16 {
+    pub fn unackedCount(self: *const PeerUnackedWindow) u16 {
         if (self.unacked_end <= self.unacked_start) return 0;
         return self.unacked_end - self.unacked_start;
     }
@@ -253,11 +241,8 @@ pub const PeerNetState = struct {
 // ─────────────────────────────────────────────────────────────
 
 /// Network state for all peers in a session
-pub const NetState = struct {
-    /// Local peer ID for packet encoding
-    local_peer_id: u8 = 0,
-    /// Per-peer network state
-    peer_states: [MAX_PEERS]PeerNetState = [_]PeerNetState{.{}} ** MAX_PEERS,
+/// Connection state (seq, ack, connected) lives in NetCtx - this is just for packet building
+pub const PacketBuilder = struct {
     /// Allocator for packet buffers
     allocator: std.mem.Allocator,
     /// Scratch buffer for outbound packets (reused across calls)
@@ -266,8 +251,12 @@ pub const NetState = struct {
     outbound_len: u32 = 0,
     /// Reference to canonical InputBuffer (for reading unacked events)
     input_buffer: ?*IB.InputBuffer = null,
+    /// Reference to NetCtx (single source of truth for peer state)
+    net_ctx: ?*Ctx.NetCtx = null,
+    /// Per-peer unacked window tracking (transient state for packet building)
+    peer_unacked: [MAX_PEERS]PeerUnackedWindow = [_]PeerUnackedWindow{.{}} ** MAX_PEERS,
 
-    pub fn deinit(self: *NetState) void {
+    pub fn deinit(self: *PacketBuilder) void {
         if (self.outbound_buffer) |buf| {
             self.allocator.free(buf);
             self.outbound_buffer = null;
@@ -275,39 +264,30 @@ pub const NetState = struct {
         self.outbound_len = 0;
     }
 
-    /// Reset all peer states (for session end)
-    pub fn reset(self: *NetState) void {
-        for (&self.peer_states) |*peer| {
+    /// Reset all unacked windows (for session end)
+    pub fn reset(self: *PacketBuilder) void {
+        for (&self.peer_unacked) |*peer| {
             peer.reset();
         }
-        self.local_peer_id = 0;
         self.outbound_len = 0;
     }
 
-    /// Set local peer ID
-    pub fn setLocalPeer(self: *NetState, peer_id: u8) void {
-        self.local_peer_id = peer_id;
-    }
-
-    /// Connect a peer
-    pub fn connectPeer(self: *NetState, peer_id: u8) void {
+    /// Disconnect a peer (reset unacked window only)
+    pub fn disconnectPeer(self: *PacketBuilder, peer_id: u8) void {
         if (peer_id < MAX_PEERS) {
-            self.peer_states[peer_id].connected = true;
-        }
-    }
-
-    /// Disconnect a peer
-    pub fn disconnectPeer(self: *NetState, peer_id: u8) void {
-        if (peer_id < MAX_PEERS) {
-            self.peer_states[peer_id].reset();
+            self.peer_unacked[peer_id].reset();
         }
     }
 
     /// Extend unacked window for all connected peers.
     /// Events are already in InputBuffer from append_event - this just tracks the window.
-    pub fn extendUnackedWindow(self: *NetState, match_frame: u16) void {
-        for (&self.peer_states, 0..) |*peer, i| {
-            if (peer.connected and i != self.local_peer_id) {
+    pub fn extendUnackedWindow(self: *PacketBuilder, match_frame: u16) void {
+        const net_ctx = self.net_ctx orelse return;
+        const local_peer_id = net_ctx.local_peer_id;
+
+        for (&self.peer_unacked, 0..) |*peer, i| {
+            const connected = net_ctx.peers[i].connected == 1;
+            if (connected and i != local_peer_id) {
                 peer.extendUnacked(match_frame);
             }
         }
@@ -315,24 +295,39 @@ pub const NetState = struct {
 
     /// Build outbound packet for a target peer.
     /// Reads events from InputBuffer via the unacked window.
-    pub fn buildOutboundPacket(self: *NetState, target_peer: u8, current_match_frame: u16) !void {
-        if (target_peer >= MAX_PEERS) return;
-        const peer = &self.peer_states[target_peer];
-        if (!peer.connected) {
-            self.outbound_len = 0;
-            return;
+    pub fn buildOutboundPacket(self: *PacketBuilder, target_peer: u8, current_match_frame: u16) !void {
+        if (target_peer >= MAX_PEERS) {
+            Log.log("buildOutboundPacket: target_peer {} >= MAX_PEERS", .{target_peer});
+            @panic("buildOutboundPacket: target_peer >= MAX_PEERS");
+        }
+
+        const net_ctx = self.net_ctx orelse {
+            Log.log("buildOutboundPacket: net_ctx is null", .{});
+            @panic("buildOutboundPacket: net_ctx is null");
+        };
+
+        // Read peer state from NetCtx
+        const target = &net_ctx.peers[target_peer];
+        if (target.connected != 1) {
+            Log.log("buildOutboundPacket: peer {} not connected. peer_count={} local_peer_id={}", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id });
+            @panic("buildOutboundPacket: peer not connected");
         }
 
         const ib = self.input_buffer orelse {
-            self.outbound_len = 0;
-            return;
+            Log.log("buildOutboundPacket: input_buffer is null", .{});
+            @panic("buildOutboundPacket: input_buffer is null");
         };
+
+        const peer_window = &self.peer_unacked[target_peer];
+        const local_peer_id = net_ctx.local_peer_id;
+        // Use 0xFFFF as sentinel for "no ack yet" when we haven't received packets from target
+        const remote_seq: u16 = if (target.packet_count == 0) 0xFFFF else target.seq;
 
         // Count events across all unacked frames (reading from InputBuffer)
         var total_events: usize = 0;
-        var frame = peer.unacked_start;
-        while (frame < peer.unacked_end) : (frame += 1) {
-            const events = ib.get(self.local_peer_id, frame);
+        var frame = peer_window.unacked_start;
+        while (frame < peer_window.unacked_end) : (frame += 1) {
+            const events = ib.get(local_peer_id, frame);
             total_events += events.len;
         }
 
@@ -354,11 +349,11 @@ pub const NetState = struct {
 
         const buf = self.outbound_buffer.?;
 
-        // Write header
+        // Write header using NetCtx values
         const header = PacketHeader{
             .version = WIRE_VERSION,
-            .peer_id = self.local_peer_id,
-            .frame_ack = peer.remote_seq,
+            .peer_id = local_peer_id,
+            .frame_ack = remote_seq,
             .frame_seq = current_match_frame,
             .event_count = @intCast(total_events),
             .flags = 0,
@@ -368,9 +363,9 @@ pub const NetState = struct {
         // Write events (reading from InputBuffer)
         var offset: usize = HEADER_SIZE;
         var events_written: usize = 0;
-        frame = peer.unacked_start;
-        outer: while (frame < peer.unacked_end) : (frame += 1) {
-            const events = ib.get(self.local_peer_id, frame);
+        frame = peer_window.unacked_start;
+        outer: while (frame < peer_window.unacked_end) : (frame += 1) {
+            const events = ib.get(local_peer_id, frame);
             for (events) |event| {
                 if (events_written >= total_events) break :outer;
                 const wire_event = WireEvent.fromEvent(event, frame);
@@ -381,62 +376,6 @@ pub const NetState = struct {
         }
 
         self.outbound_len = @intCast(offset);
-
-        // Update local_seq for this peer
-        peer.local_seq = current_match_frame;
-    }
-
-    /// Process a received packet, updating state and storing events in input buffer
-    pub fn receivePacket(self: *NetState, buf: []const u8, input_buffer: *IB.InputBuffer) DecodeError!void {
-        const header = try PacketHeader.decode(buf);
-
-        if (header.peer_id >= MAX_PEERS) return;
-        const peer = &self.peer_states[header.peer_id];
-
-        // Capture old remote_seq before updating to filter duplicate events
-        const old_remote_seq = peer.remote_seq;
-
-        // Update seq/ack tracking
-        if (header.frame_seq > peer.remote_seq) {
-            peer.remote_seq = header.frame_seq;
-        }
-
-        // Update remote_ack - what frame they've received from us
-        if (header.frame_ack > peer.remote_ack) {
-            peer.remote_ack = header.frame_ack;
-        }
-
-        // Trim our unacked buffer up to the acked frame
-        peer.trimAcked(header.frame_ack);
-
-        // Decode and store events in InputBuffer
-        var offset: usize = HEADER_SIZE;
-        var i: usize = 0;
-        while (i < header.event_count) : (i += 1) {
-            if (offset + WIRE_EVENT_SIZE > buf.len) {
-                return DecodeError.BufferTooSmall;
-            }
-            const wire_event = try WireEvent.decode(buf[offset .. offset + WIRE_EVENT_SIZE]);
-            var event = wire_event.toEvent();
-            // Set peer_id from packet header so events are routed to correct player
-            event.peer_id = header.peer_id;
-
-            // Only add events for frames we haven't received yet.
-            // Each packet retransmits all unacked events, so we filter duplicates
-            // by only accepting events for frames > our last received frame.
-            if (wire_event.frame > old_remote_seq) {
-                input_buffer.emit(header.peer_id, wire_event.frame, &[_]Event{event});
-            }
-
-            offset += WIRE_EVENT_SIZE;
-        }
-
-        // Update peer_confirmed even if there were no events.
-        // The frame_seq tells us the peer has reached this frame,
-        // which is sufficient for confirmation regardless of input activity.
-        if (header.frame_seq > input_buffer.peer_confirmed[header.peer_id]) {
-            input_buffer.peer_confirmed[header.peer_id] = header.frame_seq;
-        }
     }
 };
 
@@ -582,30 +521,26 @@ test "packetSize calculation" {
 }
 
 // ─────────────────────────────────────────────────────────────
-// PeerNetState Tests
+// PeerUnackedWindow Tests
 // ─────────────────────────────────────────────────────────────
 
-test "PeerNetState init and reset" {
-    var peer = PeerNetState{};
+test "PeerUnackedWindow init and reset" {
+    var peer = PeerUnackedWindow{};
 
-    try std.testing.expectEqual(@as(u16, 0), peer.local_seq);
-    try std.testing.expectEqual(@as(u16, 0), peer.remote_seq);
-    try std.testing.expectEqual(@as(u16, 0), peer.remote_ack);
-    try std.testing.expectEqual(false, peer.connected);
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_start);
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_end);
 
-    peer.connected = true;
-    peer.local_seq = 100;
-    peer.remote_seq = 50;
+    peer.unacked_start = 10;
+    peer.unacked_end = 20;
 
     peer.reset();
 
-    try std.testing.expectEqual(@as(u16, 0), peer.local_seq);
-    try std.testing.expectEqual(@as(u16, 0), peer.remote_seq);
-    try std.testing.expectEqual(false, peer.connected);
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_start);
+    try std.testing.expectEqual(@as(u16, 0), peer.unacked_end);
 }
 
-test "PeerNetState extendUnacked" {
-    var peer = PeerNetState{};
+test "PeerUnackedWindow extendUnacked" {
+    var peer = PeerUnackedWindow{};
 
     try std.testing.expectEqual(@as(u16, 0), peer.unacked_start);
     try std.testing.expectEqual(@as(u16, 0), peer.unacked_end);
@@ -617,8 +552,8 @@ test "PeerNetState extendUnacked" {
     try std.testing.expectEqual(@as(u16, 6), peer.unackedCount());
 }
 
-test "PeerNetState unackedCount" {
-    var peer = PeerNetState{};
+test "PeerUnackedWindow unackedCount" {
+    var peer = PeerUnackedWindow{};
 
     try std.testing.expectEqual(@as(u16, 0), peer.unackedCount());
 
@@ -630,8 +565,8 @@ test "PeerNetState unackedCount" {
     try std.testing.expectEqual(@as(u16, 3), peer.unackedCount());
 }
 
-test "PeerNetState trimAcked" {
-    var peer = PeerNetState{};
+test "PeerUnackedWindow trimAcked" {
+    var peer = PeerUnackedWindow{};
 
     // Extend to frames 0-4
     peer.extendUnacked(4);
@@ -648,91 +583,98 @@ test "PeerNetState trimAcked" {
 // ─────────────────────────────────────────────────────────────
 
 test "NetState init and deinit" {
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
+    var net_ctx = Ctx.NetCtx{
+        .peer_count = 0,
+        .match_frame = 0,
+    };
+
+    const net = try std.testing.allocator.create(PacketBuilder);
+    net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
     }
 
-    try std.testing.expectEqual(@as(u8, 0), net.local_peer_id);
     try std.testing.expectEqual(@as(?[]u8, null), net.outbound_buffer);
 }
 
-test "NetState setLocalPeer and connectPeer" {
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
+test "NetState disconnectPeer resets unacked window" {
+    var net_ctx = Ctx.NetCtx{
+        .peer_count = 2,
+        .match_frame = 0,
+    };
+
+    const net = try std.testing.allocator.create(PacketBuilder);
+    net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
     }
 
-    net.setLocalPeer(2);
-    try std.testing.expectEqual(@as(u8, 2), net.local_peer_id);
+    // Set up unacked window for peer 1
+    net.peer_unacked[1].extendUnacked(10);
+    try std.testing.expectEqual(@as(u16, 11), net.peer_unacked[1].unacked_end);
 
-    net.connectPeer(1);
-    try std.testing.expectEqual(true, net.peer_states[1].connected);
-    try std.testing.expectEqual(false, net.peer_states[0].connected);
-}
-
-test "NetState disconnectPeer" {
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
-    defer {
-        net.deinit();
-        std.testing.allocator.destroy(net);
-    }
-
-    net.connectPeer(1);
-    net.peer_states[1].local_seq = 100;
-
+    // Disconnect peer 1
     net.disconnectPeer(1);
-    try std.testing.expectEqual(false, net.peer_states[1].connected);
-    try std.testing.expectEqual(@as(u16, 0), net.peer_states[1].local_seq);
+
+    // Unacked window should be reset
+    try std.testing.expectEqual(@as(u16, 0), net.peer_unacked[1].unacked_start);
+    try std.testing.expectEqual(@as(u16, 0), net.peer_unacked[1].unacked_end);
 }
 
 test "NetState extendUnackedWindow" {
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator };
+    var net_ctx = Ctx.NetCtx{
+        .peer_count = 3,
+        .local_peer_id = 0,
+        .match_frame = 0,
+    };
+    // Mark peers 1 and 2 as connected
+    net_ctx.peers[1].connected = 1;
+    net_ctx.peers[2].connected = 1;
+
+    const net = try std.testing.allocator.create(PacketBuilder);
+    net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
     }
-
-    net.setLocalPeer(0);
-    net.connectPeer(1);
-    net.connectPeer(2);
 
     // Extend window to frame 0
     net.extendUnackedWindow(0);
 
     // Should be extended for peer 1 and 2, not peer 0 (self)
-    try std.testing.expectEqual(@as(u16, 0), net.peer_states[0].unackedCount());
-    try std.testing.expectEqual(@as(u16, 1), net.peer_states[1].unackedCount());
-    try std.testing.expectEqual(@as(u16, 1), net.peer_states[2].unackedCount());
+    try std.testing.expectEqual(@as(u16, 0), net.peer_unacked[0].unackedCount());
+    try std.testing.expectEqual(@as(u16, 1), net.peer_unacked[1].unackedCount());
+    try std.testing.expectEqual(@as(u16, 1), net.peer_unacked[2].unackedCount());
 
     // Extend to more frames
     net.extendUnackedWindow(1);
     net.extendUnackedWindow(2);
-    try std.testing.expectEqual(@as(u16, 3), net.peer_states[1].unackedCount());
+    try std.testing.expectEqual(@as(u16, 3), net.peer_unacked[1].unackedCount());
 }
 
-test "NetState buildOutboundPacket" {
+test "NetState buildOutboundPacket reads from NetCtx" {
     // Create InputBuffer first
     const input_buffer = try std.testing.allocator.create(IB.InputBuffer);
     input_buffer.* = .{};
     input_buffer.init(2, 0);
     defer std.testing.allocator.destroy(input_buffer);
 
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer };
+    var net_ctx = Ctx.NetCtx{
+        .peer_count = 2,
+        .local_peer_id = 0,
+        .match_frame = 0,
+    };
+    // Mark peer 1 as connected
+    net_ctx.peers[1].connected = 1;
+
+    const net = try std.testing.allocator.create(PacketBuilder);
+    net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer, .net_ctx = &net_ctx };
     defer {
         net.deinit();
         std.testing.allocator.destroy(net);
     }
-
-    net.setLocalPeer(0);
-    net.connectPeer(1);
 
     // Emit events to InputBuffer (local peer = 0)
     const events = [_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)};
@@ -756,56 +698,4 @@ test "NetState buildOutboundPacket" {
     try std.testing.expectEqual(@as(u8, 2), header.event_count); // 2 events (1 per frame)
 }
 
-test "NetState receivePacket" {
-    // Create InputBuffer for NetState
-    const input_buffer = try std.testing.allocator.create(IB.InputBuffer);
-    input_buffer.* = .{};
-    input_buffer.init(2, 0);
-    defer std.testing.allocator.destroy(input_buffer);
-
-    const net = try std.testing.allocator.create(NetState);
-    net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer };
-    defer {
-        net.deinit();
-        std.testing.allocator.destroy(net);
-    }
-
-    net.connectPeer(1);
-
-    // Build a packet manually
-    var buf: [HEADER_SIZE + WIRE_EVENT_SIZE]u8 = undefined;
-
-    const header = PacketHeader{
-        .version = WIRE_VERSION,
-        .peer_id = 1, // from peer 1
-        .frame_ack = 3, // they acked our frame 3
-        .frame_seq = 5, // they're at frame 5
-        .event_count = 1,
-        .flags = 0,
-    };
-    header.encode(buf[0..HEADER_SIZE]);
-
-    const wire_event = WireEvent.fromEvent(Event.keyDown(.KeyW, 0, .LocalKeyboard), 5);
-    wire_event.encode(buf[HEADER_SIZE..]);
-
-    // Extend unacked window for peer 1 (frames 0-4)
-    net.peer_states[1].extendUnacked(4);
-    try std.testing.expectEqual(@as(u16, 5), net.peer_states[1].unackedCount());
-
-    // Receive the packet
-    try net.receivePacket(&buf, input_buffer);
-
-    // Check seq/ack updated
-    try std.testing.expectEqual(@as(u16, 5), net.peer_states[1].remote_seq);
-
-    // Check unacked trimmed (frames 0-3 acked)
-    try std.testing.expectEqual(@as(u16, 1), net.peer_states[1].unackedCount());
-
-    // Check event stored in InputBuffer
-    const stored = input_buffer.get(1, 5);
-    try std.testing.expectEqual(@as(usize, 1), stored.len);
-    try std.testing.expectEqual(Events.Key.KeyW, stored[0].payload.key);
-
-    // Check peer confirmed frame updated
-    try std.testing.expectEqual(@as(u32, 5), input_buffer.peer_confirmed[1]);
-}
+// Note: receivePacket test removed - logic moved to Engine.processPacketEvent

@@ -14,7 +14,7 @@ jobs:
       - name: Setup zig
         uses: mlugg/setup-zig@v2
         with:
-          version: "master"
+          version: "0.16.0-dev.1303+ee0a0f119"
       - name: Run ci checks
         run: |
           bun install --frozen-lockfile

@@ -2,9 +2,10 @@
 # bloop-6yjl
 title: GIF Capture
 status: todo
-type: epic
+type: task
+priority: high
 created_at: 2025-12-16T22:55:25Z
-updated_at: 2025-12-16T22:55:25Z
+updated_at: 2025-12-23T17:16:44Z
 parent: bloop-nti4
 ---
 
