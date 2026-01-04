@@ -153,7 +153,8 @@ pub const Engine = struct {
                 // Mark peer as connected
                 self.sim.net_ctx.peer_connected[peer_id] = 1;
 
-                if (!self.session.active) {
+                // TODO: this guard should not be here
+                if (self.sim.net_ctx.in_session == 0) {
                     self.sim.net_ctx.peer_count += 1;
                     if (self.sim.net_ctx.peer_count >= 2) {
                         self.sim.net_ctx.in_session = 1;
