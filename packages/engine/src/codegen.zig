@@ -14,13 +14,9 @@ fn writeTsEnum(writer: anytype, comptime T: type, comptime name: []const u8) !vo
 }
 
 pub fn main() !void {
-    var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.io();
-
-    const cwd = std.Io.Dir.cwd();
-    try cwd.makePath(io, "js/codegen");
-    var file = try cwd.createFile(io, "js/codegen/enums.ts", .{});
-    defer file.close(io);
+    try std.fs.cwd().makePath("js/codegen");
+    var file = try std.fs.cwd().createFile("js/codegen/enums.ts", .{});
+    defer file.close();
 
     var buf: [1024]u8 = undefined;
     var writer = file.writer(&buf);
