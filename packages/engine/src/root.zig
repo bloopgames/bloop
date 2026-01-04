@@ -22,8 +22,7 @@ pub const hz = SimMod.hz;
 /// Maximum pending network events between frames
 const MAX_PENDING_NET_EVENTS: usize = 16;
 
-/// Engine coordinates the simulation, managing timing, sessions, tapes, and network.
-/// This is the unit-testable orchestration layer that sits above Sim.
+/// Engine coordinates the simulation. It manages timing, sessions, tapes, and network.
 pub const Engine = struct {
     /// The simulation (owns contexts: time, inputs, events, net_ctx)
     sim: *Sim,
@@ -33,7 +32,7 @@ pub const Engine = struct {
     allocator: std.mem.Allocator,
 
     // ─────────────────────────────────────────────────────────────
-    // Coordination state (moved from Sim)
+    // Coordination state
     // ─────────────────────────────────────────────────────────────
     /// Tape recorder/player
     vcr: VCR,
@@ -152,9 +151,14 @@ pub const Engine = struct {
                     // Mark peer as connected
                     self.sim.net_ctx.peer_connected[peer_id] = 1;
 
-                    self.sim.net_ctx.peer_count += 1;
-                    if (self.sim.net_ctx.peer_count >= 2) {
-                        self.sim.net_ctx.in_session = 1;
+                    // Only increment peer_count if not already in session.
+                    // When session was initialized via emitNetSessionInit, peer_count is
+                    // already set correctly and peer:join events just mark peers as connected.
+                    if (self.sim.net_ctx.in_session == 0) {
+                        self.sim.net_ctx.peer_count += 1;
+                        if (self.sim.net_ctx.peer_count >= 2) {
+                            self.sim.net_ctx.in_session = 1;
+                        }
                     }
                 }
             },
@@ -185,6 +189,44 @@ pub const Engine = struct {
             .NetPacketReceived => {
                 // Packets are processed synchronously in emit_receive_packet (while memory is valid).
                 // This case is for tape replay - packet data is in VCR-owned memory.
+            },
+            .NetSessionInit => {
+                // Session initialization from tape replay
+                const session_params = event.payload.session_init;
+
+                // Clean up existing confirmed snapshot if any
+                if (self.confirmed_snapshot) |snap| {
+                    snap.deinit(self.allocator);
+                    self.confirmed_snapshot = null;
+                }
+                self.net.deinit();
+
+                // Reinitialize InputBuffer for the session
+                // Preserve observer (tape recording) across session init
+                const saved_observer = self.input_buffer.observer;
+                self.input_buffer.* = .{};
+                self.input_buffer.init(session_params.peer_count, session_params.start_frame);
+                self.input_buffer.observer = saved_observer;
+
+                // Initialize session state
+                self.session.start(session_params.start_frame, session_params.peer_count);
+
+                // Update net_ctx
+                self.sim.net_ctx.local_peer_id = session_params.local_peer_id;
+                self.sim.net_ctx.peer_count = session_params.peer_count;
+                self.sim.net_ctx.in_session = 1;
+                self.sim.net_ctx.session_start_frame = session_params.start_frame;
+                self.sim.net_ctx.peer_connected[session_params.local_peer_id] = 1;
+
+                // Reinitialize NetState with NetCtx reference
+                self.net.* = .{
+                    .allocator = self.allocator,
+                    .input_buffer = self.input_buffer,
+                    .net_ctx = self.sim.net_ctx,
+                };
+
+                // Take initial confirmed snapshot for rollback
+                self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
             },
             else => {},
         }
@@ -265,7 +307,7 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Session management (moved from Sim in Phase 3)
+    // Session management
     // ─────────────────────────────────────────────────────────────
 
     /// Session-aware step that handles rollback when late inputs arrive
@@ -276,6 +318,16 @@ pub const Engine = struct {
         // Calculate how many frames can be confirmed based on received inputs
         const next_confirm = self.input_buffer.calculateNextConfirmFrame(target_match_frame);
         const current_confirmed = self.session.confirmed_frame;
+
+        // Log.log("sessionStep: time={} target_mf={} next_confirm={} current_confirmed={} peer_count={} peer0={} peer1={}", .{
+        //     self.sim.time.frame,
+        //     target_match_frame,
+        //     next_confirm,
+        //     current_confirmed,
+        //     self.input_buffer.peer_count,
+        //     self.input_buffer.peer_confirmed[0],
+        //     self.input_buffer.peer_confirmed[1],
+        // });
 
         if (next_confirm > current_confirmed) {
             // New confirmed frames available - need to rollback and resim
@@ -378,45 +430,45 @@ pub const Engine = struct {
     }
 
     /// Load a tape from raw bytes (enters replay mode)
-    /// Auto-initializes session if the tape was recorded during a session
     pub fn loadTape(self: *Engine, tape_buf: []u8) !void {
         const snapshot = try self.vcr.loadTape(tape_buf);
 
         // Restore basic Sim state (time, inputs, events, net_ctx)
         self.sim.restore(snapshot);
 
-        // Auto-initialize session if snapshot was taken during a session
-        if (snapshot.net.in_session == 1 and !self.session.active) {
-            // Clean up existing confirmed snapshot if any
-            if (self.confirmed_snapshot) |snap| {
-                snap.deinit(self.allocator);
-                self.confirmed_snapshot = null;
-            }
-            self.net.deinit();
-
-            // Reinitialize InputBuffer with session state from snapshot
-            // Preserve observer (tape recording) across restore
-            const saved_observer = self.input_buffer.observer;
-            self.input_buffer.* = .{};
-            self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
-            self.input_buffer.observer = saved_observer;
-
-            // Initialize session state directly from snapshot
-            self.session.start_frame = snapshot.net.session_start_frame;
-            self.session.peer_count = snapshot.net.peer_count;
-            self.session.confirmed_frame = 0;
-            self.session.stats = .{};
-            self.session.active = true;
-
-            self.net.* = .{
-                .allocator = self.allocator,
-                .input_buffer = self.input_buffer,
-                .net_ctx = self.sim.net_ctx,
-            };
-
-            // Take initial confirmed snapshot for rollback
-            self.confirmed_snapshot = self.sim.take_snapshot(snapshot.user_data_len) catch null;
+        if (snapshot.net.in_session == 0) {
+            return;
         }
+
+        // Clean up existing confirmed snapshot if any
+        if (self.confirmed_snapshot) |snap| {
+            snap.deinit(self.allocator);
+            self.confirmed_snapshot = null;
+        }
+        self.net.deinit();
+
+        // Reinitialize InputBuffer with session state from snapshot
+        // Preserve observer (tape recording) across restore
+        const saved_observer = self.input_buffer.observer;
+        self.input_buffer.* = .{};
+        self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
+        self.input_buffer.observer = saved_observer;
+
+        // Initialize session state directly from snapshot
+        self.session.start_frame = snapshot.net.session_start_frame;
+        self.session.peer_count = snapshot.net.peer_count;
+        self.session.confirmed_frame = snapshot.net.match_frame;
+        self.session.stats = .{};
+        self.session.active = true;
+
+        self.net.* = .{
+            .allocator = self.allocator,
+            .input_buffer = self.input_buffer,
+            .net_ctx = self.sim.net_ctx,
+        };
+
+        // Take initial confirmed snapshot for rollback
+        self.confirmed_snapshot = self.sim.take_snapshot(snapshot.user_data_len) catch null;
     }
 
     /// Get the current tape buffer (for serialization)
@@ -448,7 +500,13 @@ pub const Engine = struct {
     // ─────────────────────────────────────────────────────────────
 
     /// Initialize session - sets up InputBuffer, NetCtx, and snapshot
+    /// Records a NetSessionInit event to tape for replay support.
     pub fn emitNetSessionInit(self: *Engine, peer_count: u8, local_peer_id: u8, user_data_len: u32) !void {
+        // Record session init event to tape BEFORE state changes
+        // This allows tape replay to reconstruct the session
+        const event = Event.netSessionInit(peer_count, local_peer_id, self.sim.time.frame);
+        _ = self.vcr.recordEvent(event);
+
         // Clean up existing confirmed snapshot if any
         if (self.confirmed_snapshot) |snap| {
             snap.deinit(self.allocator);
@@ -637,14 +695,13 @@ pub const Engine = struct {
         if (self.vcr.is_recording) {
             // peer_id is at byte[1] in the packet header
             const peer_id: u8 = slice[1];
-            // Record at current frame - during replay, inject at this frame
             self.vcr.recordPacket(self.sim.time.frame, peer_id, slice);
         }
 
         // Create event for processing and observation
         const event = Event.netPacketReceived(@intCast(ptr), @intCast(len), slice[1]);
 
-        // Process packet synchronously (while memory is still valid)
+        // Process packet synchronously while memory is still valid
         self.processPacketEvent(event);
 
         // Queue event for user observation (they can see packet was received)
@@ -783,7 +840,7 @@ pub const Engine = struct {
             @panic("Tried to seek to frame without an active tape");
         }
 
-        const snapshot = self.vcr.closestSnapshot(frame) orelse @panic("No snapshot found for seek");
+        const snapshot = self.vcr.closestSnapshot(frame);
         self.sim.restore(snapshot);
 
         // Remember if we were already replaying (from loadTape)
@@ -809,7 +866,7 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Tape Replay (moved from Sim)
+    // Tape Replay
     // ─────────────────────────────────────────────────────────────
 
     /// Replay network events from tape for the current frame.
@@ -826,7 +883,7 @@ pub const Engine = struct {
 
     /// Replay packets from tape for the current frame
     fn replayTapePackets(self: *Engine) void {
-        var iter = self.vcr.getPacketsForFrame(self.sim.time.frame) orelse return;
+        var iter = self.vcr.getPacketsForFrame(self.sim.time.frame);
         while (iter.next()) |packet| {
             // Process packet directly using the slice (avoids pointer truncation issues on 64-bit)
             self.processPacketSlice(packet.data);
@@ -922,7 +979,7 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Tape Observer (moved from Sim)
+    // Tape Observer
     // ─────────────────────────────────────────────────────────────
 
     /// Observer callback for InputBuffer - records local peer inputs to tape.

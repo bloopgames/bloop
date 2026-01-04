@@ -301,7 +301,9 @@ export class Sim {
     memoryView.set(tape);
 
     // load the tape
-    this.wasm.stop_recording();
+    if (this.isRecording) {
+      this.wasm.stop_recording();
+    }
     const result = this.wasm.load_tape(tapePtr, tape.byteLength);
     assert(result === 0, `failed to load tape, error code=${result}`);
 

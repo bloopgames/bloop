@@ -34,7 +34,7 @@ export class Net {
 
     const len = this.#wasm.get_outbound_packet_len();
     if (len === 0) {
-      return null;
+      throw new Error(`No outbound packet available for peer ${targetPeer}`);
     }
 
     const ptr = this.#wasm.get_outbound_packet();

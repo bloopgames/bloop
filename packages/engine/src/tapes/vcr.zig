@@ -91,11 +91,11 @@ pub const VCR = struct {
     }
 
     /// Get the current tape buffer (for serialization)
-    pub fn getTapeBuffer(self: *VCR) ?[]u8 {
+    pub fn getTapeBuffer(self: *VCR) []u8 {
         if (self.tape) |*t| {
             return t.get_buffer();
         }
-        return null;
+        @panic("No tape loaded");
     }
 
     /// Check if we have a tape loaded (recording or replaying)
@@ -120,7 +120,7 @@ pub const VCR = struct {
         if (!self.is_recording) return;
 
         if (self.tape) |*t| {
-            t.append_packet(frame, peer_id, data) catch {};
+            t.append_packet(frame, peer_id, data) catch @panic("Couldn't record packet");
         }
     }
 
@@ -129,9 +129,7 @@ pub const VCR = struct {
         if (!self.is_recording or self.is_replaying) return true;
 
         if (self.tape) |*t| {
-            t.start_frame() catch {
-                return false; // Tape full
-            };
+            t.start_frame() catch return false;
         }
         return true;
     }
@@ -141,23 +139,23 @@ pub const VCR = struct {
         if (self.tape) |*t| {
             return t.get_events(frame);
         }
-        return &[_]Event{};
+        @panic("No tape loaded");
     }
 
     /// Get packet iterator for a frame from tape (for replay)
-    pub fn getPacketsForFrame(self: *VCR, frame: u32) ?Tapes.Tape.PacketIterator {
+    pub fn getPacketsForFrame(self: *VCR, frame: u32) Tapes.Tape.PacketIterator {
         if (self.tape) |*t| {
             return t.get_packets_for_frame(frame);
         }
-        return null;
+        @panic("No tape loaded");
     }
 
     /// Get closest snapshot for seeking
-    pub fn closestSnapshot(self: *VCR, frame: u32) ?*Tapes.Snapshot {
+    pub fn closestSnapshot(self: *VCR, frame: u32) *Tapes.Snapshot {
         if (self.tape) |*t| {
             return t.closest_snapshot(frame);
         }
-        return null;
+        @panic("No tape loaded");
     }
 
     /// Exit replay mode (used after seek completes)

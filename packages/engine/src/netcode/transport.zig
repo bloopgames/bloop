@@ -296,23 +296,26 @@ pub const NetState = struct {
     /// Build outbound packet for a target peer.
     /// Reads events from InputBuffer via the unacked window.
     pub fn buildOutboundPacket(self: *NetState, target_peer: u8, current_match_frame: u16) !void {
-        if (target_peer >= MAX_PEERS) return;
+        if (target_peer >= MAX_PEERS) {
+            Log.log("buildOutboundPacket: target_peer {} >= MAX_PEERS", .{target_peer});
+            @panic("buildOutboundPacket: target_peer >= MAX_PEERS");
+        }
 
         const net_ctx = self.net_ctx orelse {
-            self.outbound_len = 0;
-            return;
+            Log.log("buildOutboundPacket: net_ctx is null", .{});
+            @panic("buildOutboundPacket: net_ctx is null");
         };
 
         // Read peer state from NetCtx (single source of truth)
         const connected = net_ctx.peer_connected[target_peer] == 1;
         if (!connected) {
-            self.outbound_len = 0;
-            return;
+            Log.log("buildOutboundPacket: peer {} not connected (peer_count={}, local_peer_id={})", .{ target_peer, net_ctx.peer_count, net_ctx.local_peer_id });
+            @panic("buildOutboundPacket: peer not connected");
         }
 
         const ib = self.input_buffer orelse {
-            self.outbound_len = 0;
-            return;
+            Log.log("buildOutboundPacket: input_buffer is null", .{});
+            @panic("buildOutboundPacket: input_buffer is null");
         };
 
         const peer_window = &self.peer_unacked[target_peer];

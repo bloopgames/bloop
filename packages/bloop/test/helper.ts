@@ -32,7 +32,6 @@ export function setupSession(sim0: Sim, sim1: Sim) {
   sim1.emitNetSessionInit(2, 1, 0);
   sim1.emit.network("peer:join", { peerId: 0 });
 
-  // Process network events
   sim0.step();
   sim1.step();
 }

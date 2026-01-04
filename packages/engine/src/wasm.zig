@@ -191,7 +191,7 @@ pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_by
 
 pub export fn stop_recording() u8 {
     if (!engine.?.isRecording()) {
-        wasm_log("Not currently recording");
+        wasm_log("Tried to stop recording but we are not currently recording");
         return 2;
     }
     engine.?.stopRecording();

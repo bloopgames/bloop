@@ -133,6 +133,15 @@ pub const Event = extern struct {
             .payload = .{ .packet_ref = .{ .ptr = ptr, .len = len, .peer_id = peer_id } },
         };
     }
+
+    /// Network event: session initialization
+    pub inline fn netSessionInit(peer_count: u8, local_peer_id: u8, start_frame: u32) Event {
+        return Event{
+            .kind = .NetSessionInit,
+            .device = .None,
+            .payload = .{ .session_init = .{ .peer_count = peer_count, .local_peer_id = local_peer_id, .start_frame = start_frame } },
+        };
+    }
 };
 
 /// Reason for join failure
@@ -163,6 +172,13 @@ pub const EventPayload = extern union {
         peer_id: u8, // sender peer ID
         _pad: u8 = 0, // alignment padding
     },
+    /// Session initialization parameters for NetSessionInit
+    session_init: extern struct {
+        peer_count: u8,
+        local_peer_id: u8,
+        _pad: u16 = 0, // alignment padding
+        start_frame: u32,
+    },
 };
 
 pub const EventType = enum(u8) {
@@ -182,6 +198,8 @@ pub const EventType = enum(u8) {
     NetPeerLeave,
     NetPeerAssignLocalId,
     NetPacketReceived,
+    /// Session initialization event (recorded to tape for replay)
+    NetSessionInit,
 
     pub fn isSessionEvent(self: EventType) bool {
         _ = self;
@@ -190,7 +208,7 @@ pub const EventType = enum(u8) {
 
     pub fn isNetEvent(self: EventType) bool {
         return switch (self) {
-            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId, .NetPacketReceived => true,
+            .NetJoinOk, .NetJoinFail, .NetPeerJoin, .NetPeerLeave, .NetPeerAssignLocalId, .NetPacketReceived, .NetSessionInit => true,
             else => false,
         };
     }

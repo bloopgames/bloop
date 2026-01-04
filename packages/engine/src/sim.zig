@@ -4,6 +4,7 @@ const Events = @import("events.zig");
 const Tapes = @import("tapes/tapes.zig");
 const IB = @import("input_buffer.zig");
 const Ses = @import("netcode/session.zig");
+const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
@@ -484,4 +485,3 @@ test "snapshot preserves input state" {
     try std.testing.expectEqual(100.0, ctx.sim.inputs.players[0].mouse_ctx.x);
     try std.testing.expectEqual(200.0, ctx.sim.inputs.players[0].mouse_ctx.y);
 }
-
