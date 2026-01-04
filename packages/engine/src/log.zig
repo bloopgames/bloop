@@ -22,3 +22,17 @@ pub fn log(comptime fmt: []const u8, args: anytype) void {
     };
     log_fn(msg);
 }
+
+pub fn debug(comptime fmt: []const u8, args: anytype) void {
+    if (!initialized) {
+        return;
+    }
+
+    _ = fmt;
+    _ = args;
+    // const msg = std.fmt.allocPrint(arena, fmt, args) catch {
+    //     log_fn(fmt);
+    //     return;
+    // };
+    // log_fn(msg);
+}

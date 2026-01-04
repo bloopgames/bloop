@@ -317,15 +317,13 @@ pub const Engine = struct {
         const next_confirm = self.input_buffer.calculateNextConfirmFrame(target_match_frame);
         const current_confirmed = self.session.confirmed_frame;
 
-        // Log.log("sessionStep: time={} target_mf={} next_confirm={} current_confirmed={} peer_count={} peer0={} peer1={}", .{
-        //     self.sim.time.frame,
-        //     target_match_frame,
-        //     next_confirm,
-        //     current_confirmed,
-        //     self.input_buffer.peer_count,
-        //     self.input_buffer.peer_confirmed[0],
-        //     self.input_buffer.peer_confirmed[1],
-        // });
+        Log.debug("sessionStep: time.frame={} target_mf={} next_confirm={} current_confirmed={} peer_count={}", .{
+            self.sim.time.frame,
+            target_match_frame,
+            next_confirm,
+            current_confirmed,
+            self.input_buffer.peer_count,
+        });
 
         if (next_confirm > current_confirmed) {
             // New confirmed frames available - need to rollback and resim
@@ -455,7 +453,7 @@ pub const Engine = struct {
         // Initialize session state directly from snapshot
         self.session.start_frame = snapshot.net.session_start_frame;
         self.session.peer_count = snapshot.net.peer_count;
-        self.session.confirmed_frame = snapshot.net.match_frame;
+        self.session.confirmed_frame = 0;
         self.session.stats = .{};
         self.session.active = true;
 
@@ -870,6 +868,12 @@ pub const Engine = struct {
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
             if (wire_event.frame > old_remote_seq) {
+                Log.debug("Processing input event from packet: peer={} match_frame={} engine_frame={} kind={}", .{
+                    header.peer_id,
+                    wire_event.frame,
+                    self.sim.time.frame,
+                    input_event.kind,
+                });
                 self.input_buffer.emit(header.peer_id, wire_event.frame, &[_]Event{input_event});
             }
 

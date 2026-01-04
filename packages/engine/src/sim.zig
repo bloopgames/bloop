@@ -124,6 +124,8 @@ pub const Sim = struct {
     /// Reads match_frame and peer_count from net_ctx (synced by Engine before tick).
     /// @param is_resimulating: true if this is a resim frame during rollback
     pub fn tick(self: *Sim, is_resimulating: bool) void {
+        Log.debug("Sim tick: frame={} resim={}", .{ self.time.frame, is_resimulating });
+
         // Call before_tick listener (Engine syncs net_ctx here)
         if (self.listeners.before_tick) |before_tick| {
             before_tick(self.listeners.context.?);

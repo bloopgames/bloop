@@ -595,13 +595,10 @@ describe("tapes", () => {
       expect(header.frameCount).toBe(1002); // 1 initial frame + 1000 steps
     });
 
-    it.failing(
-      "regress - handles tape that starts with unconfirmed inputs",
-      () => {
-        // Test case to be added -
-        // start recording after session init with 3 frames of unconfirmed inputs.
-        // upon receiving the packet with the last 3 frames, rollback should happen
-      },
-    );
+    it.skip("regress - handles tape that starts with unconfirmed inputs", () => {
+      // Test case to be added -
+      // start recording after session init with 3 frames of unconfirmed inputs.
+      // upon receiving the packet with the last 3 frames, rollback should happen
+    });
   });
 });
