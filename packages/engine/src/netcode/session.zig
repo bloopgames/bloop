@@ -12,8 +12,6 @@ pub const RollbackStats = struct {
 pub const Session = struct {
     /// Frame when session started (absolute frame number)
     start_frame: u32 = 0,
-    /// Number of peers in this session
-    peer_count: u8 = 0,
     /// Whether a session is currently active
     active: bool = false,
     /// Last confirmed frame (relative to session start)
@@ -22,9 +20,8 @@ pub const Session = struct {
     stats: RollbackStats = .{},
 
     /// Start a new session at the given frame
-    pub fn start(self: *Session, current_frame: u32, peer_count_arg: u8) void {
+    pub fn start(self: *Session, current_frame: u32) void {
         self.start_frame = current_frame;
-        self.peer_count = peer_count_arg;
         self.confirmed_frame = 0;
         self.stats = .{};
         self.active = true;
@@ -33,7 +30,6 @@ pub const Session = struct {
     /// End the current session
     pub fn end(self: *Session) void {
         self.start_frame = 0;
-        self.peer_count = 0;
         self.confirmed_frame = 0;
         self.stats = .{};
         self.active = false;
@@ -90,18 +86,16 @@ test "Session init and end" {
     try std.testing.expectEqual(false, session.active);
     try std.testing.expectEqual(@as(u32, 0), session.start_frame);
 
-    session.start(100, 2);
+    session.start(100);
 
     try std.testing.expectEqual(true, session.active);
     try std.testing.expectEqual(@as(u32, 100), session.start_frame);
-    try std.testing.expectEqual(@as(u8, 2), session.peer_count);
     try std.testing.expectEqual(@as(u32, 0), session.confirmed_frame);
 
     session.end();
 
     try std.testing.expectEqual(false, session.active);
     try std.testing.expectEqual(@as(u32, 0), session.start_frame);
-    try std.testing.expectEqual(@as(u8, 0), session.peer_count);
 }
 
 test "Session getMatchFrame" {
@@ -110,7 +104,7 @@ test "Session getMatchFrame" {
     // No session active
     try std.testing.expectEqual(@as(u32, 0), session.getMatchFrame(50));
 
-    session.start(100, 2);
+    session.start(100);
 
     // Match frame is current - start
     try std.testing.expectEqual(@as(u32, 0), session.getMatchFrame(100));
@@ -124,7 +118,7 @@ test "Session getRollbackDepth" {
     // No session active
     try std.testing.expectEqual(@as(u32, 0), session.getRollbackDepth(50));
 
-    session.start(100, 2);
+    session.start(100);
 
     // At frame 105, match_frame = 5, confirmed = 0, depth = 5
     try std.testing.expectEqual(@as(u32, 5), session.getRollbackDepth(105));
@@ -137,7 +131,7 @@ test "Session getRollbackDepth" {
 
 test "Session confirmFrame tracks stats" {
     var session = Session{};
-    session.start(0, 2);
+    session.start(0);
 
     try std.testing.expectEqual(@as(u32, 0), session.stats.total_rollbacks);
 
@@ -160,7 +154,7 @@ test "Session confirmFrame tracks stats" {
 
 test "Session confirmFrame without resimulation" {
     var session = Session{};
-    session.start(0, 2);
+    session.start(0);
 
     // Confirm without resimulation (no rollback occurred)
     session.confirmFrame(5, 0);

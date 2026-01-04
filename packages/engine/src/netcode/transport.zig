@@ -242,7 +242,7 @@ pub const PeerUnackedWindow = struct {
 
 /// Network state for all peers in a session
 /// Connection state (seq, ack, connected) lives in NetCtx - this is just for packet building
-pub const NetState = struct {
+pub const PacketBuilder = struct {
     /// Allocator for packet buffers
     allocator: std.mem.Allocator,
     /// Scratch buffer for outbound packets (reused across calls)
@@ -256,7 +256,7 @@ pub const NetState = struct {
     /// Per-peer unacked window tracking (transient state for packet building)
     peer_unacked: [MAX_PEERS]PeerUnackedWindow = [_]PeerUnackedWindow{.{}} ** MAX_PEERS,
 
-    pub fn deinit(self: *NetState) void {
+    pub fn deinit(self: *PacketBuilder) void {
         if (self.outbound_buffer) |buf| {
             self.allocator.free(buf);
             self.outbound_buffer = null;
@@ -265,7 +265,7 @@ pub const NetState = struct {
     }
 
     /// Reset all unacked windows (for session end)
-    pub fn reset(self: *NetState) void {
+    pub fn reset(self: *PacketBuilder) void {
         for (&self.peer_unacked) |*peer| {
             peer.reset();
         }
@@ -273,7 +273,7 @@ pub const NetState = struct {
     }
 
     /// Disconnect a peer (reset unacked window only)
-    pub fn disconnectPeer(self: *NetState, peer_id: u8) void {
+    pub fn disconnectPeer(self: *PacketBuilder, peer_id: u8) void {
         if (peer_id < MAX_PEERS) {
             self.peer_unacked[peer_id].reset();
         }
@@ -281,7 +281,7 @@ pub const NetState = struct {
 
     /// Extend unacked window for all connected peers.
     /// Events are already in InputBuffer from append_event - this just tracks the window.
-    pub fn extendUnackedWindow(self: *NetState, match_frame: u16) void {
+    pub fn extendUnackedWindow(self: *PacketBuilder, match_frame: u16) void {
         const net_ctx = self.net_ctx orelse return;
         const local_peer_id = net_ctx.local_peer_id;
 
@@ -295,7 +295,7 @@ pub const NetState = struct {
 
     /// Build outbound packet for a target peer.
     /// Reads events from InputBuffer via the unacked window.
-    pub fn buildOutboundPacket(self: *NetState, target_peer: u8, current_match_frame: u16) !void {
+    pub fn buildOutboundPacket(self: *PacketBuilder, target_peer: u8, current_match_frame: u16) !void {
         if (target_peer >= MAX_PEERS) {
             Log.log("buildOutboundPacket: target_peer {} >= MAX_PEERS", .{target_peer});
             @panic("buildOutboundPacket: target_peer >= MAX_PEERS");
@@ -588,7 +588,7 @@ test "NetState init and deinit" {
         .match_frame = 0,
     };
 
-    const net = try std.testing.allocator.create(NetState);
+    const net = try std.testing.allocator.create(PacketBuilder);
     net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
@@ -604,7 +604,7 @@ test "NetState disconnectPeer resets unacked window" {
         .match_frame = 0,
     };
 
-    const net = try std.testing.allocator.create(NetState);
+    const net = try std.testing.allocator.create(PacketBuilder);
     net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
@@ -633,7 +633,7 @@ test "NetState extendUnackedWindow" {
     net_ctx.peers[1].connected = 1;
     net_ctx.peers[2].connected = 1;
 
-    const net = try std.testing.allocator.create(NetState);
+    const net = try std.testing.allocator.create(PacketBuilder);
     net.* = .{ .allocator = std.testing.allocator, .net_ctx = &net_ctx };
     defer {
         net.deinit();
@@ -669,7 +669,7 @@ test "NetState buildOutboundPacket reads from NetCtx" {
     // Mark peer 1 as connected
     net_ctx.peers[1].connected = 1;
 
-    const net = try std.testing.allocator.create(NetState);
+    const net = try std.testing.allocator.create(PacketBuilder);
     net.* = .{ .allocator = std.testing.allocator, .input_buffer = input_buffer, .net_ctx = &net_ctx };
     defer {
         net.deinit();

@@ -12,7 +12,7 @@ const Log = @import("log.zig");
 
 const Session = Ses.Session;
 const InputBuffer = IB.InputBuffer;
-const NetState = Transport.NetState;
+const PacketBuilder = Transport.PacketBuilder;
 const Event = Events.Event;
 const Ctx = @import("context.zig");
 const NetStatus = Ctx.NetStatus;
@@ -43,7 +43,7 @@ pub const Engine = struct {
     /// Canonical input buffer - single source of truth for all inputs
     input_buffer: *InputBuffer,
     /// Network state for packet management (heap-allocated due to ~68KB size)
-    net: *NetState,
+    net: *PacketBuilder,
 
     // ─────────────────────────────────────────────────────────────
     // Pending network events (queued until next tick)
@@ -61,15 +61,12 @@ pub const Engine = struct {
         // Default: 1 peer for local play (session mode will reinit with actual peer count)
         input_buffer.init(1, 0);
 
-        // Allocate NetState on heap (now much smaller - no unacked_frames copies)
-        const net = try allocator.create(NetState);
+        const net = try allocator.create(PacketBuilder);
         net.* = .{ .allocator = allocator, .input_buffer = input_buffer };
 
-        // Create Sim (slimmed down - only owns contexts, uses Engine's input_buffer)
         const sim = try allocator.create(Sim);
         sim.* = try Sim.init(allocator, ctx_ptr, input_buffer);
 
-        // Wire NetState to NetCtx (single source of truth for peer state)
         net.net_ctx = sim.net_ctx;
 
         return Engine{
@@ -204,7 +201,7 @@ pub const Engine = struct {
                 self.input_buffer.observer = saved_observer;
 
                 // Initialize session state
-                self.session.start(start_frame, peer_count);
+                self.session.start(start_frame);
 
                 // Update net_ctx
                 self.sim.net_ctx.in_session = 1;
@@ -451,7 +448,6 @@ pub const Engine = struct {
 
         // Initialize session state directly from snapshot
         self.session.start_frame = snapshot.net.session_start_frame;
-        self.session.peer_count = snapshot.net.peer_count;
         self.session.confirmed_frame = 0;
         self.session.stats = .{};
         self.session.active = true;
