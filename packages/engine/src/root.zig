@@ -854,7 +854,6 @@ pub const Engine = struct {
 
         // Increment packet count (saturate at 255)
         if (peer.packet_count < 255) {
-            Log.log("[ENGINE] Incrementing packet_count={} for peer={}", .{ peer.packet_count + 1, header.peer_id });
             peer.packet_count += 1;
         }
 
