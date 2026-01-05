@@ -5,7 +5,8 @@ status: todo
 type: task
 priority: high
 created_at: 2025-12-23T17:18:31Z
-updated_at: 2025-12-23T17:18:36Z
+updated_at: 2026-01-05T18:47:35Z
+parent: bloop-7ivl
 blocking:
     - bloop-6yjl
 ---

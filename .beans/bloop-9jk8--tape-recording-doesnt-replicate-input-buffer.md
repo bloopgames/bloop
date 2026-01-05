@@ -5,7 +5,8 @@ status: todo
 type: bug
 priority: high
 created_at: 2026-01-05T05:51:59Z
-updated_at: 2026-01-05T05:54:49Z
+updated_at: 2026-01-05T18:08:07Z
+parent: bloop-7ivl
 ---
 
 There's a skipped test in netcode.test.ts for this scenario:

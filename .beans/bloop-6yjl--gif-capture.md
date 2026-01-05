@@ -5,8 +5,8 @@ status: todo
 type: task
 priority: high
 created_at: 2025-12-16T22:55:25Z
-updated_at: 2025-12-23T17:16:44Z
-parent: bloop-nti4
+updated_at: 2026-01-05T18:08:07Z
+parent: bloop-7ivl
 ---
 
 Record and polish the GIF for README and soft launch sharing.
