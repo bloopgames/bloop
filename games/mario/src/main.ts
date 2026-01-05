@@ -43,8 +43,8 @@ await toodle.assets.registerBundle("main", {
 });
 
 await toodle.assets.loadFont(
-  "ComicNeue",
-  new URL("https://toodle.gg/fonts/ComicNeue-Regular-msdf.json"),
+  "Roboto",
+  new URL("https://toodle.gg/fonts/Roboto-Regular-msdf.json"),
 );
 
 const drawState = createDrawState(toodle);

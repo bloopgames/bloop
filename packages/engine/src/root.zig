@@ -6,21 +6,20 @@ const Tapes = @import("tapes/tapes.zig");
 const Transport = @import("netcode/transport.zig");
 const Events = @import("events.zig");
 const IB = @import("input_buffer.zig");
+const PEB = @import("platform_event_buffer.zig");
 const VCR = @import("tapes/vcr.zig").VCR;
 const Ses = @import("netcode/session.zig");
 const Log = @import("log.zig");
 
 const Session = Ses.Session;
 const InputBuffer = IB.InputBuffer;
+const PlatformEventBuffer = PEB.PlatformEventBuffer;
 const PacketBuilder = Transport.PacketBuilder;
 const Event = Events.Event;
 const Ctx = @import("context.zig");
 const NetStatus = Ctx.NetStatus;
 
 pub const hz = SimMod.hz;
-
-/// Maximum pending network events between frames
-const MAX_PENDING_NET_EVENTS: usize = 16;
 
 /// Engine coordinates the simulation. It manages timing, sessions, tapes, and network.
 pub const Engine = struct {
@@ -42,16 +41,10 @@ pub const Engine = struct {
     confirmed_snapshot: ?*Tapes.Snapshot = null,
     /// Canonical input buffer - single source of truth for all inputs
     input_buffer: *InputBuffer,
+    /// Platform event buffer - stores network events for replay
+    platform_buffer: *PlatformEventBuffer,
     /// Network state for packet management (heap-allocated due to ~68KB size)
     net: *PacketBuilder,
-
-    // ─────────────────────────────────────────────────────────────
-    // Pending network events (queued until next tick)
-    // ─────────────────────────────────────────────────────────────
-    /// Network events waiting to be processed in next tick
-    pending_net_events: [MAX_PENDING_NET_EVENTS]Event = undefined,
-    /// Number of pending network events
-    pending_net_events_count: u8 = 0,
 
     /// Initialize engine with a new simulation
     pub fn init(allocator: std.mem.Allocator, ctx_ptr: usize) !Engine {
@@ -60,6 +53,10 @@ pub const Engine = struct {
         input_buffer.* = .{};
         // Default: 1 peer for local play (session mode will reinit with actual peer count)
         input_buffer.init(1, 0);
+
+        // Allocate PlatformEventBuffer for network events
+        const platform_buffer = try allocator.create(PlatformEventBuffer);
+        platform_buffer.* = .{};
 
         const net = try allocator.create(PacketBuilder);
         net.* = .{ .allocator = allocator, .input_buffer = input_buffer };
@@ -74,6 +71,7 @@ pub const Engine = struct {
             .allocator = allocator,
             .vcr = VCR.init(allocator),
             .input_buffer = input_buffer,
+            .platform_buffer = platform_buffer,
             .net = net,
         };
     }
@@ -98,22 +96,28 @@ pub const Engine = struct {
         // Note: Tape replay is handled by Engine.advance() before tick() is called
         self.syncNetCtx();
 
-        // Copy pending network events to sim.events (processed before input events)
-        self.flushPendingNetEvents();
+        // Process platform events from PlatformEventBuffer
+        self.processPlatformEvents();
     }
 
-    /// Process pending network events and forward all events to sim.events.
+    /// Process platform events from PlatformEventBuffer and forward to sim.events.
     /// Net events are processed here (Engine has access to net, input_buffer, net_ctx).
     /// All events are forwarded so users can observe them via the event buffer.
-    fn flushPendingNetEvents(self: *Engine) void {
-        const pending_count = self.pending_net_events_count;
-        if (pending_count == 0) return;
+    fn processPlatformEvents(self: *Engine) void {
+        // Read events for the current frame
+        const target_frame = self.sim.time.frame;
+        const platform_events = self.platform_buffer.get(target_frame);
 
-        for (0..pending_count) |i| {
-            const event = self.pending_net_events[i];
+        const is_resimulating = self.sim.time.is_resimulating == 1;
 
+        for (platform_events) |event| {
             // Process net events in Engine (has access to net, input_buffer, net_ctx)
             if (event.kind.isNetEvent()) {
+                // Skip NetSessionInit during resimulation - it clears InputBuffer
+                // which would destroy the remote peer inputs we need for resim
+                if (is_resimulating and event.kind == .NetSessionInit) {
+                    continue;
+                }
                 self.processNetEvent(event);
             }
 
@@ -124,8 +128,6 @@ pub const Engine = struct {
                 self.sim.events.events[idx] = event;
             }
         }
-
-        self.pending_net_events_count = 0;
     }
 
     /// Process a network event - updates Engine's network state
@@ -220,14 +222,6 @@ pub const Engine = struct {
             },
             else => {},
         }
-    }
-
-    /// Process a received packet from a NetPacketReceived event
-    fn processPacketEvent(self: *Engine, event: Event) void {
-        const packet_ref = event.payload.packet_ref;
-        const buf: [*]const u8 = @ptrFromInt(packet_ref.ptr);
-        const slice = buf[0..packet_ref.len];
-        self.processPacketSlice(slice);
     }
 
     fn afterTickListener(ctx: *anyopaque, is_resimulating: bool) void {
@@ -325,8 +319,9 @@ pub const Engine = struct {
             }
 
             // 1. Restore to confirmed state
-            // TODO: don't special-case net_ctx peers - process network events
-            // from the events buffer when resimulating instead
+            // Note: peers array contains live connection tracking (seq/ack) that must NOT roll back.
+            // Network events in PlatformEventBuffer are replayed for topology (peer join/leave),
+            // but seq/ack tracking is updated by packet processing and must be preserved.
             const saved_peers = self.sim.net_ctx.peers;
             if (self.confirmed_snapshot) |snap| {
                 self.sim.restore(snap);
@@ -387,6 +382,7 @@ pub const Engine = struct {
 
         // Clean up Engine-owned resources
         self.allocator.destroy(self.input_buffer);
+        self.allocator.destroy(self.platform_buffer);
         self.net.deinit();
         self.allocator.destroy(self.net);
         self.vcr.deinit();
@@ -611,13 +607,12 @@ pub const Engine = struct {
             self.vcr.recordPacket(self.sim.time.frame, peer_id, slice);
         }
 
-        // Create event for processing and observation
-        const event = Event.netPacketReceived(@intCast(ptr), @intCast(len), slice[1]);
-
         // Process packet synchronously while memory is still valid
-        self.processPacketEvent(event);
+        self.processPacketSlice(slice);
 
-        // Queue event for user observation (they can see packet was received)
+        // Queue event for user observation (ptr/len are dummy since processing already happened)
+        // tapePlatformObserver skips this event type since packets are recorded separately
+        const event = Event.netPacketReceived(0, 0, slice[1]);
         self.appendNetEvent(event);
 
         return 0;
@@ -682,20 +677,14 @@ pub const Engine = struct {
     // ─────────────────────────────────────────────────────────────
 
     /// Queue a network event for processing in next tick.
-    /// Also records to tape (except NetPacketReceived which is recorded separately).
+    /// Events are stored in PlatformEventBuffer for unified replay during rollback.
+    /// Tape recording is handled by the platform_buffer's observer.
     fn appendNetEvent(self: *Engine, event: Event) void {
-        if (event.kind != .NetPacketReceived and self.vcr.is_recording and !self.vcr.is_replaying) {
-            _ = self.vcr.recordEvent(event);
-        }
-
         Log.debug("Appending net event peer_id={} kind={}", .{ event.peer_id, event.kind });
 
-        if (self.pending_net_events_count >= MAX_PENDING_NET_EVENTS) {
-            Log.log("Pending network event buffer full, can't process event of kind {}", .{event.kind});
-            @panic("Pending network event buffer full");
-        }
-        self.pending_net_events[self.pending_net_events_count] = event;
-        self.pending_net_events_count += 1;
+        // Platform events are indexed by the frame they occur on
+        const target_frame = self.sim.time.frame;
+        self.platform_buffer.emit(target_frame, event);
     }
 
     /// Emit NetJoinOk event - successfully joined a room
@@ -790,12 +779,12 @@ pub const Engine = struct {
     // ─────────────────────────────────────────────────────────────
 
     /// Replay network events from tape for the current frame.
-    /// Routes them through pending_net_events to be processed by process_events().
+    /// Writes them to PlatformEventBuffer to be processed by processPlatformEvents().
     fn replayTapeNetEvents(self: *Engine) void {
         const tape_events = self.vcr.getEventsForFrame(self.sim.time.frame);
         for (tape_events) |event| {
             if (event.kind.isNetEvent()) {
-                // Queue to pending_net_events (processed in process_events)
+                // Queue to PlatformEventBuffer (processed in beforeTickListener)
                 self.appendNetEvent(event);
             }
         }
@@ -810,7 +799,7 @@ pub const Engine = struct {
         }
     }
 
-    /// Process a packet from a raw slice (used by tape replay and processPacketEvent)
+    /// Process a packet from a raw slice (used by tape replay and emit_receive_packet)
     fn processPacketSlice(self: *Engine, slice: []const u8) void {
         // Decode packet header
         const header = Transport.PacketHeader.decode(slice) catch |e| {
@@ -941,17 +930,43 @@ pub const Engine = struct {
         }
     }
 
-    /// Enable tape observer on InputBuffer
+    /// Observer callback for PlatformEventBuffer - record network events to tape.
+    fn tapePlatformObserver(ctx: *anyopaque, _: u32, event: Event) void {
+        const self: *Engine = @ptrCast(@alignCast(ctx));
+
+        // Skip NetPacketReceived - packets are recorded separately with raw bytes
+        if (event.kind == .NetPacketReceived) return;
+
+        // Only record if we're recording and not replaying
+        if (!self.vcr.is_recording or self.vcr.is_replaying) return;
+
+        if (!self.vcr.recordEvent(event)) {
+            // Tape is full - stop recording gracefully
+            self.stopRecording();
+            if (self.sim.callbacks.on_tape_full) |on_tape_full| {
+                on_tape_full();
+            } else {
+                Log.log("Tape full, recording stopped (no onTapeFull callback registered)", .{});
+            }
+        }
+    }
+
+    /// Enable tape observers on InputBuffer and PlatformEventBuffer
     fn enableTapeObserver(self: *Engine) void {
         self.input_buffer.observer = IB.InputObserver{
             .callback = tapeInputObserver,
             .context = @ptrCast(self),
         };
+        self.platform_buffer.observer = PEB.PlatformEventObserver{
+            .callback = tapePlatformObserver,
+            .context = @ptrCast(self),
+        };
     }
 
-    /// Disable tape observer
+    /// Disable tape observers
     fn disableTapeObserver(self: *Engine) void {
         self.input_buffer.observer = null;
+        self.platform_buffer.observer = null;
     }
 };
 

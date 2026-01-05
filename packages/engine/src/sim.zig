@@ -126,6 +126,9 @@ pub const Sim = struct {
     pub fn tick(self: *Sim, is_resimulating: bool) void {
         Log.debug("Sim tick: frame={} resim={}", .{ self.time.frame, is_resimulating });
 
+        // Set resimulating flag on TimeCtx for Engine to check
+        self.time.is_resimulating = if (is_resimulating) 1 else 0;
+
         // Call before_tick listener (Engine syncs net_ctx here)
         if (self.listeners.before_tick) |before_tick| {
             before_tick(self.listeners.context.?);

@@ -91,7 +91,6 @@ export function joinRollbackRoom(
 
   app.joinRoom(roomId, {
     onPeerIdAssign: (peerId) => {
-      console.log(`Assigned peer ID: ${peerId}`);
       localStringPeerId = peerId;
     },
     onBrokerMessage: (_message) => {},
@@ -99,7 +98,6 @@ export function joinRollbackRoom(
       incomingPackets.push(new Uint8Array(data));
     },
     onDataChannelClose(peerId, reliable) {
-      console.log(`Data channel closed: ${peerId} (reliable: ${reliable})`);
       if (!reliable && remotePeerId !== null) {
         app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
@@ -107,7 +105,6 @@ export function joinRollbackRoom(
       }
     },
     onDataChannelOpen(peerId, reliable, channel) {
-      console.log(`Data channel opened: ${peerId} (reliable: ${reliable})`);
       if (!reliable) {
         udp = channel;
 
@@ -130,7 +127,6 @@ export function joinRollbackRoom(
         app.sim.emit.network("session:start", {});
 
         sessionActive = true;
-        console.log(`[netcode] Session started at frame ${app.sim.time.frame}`);
         opts?.onSessionStart?.();
       }
     },

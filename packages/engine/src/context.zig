@@ -1,5 +1,10 @@
 const Events = @import("events.zig");
-pub const TimeCtx = extern struct { frame: u32, dt_ms: u32, total_ms: u64 };
+pub const TimeCtx = extern struct {
+    frame: u32,
+    dt_ms: u32,
+    total_ms: u64,
+    is_resimulating: u8 = 0, // 1 during rollback resimulation
+};
 
 /// Network status values
 pub const NetStatus = enum(u8) {

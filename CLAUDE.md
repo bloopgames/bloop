@@ -73,10 +73,10 @@ bun run deploy-games
 
 ### Data Flow
 
-1. Browser events captured by `App` -> emit to `Sim`
+1. Platform events like inputs and packets captured by `App` -> emit to `Sim`
 2. `Sim.step()` calls WASM engine which processes inputs and fires callback
 3. WASM callback invokes TypeScript systems with current `Context`
-4. Systems read `context.players` for inputs and mutate `context.bag`
+4. Systems read from use `context.time`, `context.net`, `context.players` etc and mutate `context.bag`
 5. Engine snapshots bag via `serialize`/`deserialize` hooks for rewind capability
 
 ### Engine (Zig/WASM)

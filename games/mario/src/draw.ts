@@ -52,14 +52,14 @@ export function createDrawState(toodle: Toodle): DrawState {
   // Title screen container
   const titleScreen = root.add(toodle.Node({}));
   const titleText = titleScreen.add(
-    toodle.Text("ComicNeue", "COIN CHASE", {
+    toodle.Text("Roboto", "MARIO ROLLBACK", {
       fontSize: 24,
       color: { r: 1, g: 1, b: 1, a: 1 },
       position: { x: 0, y: 20 },
     }),
   );
   const subtitleText = titleScreen.add(
-    toodle.Text("ComicNeue", "[Space] Local  [Enter] Online", {
+    toodle.Text("Roboto", "[Space] Local  [Enter] Online", {
       fontSize: 10,
       color: { r: 1, g: 1, b: 1, a: 1 },
       position: { x: 0, y: 0 },
@@ -121,14 +121,14 @@ export function createDrawState(toodle: Toodle): DrawState {
   const p2 = createPoseQuads(LUIGI_COLOR);
 
   const p1Score = gameScreen.add(
-    toodle.Text("ComicNeue", "P9: 0", {
+    toodle.Text("Roboto", "P9: 0", {
       fontSize: 16,
       color: MARIO_COLOR,
     }),
   );
 
   const p2Score = gameScreen.add(
-    toodle.Text("ComicNeue", "P2: 0", {
+    toodle.Text("Roboto", "P2: 0", {
       fontSize: 16,
       color: LUIGI_COLOR,
     }),
