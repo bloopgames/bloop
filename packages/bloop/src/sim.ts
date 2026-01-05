@@ -30,6 +30,13 @@ function unmuteConsole() {
   (globalThis.console as unknown as Console) = originalConsole;
 }
 
+export type LoadTapeOptions = {
+  /** Frames between checkpoints for seek optimization (0 = disabled). Default: 0 */
+  checkpointInterval?: number;
+  /** Max bytes for all checkpoints combined. Default: 10MB */
+  checkpointMaxSize?: number;
+};
+
 export type EngineHooks = {
   /**
    * Hook to serialize some data when snapshotting
@@ -249,7 +256,7 @@ export class Sim {
    * @param maxPacketBytes Maximum packet buffer size (0 for local-only, 2MB default for network)
    */
   record(
-    maxEvents: number = 1024,
+    maxEvents: number = 100_000,
     maxPacketBytes: number = Sim.NETWORK_MAX_PACKET_BYTES,
   ) {
     const serializer = this.#serialize ? this.#serialize() : null;
@@ -276,8 +283,10 @@ export class Sim {
 
   /**
    * Load a tape
+   * @param tape The tape data to load
+   * @param options Optional configuration for checkpoints during playback
    */
-  loadTape(tape: Uint8Array) {
+  loadTape(tape: Uint8Array, options?: LoadTapeOptions) {
     const tapePtr = this.wasm.alloc(tape.byteLength);
     assert(
       tapePtr > 0,
@@ -296,7 +305,14 @@ export class Sim {
     if (this.isRecording) {
       this.wasm.stop_recording();
     }
-    const result = this.wasm.load_tape(tapePtr, tape.byteLength);
+    const checkpointInterval = options?.checkpointInterval ?? 0;
+    const checkpointMaxSize = options?.checkpointMaxSize ?? 10 * 1024 * 1024;
+    const result = this.wasm.load_tape(
+      tapePtr,
+      tape.byteLength,
+      checkpointInterval,
+      checkpointMaxSize,
+    );
     assert(result === 0, `failed to load tape, error code=${result}`);
 
     // free the allocated memory

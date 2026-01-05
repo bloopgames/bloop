@@ -264,6 +264,7 @@ pub const Tape = struct {
     pub fn append_event(self: *Tape, event: Event) !void {
         const header = self.get_header();
         if (header.event_count >= header.max_events) {
+            log("Tape event buffer full: {} events", .{header.max_events});
             return error.OutOfMemory;
         }
         const event_size = @sizeOf(Event);

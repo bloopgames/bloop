@@ -601,4 +601,55 @@ describe("tapes", () => {
       // upon receiving the packet with the last 3 frames, rollback should happen
     });
   });
+
+  describe("checkpoint snapshots", () => {
+    it("subsequent seeks use checkpoints for faster performance", async () => {
+      const game = Bloop.create({
+        bag: { value: 0 },
+      });
+
+      game.system("inc", {
+        update({ bag }) {
+          bag.value++;
+        },
+      });
+
+      const { sim } = await mount(game, {
+        tape: {
+          maxEvents: 50000,
+        },
+      });
+
+      // Advance to frame 1000
+      for (let i = 0; i < 1000; i++) {
+        sim.step();
+      }
+
+      expect(game.bag.value).toBe(1000);
+
+      // Save the tape and reload with checkpoint options enabled
+      const tape = sim.saveTape();
+      sim.loadTape(tape, {
+        checkpointInterval: 100,
+        checkpointMaxSize: 10 * 1024 * 1024,
+      });
+
+      // First seek to frame 500 - creates checkpoints at 100, 200, 300, 400
+      const firstSeekStart = performance.now();
+      sim.seek(500);
+      const firstSeekTime = performance.now() - firstSeekStart;
+
+      expect(game.bag.value).toBe(500);
+
+      // Seek to frame 200 - should use checkpoint at 200 (minimal resim)
+      const secondSeekStart = performance.now();
+      sim.seek(200);
+      const secondSeekTime = performance.now() - secondSeekStart;
+
+      expect(game.bag.value).toBe(200);
+
+      // Second seek should be faster since it uses checkpoints
+      expect(secondSeekTime).toBeLessThanOrEqual(firstSeekTime + 5);
+    });
+  });
 });

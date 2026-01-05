@@ -46,7 +46,9 @@ async function loadTape(bytes: Uint8Array, fileName: string) {
   });
 
   // Load the tape and pause playback
-  app.loadTape(bytes);
+  app.loadTape(bytes, {
+    checkpointInterval: 30,
+  });
   app.sim.pause();
 
   const canvas = app.canvas;

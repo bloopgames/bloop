@@ -75,8 +75,15 @@ export type WasmEngine = {
   get_tape_len: () => number;
   /**
    * Loads a tape from the given pointer and length
+   * @param checkpoint_interval Frames between checkpoints (0 = disabled)
+   * @param checkpoint_max_size Max bytes for all checkpoints combined
    */
-  load_tape: (ptr: EnginePointer, len: number) => EngineOk;
+  load_tape: (
+    ptr: EnginePointer,
+    len: number,
+    checkpoint_interval: number,
+    checkpoint_max_size: number,
+  ) => EngineOk;
 
   /**
    * Deinitialize the engine

@@ -170,7 +170,11 @@ pub export fn free(ptr: wasmPointer, size: usize) void {
     wasm_alloc.free(slice[0..size]);
 }
 
-pub export fn start_recording(user_data_len: u32, max_events: u32, max_packet_bytes: u32) u8 {
+pub export fn start_recording(
+    user_data_len: u32,
+    max_events: u32,
+    max_packet_bytes: u32,
+) u8 {
     engine.?.startRecording(user_data_len, max_events, max_packet_bytes) catch |e| {
         switch (e) {
             Engine.RecordingError.AlreadyRecording => {
@@ -218,11 +222,16 @@ pub export fn get_tape_len() u32 {
     return @intCast(buf.len);
 }
 
-pub export fn load_tape(tape_ptr: wasmPointer, tape_len: u32) u8 {
+pub export fn load_tape(
+    tape_ptr: wasmPointer,
+    tape_len: u32,
+    checkpoint_interval: u32,
+    checkpoint_max_size: u32,
+) u8 {
     const tape_buf: [*]u8 = @ptrFromInt(tape_ptr);
     const tape_slice = tape_buf[0..tape_len];
 
-    engine.?.loadTape(tape_slice) catch |e| {
+    engine.?.loadTape(tape_slice, checkpoint_interval, checkpoint_max_size) catch |e| {
         switch (e) {
             error.CurrentlyRecording => {
                 wasm_log("Cannot load tape while recording");

@@ -418,7 +418,13 @@ pub const Engine = struct {
     }
 
     /// Load a tape from raw bytes (enters replay mode)
-    pub fn loadTape(self: *Engine, tape_buf: []u8) !void {
+    pub fn loadTape(self: *Engine, tape_buf: []u8, checkpoint_interval: u32, checkpoint_max_size: u32) !void {
+        // Clear checkpoints from previous tape
+        self.vcr.clearCheckpoints();
+
+        // Configure checkpoints for seek performance optimization
+        self.vcr.configureCheckpoints(checkpoint_interval, checkpoint_max_size);
+
         const snapshot = try self.vcr.loadTape(tape_buf);
 
         // Restore basic Sim state (time, inputs, events, net_ctx)
@@ -604,7 +610,15 @@ pub const Engine = struct {
         if (self.vcr.is_recording) {
             // peer_id is at byte[1] in the packet header
             const peer_id: u8 = slice[1];
-            self.vcr.recordPacket(self.sim.time.frame, peer_id, slice);
+            if (!self.vcr.recordPacket(self.sim.time.frame, peer_id, slice)) {
+                // Packet buffer full - stop recording gracefully
+                self.stopRecording();
+                if (self.sim.callbacks.on_tape_full) |on_tape_full| {
+                    on_tape_full();
+                } else {
+                    Log.log("Tape full (packet buffer), recording stopped (no onTapeFull callback registered)", .{});
+                }
+            }
         }
 
         // Process packet synchronously while memory is still valid
@@ -749,6 +763,7 @@ pub const Engine = struct {
         }
 
         const snapshot = self.vcr.closestSnapshot(frame);
+        Log.log("Seeking to frame {} using snapshot at frame {}", .{ frame, snapshot.time.frame });
         self.sim.restore(snapshot);
 
         // Remember if we were already replaying (from loadTape)
@@ -760,6 +775,12 @@ pub const Engine = struct {
         // Advance to the desired frame using Engine.advance()
         // advance() handles tape event replay via replay_tape_inputs()
         while (self.sim.time.frame < frame) {
+            // Create checkpoint at interval boundaries during resimulation
+            if (self.vcr.shouldCheckpoint(self.sim.time.frame)) {
+                const snap = self.sim.take_snapshot(self.sim.getUserDataLen()) catch @panic("Failed to create checkpoint during seek");
+                self.vcr.storeCheckpoint(self.sim.time.frame, snap);
+            }
+
             const count = self.advance(hz);
             if (count == 0) {
                 @panic("Failed to advance frame during seek");

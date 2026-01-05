@@ -159,7 +159,7 @@ function calculateTapeConfig(tape?: TapeOptions): {
   let maxEvents: number;
 
   if (!tape) {
-    maxEvents = 1024; // default
+    maxEvents = 100_000; // default (~15 minutes at typical usage)
   } else if ("maxEvents" in tape) {
     maxEvents = tape.maxEvents;
   } else {
@@ -169,8 +169,10 @@ function calculateTapeConfig(tape?: TapeOptions): {
     maxEvents = Math.ceil(tape.duration * 60 * avgEvents);
   }
 
+  const localOnly = tape?.localOnly ?? false;
+
   // Default to network mode (2MB), localOnly mode uses 0 bytes
-  const maxPacketBytes = tape?.localOnly ? 0 : Sim.NETWORK_MAX_PACKET_BYTES;
+  const maxPacketBytes = localOnly ? 0 : Sim.NETWORK_MAX_PACKET_BYTES;
 
   return { maxEvents, maxPacketBytes };
 }
