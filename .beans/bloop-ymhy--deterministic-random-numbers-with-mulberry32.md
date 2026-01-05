@@ -3,9 +3,9 @@
 title: Deterministic random numbers with mulberry32
 status: todo
 type: feature
-priority: high
+priority: normal
 created_at: 2025-12-22T17:01:39Z
-updated_at: 2025-12-23T17:18:36Z
+updated_at: 2026-01-05T05:58:11Z
 blocking:
     - bloop-8hli
 ---

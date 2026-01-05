@@ -3,9 +3,9 @@
 title: 'Documentation: Before/after snake game'
 status: todo
 type: task
-priority: high
+priority: normal
 created_at: 2025-12-16T22:55:44Z
-updated_at: 2025-12-23T17:16:45Z
+updated_at: 2026-01-05T05:58:11Z
 parent: bloop-52uc
 ---
 

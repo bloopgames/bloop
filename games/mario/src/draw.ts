@@ -164,7 +164,10 @@ export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
 
   // Update title text based on phase
   if (bag.phase === "title") {
-    state.subtitleText.text = "[Space] Local  [Enter] Online";
+    const isMobile = toodle.resolution.width < toodle.resolution.height;
+    state.subtitleText.text = isMobile
+      ? "Tap to find opponent"
+      : "[Enter/Click] Online  [Space] Local";
   } else if (bag.phase === "waiting") {
     state.subtitleText.text = "Waiting for opponent...";
   }
