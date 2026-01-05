@@ -59,7 +59,7 @@ let networkJoined = false;
 // Debug: Press R to start recording mid-game
 window.addEventListener("keydown", (e) => {
   if (e.key === "r" && !app.sim.isRecording) {
-    app.sim.record();
+    app.sim.record(100_000);
     console.log("Started recording at frame", app.sim.time.frame);
   }
 });

@@ -76,7 +76,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   // Right bar: rollback depth (online) or snapshot size (offline)
   // For now, we don't have rollback depth exposed, so use a placeholder
   const rightValue = isOnline ? 0 : snapshotSize;
-  const rightMax = isOnline ? 10 : 10000; // 10 frames rollback or 10KB
+  const rightMax = isOnline ? 10 : 10000; // 10k frames rollback or 10KB
   const rightLabel = isOnline ? "RB" : "KB";
 
   const gameClassName = hmrFlash ? "letterboxed-game hmr-flash" : "letterboxed-game";

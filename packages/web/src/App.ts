@@ -1,4 +1,10 @@
-import { type Bloop, type MountOptions, mount, type Sim } from "@bloopjs/bloop";
+import {
+  type Bloop,
+  type LoadTapeOptions,
+  type MountOptions,
+  mount,
+  type Sim,
+} from "@bloopjs/bloop";
 import type { Key } from "@bloopjs/engine";
 import { mouseButtonCodeToMouseButton, readTapeHeader } from "@bloopjs/engine";
 import { DebugUi, type DebugUiOptions } from "./debugui/mod.ts";
@@ -29,6 +35,8 @@ export type StartOptions = {
   brokerUrl?: string;
   /** Enable debug UI with optional configuration */
   debugUi?: boolean | DebugUiOptions;
+  /** Tape recording options */
+  tape?: MountOptions["tape"];
 };
 
 const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
@@ -137,9 +145,9 @@ export class App {
   }
 
   /** Load a tape for replay */
-  loadTape(tape: Uint8Array): void {
+  loadTape(tape: Uint8Array, options?: LoadTapeOptions): void {
     const header = readTapeHeader(tape);
-    this.sim.loadTape(tape);
+    this.sim.loadTape(tape, options);
     this.sim.seek(header.startFrame);
     this.sim.pause();
 
