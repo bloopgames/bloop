@@ -565,10 +565,10 @@ pub const Engine = struct {
 
     /// Build an outbound packet for a target peer
     pub fn buildOutboundPacket(self: *Engine, target_peer: u8) void {
-        const match_frame: u16 = if (self.session.active)
-            @intCast(self.session.getMatchFrame(self.sim.time.frame))
+        const match_frame: u32 = if (self.session.active)
+            self.session.getMatchFrame(self.sim.time.frame)
         else
-            @intCast(self.sim.time.frame);
+            self.sim.time.frame;
         self.net.buildOutboundPacket(target_peer, match_frame) catch {
             Log.log("Failed to build outbound packet for peer {}", .{target_peer});
             @panic("Failed to build outbound packet");
@@ -667,8 +667,7 @@ pub const Engine = struct {
 
         // If in a session, extend unacked window for packet sending to peers
         if (self.session.active) {
-            const match_frame_u16: u16 = @intCast(match_frame);
-            self.net.extendUnackedWindow(match_frame_u16);
+            self.net.extendUnackedWindow(match_frame);
         }
     }
 
@@ -844,7 +843,8 @@ pub const Engine = struct {
 
         // Trim our unacked buffer up to the acked frame (skip if sentinel value)
         if (header.frame_ack != 0xFFFF) {
-            self.net.peer_unacked[header.peer_id].trimAcked(header.frame_ack);
+            // Reconstruct full u32 frame from header
+            self.net.peer_unacked[header.peer_id].trimAcked(header.fullFrameAck());
         }
 
         // Decode and store events in InputBuffer
@@ -865,13 +865,15 @@ pub const Engine = struct {
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
             if (wire_event.frame > old_seq) {
+                // Reconstruct full u32 frame from u16 + base_frame_high
+                const full_frame = header.toFullFrame(wire_event.frame);
                 Log.debug("Processing input event from packet: peer={} match_frame={} engine_frame={} kind={}", .{
                     header.peer_id,
-                    wire_event.frame,
+                    full_frame,
                     self.sim.time.frame,
                     input_event.kind,
                 });
-                self.input_buffer.emit(header.peer_id, wire_event.frame, &[_]Event{input_event});
+                self.input_buffer.emit(header.peer_id, full_frame, &[_]Event{input_event});
             }
 
             offset += Transport.WIRE_EVENT_SIZE;

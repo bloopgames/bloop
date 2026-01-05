@@ -105,13 +105,12 @@ pub const Snapshot = extern struct {
 pub const TapeHeader = extern struct {
     // magic numbers
     magic: u32 = 0x54415045, // "TAPE" in ASCII
-    version: u16 = 1, // v1: packet support
-    reserved: u16 = 0,
+    version: u16 = 2, // v2: u32 frame_count (was u16 in v1)
+    event_count: u16 = 0, // moved up from after frame_count
 
     // frame and event data
     start_frame: u32 = 0,
-    frame_count: u16 = 0,
-    event_count: u16 = 0,
+    frame_count: u32 = 0, // expanded from u16 to u32
     max_events: u32 = 0,
 
     // offsets for events
@@ -215,8 +214,8 @@ pub const Tape = struct {
         if (header.magic != 0x54415045) {
             return TapeError.InvalidTape;
         }
-        // Support v0 (no packets) and v1 (with packets)
-        if (header.version > 1) {
+        // Support v0 (no packets), v1 (with packets), v2 (u32 frame_count)
+        if (header.version > 2) {
             return TapeError.UnsupportedVersion;
         }
         // Upgrade v0 tapes to have empty packet section

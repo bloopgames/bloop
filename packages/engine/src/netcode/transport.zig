@@ -18,10 +18,10 @@ pub const MAX_PEERS = IB.MAX_PEERS;
 // ─────────────────────────────────────────────────────────────
 
 /// Wire format version
-pub const WIRE_VERSION: u8 = 1;
+pub const WIRE_VERSION: u8 = 2;
 
 /// Packet header size in bytes
-pub const HEADER_SIZE: usize = 8;
+pub const HEADER_SIZE: usize = 10;
 
 /// Wire event size in bytes
 pub const WIRE_EVENT_SIZE: usize = 9;
@@ -35,17 +35,19 @@ pub const DecodeError = error{
     InvalidEventCount,
 };
 
-/// Packet header (8 bytes)
+/// Packet header (10 bytes)
 /// Layout:
-///   [0]    version      - Wire format version
-///   [1]    peer_id      - Sender's peer ID (0-11)
-///   [2-3]  frame_ack    - Highest frame received from recipient (little-endian)
-///   [4-5]  frame_seq    - Sender's current match frame (little-endian)
-///   [6]    event_count  - Number of events in packet
-///   [7]    flags        - Reserved for future use
+///   [0]    version         - Wire format version
+///   [1]    peer_id         - Sender's peer ID (0-11)
+///   [2-3]  base_frame_high - Upper 16 bits of u32 match frame (little-endian)
+///   [4-5]  frame_ack       - Highest frame received from recipient, lower 16 bits (little-endian)
+///   [6-7]  frame_seq       - Sender's current match frame, lower 16 bits (little-endian)
+///   [8]    event_count     - Number of events in packet
+///   [9]    flags           - Reserved for future use
 pub const PacketHeader = struct {
     version: u8,
     peer_id: u8,
+    base_frame_high: u16,
     frame_ack: u16,
     frame_seq: u16,
     event_count: u8,
@@ -55,10 +57,11 @@ pub const PacketHeader = struct {
         std.debug.assert(buf.len >= HEADER_SIZE);
         buf[0] = self.version;
         buf[1] = self.peer_id;
-        std.mem.writeInt(u16, buf[2..4], self.frame_ack, .little);
-        std.mem.writeInt(u16, buf[4..6], self.frame_seq, .little);
-        buf[6] = self.event_count;
-        buf[7] = self.flags;
+        std.mem.writeInt(u16, buf[2..4], self.base_frame_high, .little);
+        std.mem.writeInt(u16, buf[4..6], self.frame_ack, .little);
+        std.mem.writeInt(u16, buf[6..8], self.frame_seq, .little);
+        buf[8] = self.event_count;
+        buf[9] = self.flags;
     }
 
     pub fn decode(buf: []const u8) DecodeError!PacketHeader {
@@ -68,11 +71,38 @@ pub const PacketHeader = struct {
         return PacketHeader{
             .version = version,
             .peer_id = buf[1],
-            .frame_ack = std.mem.readInt(u16, buf[2..4], .little),
-            .frame_seq = std.mem.readInt(u16, buf[4..6], .little),
-            .event_count = buf[6],
-            .flags = buf[7],
+            .base_frame_high = std.mem.readInt(u16, buf[2..4], .little),
+            .frame_ack = std.mem.readInt(u16, buf[4..6], .little),
+            .frame_seq = std.mem.readInt(u16, buf[6..8], .little),
+            .event_count = buf[8],
+            .flags = buf[9],
         };
+    }
+
+    /// Reconstruct full u32 frame from low 16 bits and base_frame_high.
+    /// Handles epoch boundary: if low16 appears to be from previous epoch
+    /// (more than half the u16 range behind frame_seq), adjust high bits.
+    pub fn toFullFrame(self: PacketHeader, low16: u16) u32 {
+        const high: u32 = @as(u32, self.base_frame_high) << 16;
+        const low: u32 = @as(u32, low16);
+
+        // Check for epoch boundary: if low16 > frame_seq by more than half range,
+        // it's from the previous epoch
+        if (low16 > self.frame_seq and (low16 - self.frame_seq) > 32768) {
+            // Previous epoch - subtract 1 from high bits (wrapping)
+            return (high -% (1 << 16)) | low;
+        }
+        return high | low;
+    }
+
+    /// Get the full u32 frame_seq
+    pub fn fullFrameSeq(self: PacketHeader) u32 {
+        return (@as(u32, self.base_frame_high) << 16) | @as(u32, self.frame_seq);
+    }
+
+    /// Get the full u32 frame_ack (handles epoch boundary)
+    pub fn fullFrameAck(self: PacketHeader) u32 {
+        return self.toFullFrame(self.frame_ack);
     }
 };
 
@@ -202,10 +232,10 @@ pub fn packetSize(event_count: usize) usize {
 /// Per-peer unacked window tracking (transient state for packet building)
 /// Connection state (seq, ack, connected) now lives in NetCtx
 pub const PeerUnackedWindow = struct {
-    /// Oldest unacked frame (in match frame space)
-    unacked_start: u16 = 0,
-    /// Next frame to be added (in match frame space)
-    unacked_end: u16 = 0,
+    /// Oldest unacked frame (in match frame space, full u32)
+    unacked_start: u32 = 0,
+    /// Next frame to be added (in match frame space, full u32)
+    unacked_end: u32 = 0,
 
     /// Reset window when peer disconnects or session ends
     pub fn reset(self: *PeerUnackedWindow) void {
@@ -215,14 +245,14 @@ pub const PeerUnackedWindow = struct {
 
     /// Extend the unacked window to include a new frame.
     /// Events are already in InputBuffer from append_event - this just tracks the window.
-    pub fn extendUnacked(self: *PeerUnackedWindow, match_frame: u16) void {
+    pub fn extendUnacked(self: *PeerUnackedWindow, match_frame: u32) void {
         if (match_frame >= self.unacked_end) {
             self.unacked_end = match_frame + 1;
         }
     }
 
     /// Trim unacked frames that have been acknowledged
-    pub fn trimAcked(self: *PeerUnackedWindow, ack_frame: u16) void {
+    pub fn trimAcked(self: *PeerUnackedWindow, ack_frame: u32) void {
         // Advance start to one past the acked frame
         if (ack_frame >= self.unacked_start) {
             self.unacked_start = ack_frame + 1;
@@ -230,7 +260,7 @@ pub const PeerUnackedWindow = struct {
     }
 
     /// Get the number of unacked frames
-    pub fn unackedCount(self: *const PeerUnackedWindow) u16 {
+    pub fn unackedCount(self: *const PeerUnackedWindow) u32 {
         if (self.unacked_end <= self.unacked_start) return 0;
         return self.unacked_end - self.unacked_start;
     }
@@ -281,7 +311,7 @@ pub const PacketBuilder = struct {
 
     /// Extend unacked window for all connected peers.
     /// Events are already in InputBuffer from append_event - this just tracks the window.
-    pub fn extendUnackedWindow(self: *PacketBuilder, match_frame: u16) void {
+    pub fn extendUnackedWindow(self: *PacketBuilder, match_frame: u32) void {
         const net_ctx = self.net_ctx orelse return;
         const local_peer_id = net_ctx.local_peer_id;
 
@@ -295,7 +325,7 @@ pub const PacketBuilder = struct {
 
     /// Build outbound packet for a target peer.
     /// Reads events from InputBuffer via the unacked window.
-    pub fn buildOutboundPacket(self: *PacketBuilder, target_peer: u8, current_match_frame: u16) !void {
+    pub fn buildOutboundPacket(self: *PacketBuilder, target_peer: u8, current_match_frame: u32) !void {
         if (target_peer >= MAX_PEERS) {
             Log.log("buildOutboundPacket: target_peer {} >= MAX_PEERS", .{target_peer});
             @panic("buildOutboundPacket: target_peer >= MAX_PEERS");
@@ -353,8 +383,9 @@ pub const PacketBuilder = struct {
         const header = PacketHeader{
             .version = WIRE_VERSION,
             .peer_id = local_peer_id,
+            .base_frame_high = @truncate(current_match_frame >> 16),
             .frame_ack = remote_seq,
-            .frame_seq = current_match_frame,
+            .frame_seq = @truncate(current_match_frame),
             .event_count = @intCast(total_events),
             .flags = 0,
         };
@@ -368,7 +399,8 @@ pub const PacketBuilder = struct {
             const events = ib.get(local_peer_id, frame);
             for (events) |event| {
                 if (events_written >= total_events) break :outer;
-                const wire_event = WireEvent.fromEvent(event, frame);
+                // Truncate frame to u16 for wire format (receiver uses base_frame_high to reconstruct)
+                const wire_event = WireEvent.fromEvent(event, @truncate(frame));
                 wire_event.encode(buf[offset .. offset + WIRE_EVENT_SIZE]);
                 offset += WIRE_EVENT_SIZE;
                 events_written += 1;
@@ -387,6 +419,7 @@ test "PacketHeader encode/decode round-trip" {
     const header = PacketHeader{
         .version = WIRE_VERSION,
         .peer_id = 3,
+        .base_frame_high = 42,
         .frame_ack = 1234,
         .frame_seq = 5678,
         .event_count = 42,
@@ -399,6 +432,7 @@ test "PacketHeader encode/decode round-trip" {
     const decoded = try PacketHeader.decode(&buf);
     try std.testing.expectEqual(header.version, decoded.version);
     try std.testing.expectEqual(header.peer_id, decoded.peer_id);
+    try std.testing.expectEqual(header.base_frame_high, decoded.base_frame_high);
     try std.testing.expectEqual(header.frame_ack, decoded.frame_ack);
     try std.testing.expectEqual(header.frame_seq, decoded.frame_seq);
     try std.testing.expectEqual(header.event_count, decoded.event_count);
@@ -406,8 +440,64 @@ test "PacketHeader encode/decode round-trip" {
 }
 
 test "PacketHeader decode rejects wrong version" {
-    var buf: [HEADER_SIZE]u8 = .{ 99, 0, 0, 0, 0, 0, 0, 0 }; // version 99
+    var buf: [HEADER_SIZE]u8 = .{ 99, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // version 99
     try std.testing.expectError(DecodeError.UnsupportedVersion, PacketHeader.decode(&buf));
+}
+
+test "PacketHeader toFullFrame normal case" {
+    const header = PacketHeader{
+        .version = WIRE_VERSION,
+        .peer_id = 0,
+        .base_frame_high = 1, // epoch 1 = frames 65536+
+        .frame_ack = 100,
+        .frame_seq = 200,
+        .event_count = 0,
+        .flags = 0,
+    };
+
+    // frame_seq should be 65536 + 200 = 65736
+    try std.testing.expectEqual(@as(u32, 65736), header.fullFrameSeq());
+    // frame_ack should be 65536 + 100 = 65636
+    try std.testing.expectEqual(@as(u32, 65636), header.fullFrameAck());
+    // arbitrary event frame in same epoch
+    try std.testing.expectEqual(@as(u32, 65686), header.toFullFrame(150));
+}
+
+test "PacketHeader toFullFrame epoch boundary" {
+    // Scenario: frame_seq just wrapped to 0, but frame_ack is still in previous epoch
+    const header = PacketHeader{
+        .version = WIRE_VERSION,
+        .peer_id = 0,
+        .base_frame_high = 1, // current epoch is 1
+        .frame_ack = 65500, // way higher than frame_seq, so must be previous epoch
+        .frame_seq = 100, // just wrapped
+        .event_count = 0,
+        .flags = 0,
+    };
+
+    // frame_seq is in epoch 1: 65536 + 100 = 65636
+    try std.testing.expectEqual(@as(u32, 65636), header.fullFrameSeq());
+    // frame_ack (65500) > frame_seq (100) by more than 32768, so it's previous epoch
+    // Previous epoch is 0: 0 + 65500 = 65500
+    try std.testing.expectEqual(@as(u32, 65500), header.fullFrameAck());
+}
+
+test "PacketHeader toFullFrame high frame values" {
+    // Test with high epoch values to ensure no overflow
+    const header = PacketHeader{
+        .version = WIRE_VERSION,
+        .peer_id = 0,
+        .base_frame_high = 0xFFFF, // max epoch
+        .frame_ack = 1000,
+        .frame_seq = 2000,
+        .event_count = 0,
+        .flags = 0,
+    };
+
+    // frame_seq: 0xFFFF0000 + 2000 = 4294903888
+    try std.testing.expectEqual(@as(u32, 0xFFFF0000 + 2000), header.fullFrameSeq());
+    // frame_ack in same epoch
+    try std.testing.expectEqual(@as(u32, 0xFFFF0000 + 1000), header.fullFrameAck());
 }
 
 test "PacketHeader decode rejects small buffer" {
@@ -514,10 +604,10 @@ test "WireEvent MouseMove clamps extreme values" {
 }
 
 test "packetSize calculation" {
-    try std.testing.expectEqual(@as(usize, 8), packetSize(0)); // header only
-    try std.testing.expectEqual(@as(usize, 17), packetSize(1)); // 8 + 9
-    try std.testing.expectEqual(@as(usize, 548), packetSize(60)); // 8 + 540
-    try std.testing.expectEqual(@as(usize, 2303), packetSize(255)); // 8 + 2295
+    try std.testing.expectEqual(@as(usize, 10), packetSize(0)); // header only
+    try std.testing.expectEqual(@as(usize, 19), packetSize(1)); // 10 + 9
+    try std.testing.expectEqual(@as(usize, 550), packetSize(60)); // 10 + 540
+    try std.testing.expectEqual(@as(usize, 2305), packetSize(255)); // 10 + 2295
 }
 
 // ─────────────────────────────────────────────────────────────
