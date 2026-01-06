@@ -456,6 +456,17 @@ pub const Engine = struct {
             defer snapshot.deinit(self.allocator);
             try self.vcr.startRecording(start_frame, snapshot, max_events, max_packet_bytes);
         }
+
+        // Capture any pending platform events for the current frame.
+        // These were emitted before recording started (observer was null),
+        // but need to be in the tape for proper replay.
+        const pending_events = self.platform_buffer.get(start_frame);
+        for (pending_events) |event| {
+            self.vcr.tape.?.append_event(event) catch {
+                @panic("Failed to append pending platform event to tape");
+            };
+        }
+
         self.enableTapeObserver();
     }
 

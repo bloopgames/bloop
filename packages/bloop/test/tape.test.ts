@@ -772,4 +772,127 @@ describe("tapes", () => {
       expect(secondSeekTime).toBeLessThanOrEqual(firstSeekTime + 5);
     });
   });
+
+  describe("pending platform events", () => {
+    it("captures platform events emitted before recording starts", async () => {
+      // This tests the scenario from onSessionStart() callback:
+      // 1. Network events are emitted (peer:join, session:start)
+      // 2. Recording starts inside the callback
+      // 3. The events should be captured in the tape even though
+      //    they were emitted before the observer was enabled
+
+      const game = Bloop.create({
+        bag: { isInSession: false as boolean, localPeerId: -1 },
+      });
+
+      game.system("session-tracker", {
+        update({ bag, net }) {
+          bag.isInSession = net.isInSession;
+          bag.localPeerId = net.localPeerId;
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+
+      // Emit session events BEFORE starting recording
+      // This simulates what happens in scaffold.ts onDataChannelOpen
+      sim.emit.network("peer:join", { peerId: 0 });
+      sim.emit.network("peer:join", { peerId: 1 });
+      sim.emit.network("peer:assign_local_id", { peerId: 0 });
+      sim.emit.network("session:start", {});
+
+      // Now start recording (inside the "onSessionStart" callback)
+      sim.record(10000);
+
+      // Step to process the events
+      sim.step();
+
+      // Verify session is active
+      expect(game.bag.isInSession).toBe(true);
+      expect(game.bag.localPeerId).toBe(0);
+
+      // Save and load the tape
+      const tape = sim.saveTape();
+
+      // Create a new game for replay
+      const replayGame = Bloop.create({
+        bag: { isInSession: false as boolean, localPeerId: -1 },
+      });
+      replayGame.system("session-tracker", {
+        update({ bag, net }) {
+          bag.isInSession = net.isInSession;
+          bag.localPeerId = net.localPeerId;
+        },
+      });
+
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+
+      // Load the tape - snapshot is pre-session state
+      replaySim.loadTape(tape);
+      expect(replayGame.bag.isInSession).toBe(false);
+
+      // Step to replay the events from the tape
+      replaySim.step();
+
+      // Session should be active after replaying the events
+      expect(replayGame.bag.isInSession).toBe(true);
+      expect(replayGame.bag.localPeerId).toBe(0);
+    });
+
+    it.skip("captures input events emitted before recording starts", async () => {
+      // TODO: Input events go through sim.events which doesn't have an observer.
+      // We need a similar fix to capture pending input events at recording start.
+      const game = Bloop.create({
+        bag: { spacePressed: false as boolean },
+      });
+
+      game.system("input-tracker", {
+        keydown({ bag, event }) {
+          if (event.key === "Space") {
+            bag.spacePressed = true;
+          }
+        },
+      });
+
+      const { sim } = await mount(game, { startRecording: false });
+
+      // Emit input event before recording
+      sim.emit.keydown("Space");
+
+      // Start recording
+      sim.record(10000);
+
+      // Step to process events
+      sim.step();
+
+      // During live play, input should be processed
+      expect(game.bag.spacePressed).toBe(true);
+
+      // Save and reload
+      const tape = sim.saveTape();
+
+      const replayGame = Bloop.create({
+        bag: { spacePressed: false as boolean },
+      });
+      replayGame.system("input-tracker", {
+        keydown({ bag, event }) {
+          if (event.key === "Space") {
+            bag.spacePressed = true;
+          }
+        },
+      });
+
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+
+      replaySim.loadTape(tape);
+      replaySim.step();
+
+      // This currently fails - pending input events not captured
+      expect(replayGame.bag.spacePressed).toBe(true);
+    });
+  });
 });
