@@ -841,9 +841,7 @@ describe("tapes", () => {
       expect(replayGame.bag.localPeerId).toBe(0);
     });
 
-    it.skip("captures input events emitted before recording starts", async () => {
-      // TODO: Input events go through sim.events which doesn't have an observer.
-      // We need a similar fix to capture pending input events at recording start.
+    it("captures input events emitted before recording starts", async () => {
       const game = Bloop.create({
         bag: { spacePressed: false as boolean },
       });
@@ -891,7 +889,7 @@ describe("tapes", () => {
       replaySim.loadTape(tape);
       replaySim.step();
 
-      // This currently fails - pending input events not captured
+      // Pending input events should now be captured and replayed
       expect(replayGame.bag.spacePressed).toBe(true);
     });
   });

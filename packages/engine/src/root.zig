@@ -467,6 +467,18 @@ pub const Engine = struct {
             };
         }
 
+        // Capture any pending input events for the upcoming frame.
+        // Input events emitted at frame N go to match_frame N+1, so we need
+        // to capture events at start_frame + 1.
+        const pending_match_frame = start_frame + 1;
+        const local_peer = self.sim.net_ctx.local_peer_id;
+        const pending_inputs = self.input_buffer.get(local_peer, pending_match_frame);
+        for (pending_inputs) |event| {
+            if (!self.vcr.recordEvent(event)) {
+                @panic("Failed to record pending input event to tape");
+            }
+        }
+
         self.enableTapeObserver();
     }
 
