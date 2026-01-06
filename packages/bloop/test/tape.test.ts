@@ -715,7 +715,7 @@ describe("tapes", () => {
 
       // Replay next 3 frames - with input buffer snapshots, replay correctly
       // processes peer inputs that were unconfirmed when recording started
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 3; i++) {
         replaySim.step();
       }
       expect(replayGame.bag).toEqual({ p0Score: 6, p1Score: 2 });

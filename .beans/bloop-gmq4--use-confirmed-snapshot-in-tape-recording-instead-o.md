@@ -1,11 +1,11 @@
 ---
 # bloop-gmq4
 title: Use confirmed_snapshot in tape recording instead of prediction frame snapshot
-status: todo
+status: completed
 type: feature
 priority: normal
 created_at: 2026-01-06T05:48:49Z
-updated_at: 2026-01-06T05:50:56Z
+updated_at: 2026-01-06T18:17:56Z
 parent: bloop-7ivl
 blocking:
     - bloop-9jk8

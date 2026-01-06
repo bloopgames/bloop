@@ -221,7 +221,7 @@ pub const TapeHeader = extern struct {
 
     // frame and event data
     start_frame: u32 = 0,
-    frame_count: u32 = 0, // expanded from u16 to u32
+    frame_count: u32 = 0,
     max_events: u32 = 0,
 
     // offsets for events
@@ -268,7 +268,7 @@ pub const Tape = struct {
     /// Default packet buffer size (2mb for network sessions, override with 0 for local recordings if desired)
     pub const DEFAULT_MAX_PACKET_BYTES: u32 = 2 * 1024 * 1024;
 
-    pub fn init(gpa: std.mem.Allocator, snapshot: *Snapshot, max_events: u32, max_packet_bytes: u32) !Tape {
+    pub fn init(gpa: std.mem.Allocator, tape_start_frame: u32, snapshot: *Snapshot, max_events: u32, max_packet_bytes: u32) !Tape {
         // Calculate aligned offsets and sizes
         const header_offset = 0;
         const header_size = @sizeOf(TapeHeader);
@@ -296,7 +296,7 @@ pub const Tape = struct {
         const header = TapeHeader{
             .event_count = 0,
             .max_events = max_events,
-            .start_frame = snapshot.time.frame,
+            .start_frame = tape_start_frame,
             .frame_count = 0,
             .snapshot_offset = @intCast(snapshot_offset),
             .user_data_offset = @intCast(user_data_offset),
@@ -614,7 +614,7 @@ test "tape can store user data" {
     @memcpy(snapshot.user_data(), user_data[0..]);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 0);
     defer tape.free(std.testing.allocator);
 
     const snap = tape.closest_snapshot(0);
@@ -629,7 +629,7 @@ test "tape can index events by frame" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 5, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 5, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -686,7 +686,7 @@ test "tape can index events by frame with unaligned user data" {
     const snapshot = try Snapshot.init(std.testing.allocator, 2, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -700,7 +700,7 @@ test "tape header is updated with event count" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 3, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 3, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.append_event(Event.keyDown(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
@@ -716,7 +716,7 @@ test "tape can be serialized and deserialized" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 5, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 5, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -762,7 +762,7 @@ test "append_packet stores data correctly" {
     defer snapshot.deinit(std.testing.allocator);
 
     // Small packet buffer for testing
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     const packet_data = [_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05 };
@@ -779,7 +779,7 @@ test "get_packets_for_frame returns correct packets" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     // Add packets for different frames
@@ -833,7 +833,7 @@ test "packet buffer overflow returns error" {
     defer snapshot.deinit(std.testing.allocator);
 
     // Very small buffer: only room for one small packet
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 16);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 16);
     defer tape.free(std.testing.allocator);
 
     // First packet should fit (8 byte header + 4 byte data = 12 bytes)
@@ -849,7 +849,7 @@ test "tape with packets can be serialized and deserialized" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -884,7 +884,7 @@ test "multiple packets per frame are all stored and retrieved" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     // Add 3 packets for the same frame

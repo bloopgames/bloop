@@ -318,21 +318,6 @@ pub const Engine = struct {
                 @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
             }
 
-            // During tape replay with no confirmed snapshot (tape started mid-session),
-            // we can't rollback because we don't have the game state at the session start.
-            // Instead, we apply "past" inputs at the current frame. This is a compromise
-            // that ensures inputs are applied, even if at slightly different frames.
-            if (self.confirmed_snapshot == null and self.vcr.is_replaying) {
-                // Apply any unconfirmed remote inputs that we just received
-                // by emitting them at the upcoming frame so they're processed in this tick
-                self.applyPastInputsAtCurrentFrame(current_confirmed, next_confirm);
-                // Update confirmed_frame without doing rollback
-                self.session.confirmFrame(next_confirm, 0);
-                // Just tick normally
-                self.sim.tick(false);
-                return;
-            }
-
             // 1. Restore to confirmed state
             // Note: peers array contains live connection tracking (seq/ack) that must NOT roll back.
             // Network events in PlatformEventBuffer are replayed for topology (peer join/leave),
@@ -431,14 +416,46 @@ pub const Engine = struct {
 
     /// Start recording to a new tape
     pub fn startRecording(self: *Engine, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
-        const snapshot = self.sim.take_snapshot(user_data_len) catch {
-            return RecordingError.OutOfMemory;
-        };
-        defer snapshot.deinit(self.allocator);
+        const start_frame = self.sim.time.frame;
 
-        try self.vcr.startRecording(snapshot, max_events, max_packet_bytes);
+        // If in active session with confirmed_snapshot, stitch together:
+        // - The confirmed game state (from confirmed_snapshot)
+        // - The current input buffer state (with all unconfirmed events)
+        if (self.session.active and self.confirmed_snapshot != null) {
+            const confirmed = self.confirmed_snapshot.?;
 
-        // Enable tape observer to record local inputs
+            // Calculate input buffer size for current match frame
+            const current_match_frame = self.session.getMatchFrame(self.sim.time.frame);
+            const input_buffer_len = self.input_buffer.snapshotSize(current_match_frame);
+
+            // Allocate new snapshot with space for current input buffer
+            const tape_snapshot = Tapes.Snapshot.init(self.allocator, confirmed.user_data_len, input_buffer_len) catch {
+                return RecordingError.OutOfMemory;
+            };
+            defer tape_snapshot.deinit(self.allocator);
+
+            // Copy confirmed snapshot (struct header + user_data) via memcpy
+            const confirmed_bytes: [*]const u8 = @ptrCast(confirmed);
+            const tape_bytes: [*]u8 = @ptrCast(tape_snapshot);
+            const copy_len = @sizeOf(Tapes.Snapshot) + confirmed.user_data_len;
+            @memcpy(tape_bytes[0..copy_len], confirmed_bytes[0..copy_len]);
+
+            // Update input_buffer_len (was overwritten by memcpy)
+            tape_snapshot.input_buffer_len = input_buffer_len;
+
+            // Write current input buffer data
+            if (input_buffer_len > 0) {
+                self.input_buffer.writeSnapshot(current_match_frame, tape_snapshot.input_buffer_data());
+            }
+
+            try self.vcr.startRecording(start_frame, tape_snapshot, max_events, max_packet_bytes);
+        } else {
+            const snapshot = self.sim.take_snapshot(user_data_len) catch {
+                return RecordingError.OutOfMemory;
+            };
+            defer snapshot.deinit(self.allocator);
+            try self.vcr.startRecording(start_frame, snapshot, max_events, max_packet_bytes);
+        }
         self.enableTapeObserver();
     }
 
@@ -473,24 +490,19 @@ pub const Engine = struct {
         }
         self.net.deinit();
 
-        // Reinitialize InputBuffer with session state from snapshot
+        // Session tapes must have input buffer data
+        if (snapshot.input_buffer_len == 0) {
+            @panic("Session tape missing input buffer data");
+        }
+
         // Preserve observer (tape recording) across restore
         const saved_observer = self.input_buffer.observer;
-
-        // If snapshot has input buffer data, it was already restored by sim.restore()
-        // Only do full reinit for v2 snapshots without input buffer data
-        if (snapshot.input_buffer_len == 0) {
-            self.input_buffer.* = .{};
-            self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
-        } else {
-            // For v3 snapshots, just set session_start_frame (peer_confirmed was restored)
-            self.input_buffer.session_start_frame = snapshot.net.session_start_frame;
-        }
+        self.input_buffer.session_start_frame = snapshot.net.session_start_frame;
         self.input_buffer.observer = saved_observer;
 
-        // Initialize session state directly from snapshot
+        // Initialize session state from snapshot
         self.session.start_frame = snapshot.net.session_start_frame;
-        self.session.confirmed_frame = 0;
+        self.session.confirmed_frame = snapshot.time.frame - snapshot.net.session_start_frame;
         self.session.stats = .{};
         self.session.active = true;
 
@@ -500,15 +512,20 @@ pub const Engine = struct {
             .net_ctx = self.sim.net_ctx,
         };
 
-        // For tape replay, we intentionally DON'T take a confirmed_snapshot here.
-        // The tape may start mid-session (match_frame > session_start_frame),
-        // and we don't have the game state at session_start_frame to properly
-        // rollback to. When rollback is triggered, sessionStep will detect
-        // confirmed_snapshot is null and apply past inputs at the current frame.
-        // This is a compromise that ensures inputs are applied even if we can't
-        // rollback to their original frames.
-        //
-        // Note: confirmed_snapshot is already null from earlier in this function.
+        // Take confirmed_snapshot for rollback during replay
+        self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
+
+        // Roll forward from snapshot (confirmed state) to tape start_frame (prediction state)
+        // This happens when recording started mid-session with prediction ahead of confirmed
+        const header = self.vcr.tape.?.get_header();
+        if (header.start_frame > snapshot.time.frame) {
+            while (self.sim.time.frame < header.start_frame) {
+                const count = self.advance(hz);
+                if (count == 0) {
+                    @panic("Failed to advance frame during loadTape roll-forward");
+                }
+            }
+        }
     }
 
     /// Get the current tape buffer (for serialization)
@@ -967,47 +984,6 @@ pub const Engine = struct {
 
             // Write to InputBuffer - tick will read from there
             self.input_buffer.emit(peer_id, match_frame, &[_]Event{event});
-        }
-    }
-
-    /// Apply past inputs at the current frame (for tape replay when rollback isn't possible).
-    /// This is used when a tape starts mid-session and we receive packets confirming
-    /// inputs from before the tape started. We can't rollback to apply them at their
-    /// original frames, so we apply them at the current frame instead.
-    ///
-    /// Only copies NEWLY confirmed inputs (frames from prev_confirmed+1 to next_confirmed)
-    /// to avoid re-copying inputs that were already applied in a previous call.
-    fn applyPastInputsAtCurrentFrame(self: *Engine, prev_confirmed: u32, next_confirmed: u32) void {
-        // Use match_frame + 1 because tick() reads from net_ctx.match_frame which is set
-        // by syncNetCtx() to getMatchFrame() + 1
-        const target_match_frame = self.session.getMatchFrame(self.sim.time.frame) + 1;
-        // Only copy inputs from frames BEFORE the tape start frame
-        // Inputs at or after tape start can be handled via normal replay
-        const tape_start_match_frame = self.vcr.getTapeStartMatchFrame();
-
-        // For each remote peer, copy inputs that were just confirmed
-        for (1..self.input_buffer.peer_count) |peer_idx| {
-            const peer: u8 = @intCast(peer_idx);
-            // Only iterate over newly confirmed frames, capped at tape_start
-            // (inputs at tape_start were unconfirmed at snapshot time but may be confirmed now)
-            const start_frame = prev_confirmed + 1;
-            const max_frame = if (next_confirmed <= tape_start_match_frame) next_confirmed else tape_start_match_frame;
-
-            if (start_frame > max_frame) continue;
-
-            var f: u32 = start_frame;
-            while (f <= max_frame) : (f += 1) {
-                const slot_idx = f % IB.MAX_FRAMES;
-                const slot = &self.input_buffer.slots[peer][slot_idx];
-
-                // Only process if slot is for the correct frame (not stale data)
-                if (slot.match_frame == f) {
-                    for (slot.slice()) |event| {
-                        // Copy this input to the target frame so it gets applied in the upcoming tick
-                        self.input_buffer.emit(peer, target_match_frame, &[_]Event{event});
-                    }
-                }
-            }
         }
     }
 

@@ -52,10 +52,11 @@ pub const VCR = struct {
     }
 
     /// Start recording to a new tape.
+    /// start_frame: The frame number where recording starts (tape header start_frame)
     /// snapshot: Initial state snapshot to store in tape header
     /// max_events: Maximum number of events the tape can hold
     /// max_packet_bytes: Maximum bytes for network packet storage
-    pub fn startRecording(self: *VCR, snapshot: *Tapes.Snapshot, max_events: u32, max_packet_bytes: u32) RecordingError!void {
+    pub fn startRecording(self: *VCR, start_frame: u32, snapshot: *Tapes.Snapshot, max_events: u32, max_packet_bytes: u32) RecordingError!void {
         if (self.is_recording) {
             return RecordingError.AlreadyRecording;
         }
@@ -66,9 +67,10 @@ pub const VCR = struct {
             self.tape = null;
         }
 
-        self.tape = Tapes.Tape.init(self.allocator, snapshot, max_events, max_packet_bytes) catch {
+        self.tape = Tapes.Tape.init(self.allocator, start_frame, snapshot, max_events, max_packet_bytes) catch {
             return RecordingError.OutOfMemory;
         };
+
         self.is_recording = true;
 
         // Start the first frame marker so events are captured correctly
@@ -338,11 +340,11 @@ test "VCR startRecording fails if already recording" {
     const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.is_recording);
 
     // Second call should fail
-    const result = vcr.startRecording(snap, 1024, 0);
+    const result = vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectError(VCR.RecordingError.AlreadyRecording, result);
 }
 
@@ -353,7 +355,7 @@ test "VCR stopRecording" {
     const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.is_recording);
 
     vcr.stopRecording();
@@ -372,7 +374,7 @@ test "VCR hasTape" {
     const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.hasTape());
 }
 
@@ -386,7 +388,7 @@ test "VCR recordEvent" {
     const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
 
     // Recording with tape works
     try std.testing.expectEqual(true, vcr.recordEvent(Event.keyDown(.KeyA, 0, .LocalKeyboard)));
@@ -530,7 +532,7 @@ test "VCR closestSnapshot uses checkpoints" {
     const initial_snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer initial_snap.deinit(std.testing.allocator);
     initial_snap.time.frame = 0;
-    try vcr.startRecording(initial_snap, 1024, 0);
+    try vcr.startRecording(0, initial_snap, 1024, 0);
 
     vcr.configureCheckpoints(100, 10 * 1024 * 1024);
 
