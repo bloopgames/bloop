@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { readTapeHeader } from "@bloopjs/engine";
+import { type Key, readTapeHeader } from "@bloopjs/engine";
 import { assert, Bloop, mount, unwrap } from "../src/mod";
 import { setupGames, setupSession, startOnlineMatch, stepBoth } from "./helper";
 
@@ -595,10 +595,130 @@ describe("tapes", () => {
       expect(header.frameCount).toBe(1002); // 1 initial frame + 1000 steps
     });
 
-    it.skip("regress - handles tape that starts with unconfirmed inputs", () => {
-      // Test case to be added -
-      // start recording after session init with 3 frames of unconfirmed inputs.
-      // upon receiving the packet with the last 3 frames, rollback should happen
+    it("regress - handles tape that starts with unconfirmed inputs", async () => {
+      // Setup games, step a few frames before establishing session
+      const [game0, game1] = setupGames(() => {
+        const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+        game.system("score", {
+          update({ bag, players }) {
+            // TODO: fix workaround for not being able to trigger "down" or up on every frame. see failing test in inputs.test.ts
+            const player0Keys = unwrap(players[0]).keys;
+            const player1Keys = unwrap(players[1]).keys;
+            if (
+              player0Keys.digit0.down ||
+              player0Keys.digit1.down ||
+              player0Keys.digit2.down ||
+              player0Keys.digit3.down ||
+              player0Keys.digit4.down ||
+              player0Keys.digit5.down ||
+              player0Keys.digit6.down
+            )
+              bag.p0Score++;
+
+            if (
+              player1Keys.digit0.down ||
+              player1Keys.digit1.down ||
+              player1Keys.digit2.down ||
+              player1Keys.digit3.down ||
+              player1Keys.digit4.down ||
+              player1Keys.digit5.down ||
+              player1Keys.digit6.down
+            )
+              bag.p1Score++;
+          },
+        });
+        return game;
+      });
+      const { sim: sim0 } = await mount(game0, { startRecording: false });
+      const { sim: sim1 } = await mount(game1, { startRecording: false });
+
+      // Run some frames before session (recording is active but no session)
+      sim0.step();
+      sim1.step();
+      sim0.step();
+      sim1.step();
+      sim0.step();
+      sim1.step();
+
+      const sim0Packets: Uint8Array[] = [];
+      const sim1Packets: Uint8Array[] = [];
+
+      // Get in an online match, step a few frames with delayed packets
+      setupSession(sim0, sim1);
+
+      for (let i = 0; i < 3; i++) {
+        const packet0 = unwrap(sim0.getOutboundPacket(1));
+        sim0Packets.push(packet0);
+        const packet1 = unwrap(sim1.getOutboundPacket(0));
+        sim1Packets.push(packet1);
+
+        sim0.emit.keydown(`Digit${i}` as Key);
+        sim1.emit.keydown(`Digit${i}` as Key);
+        sim0.step();
+        sim1.step();
+      }
+
+      // Since they haven't received each other's packets yet, scores should be 3-0 on each side
+      expect(game0.bag).toEqual({ p0Score: 3, p1Score: 0 });
+      expect(game1.bag).toEqual({ p0Score: 0, p1Score: 3 });
+
+      // Start recording at this point - there are unconfirmed local inputs in our queue:
+      sim0.record();
+
+      for (let i = 3; i < 6; i++) {
+        const packet1 = unwrap(sim1Packets.shift());
+        sim0.emit.packet(packet1); // triggers rollbacks
+
+        sim0.emit.keydown(`Digit${i}` as Key);
+        sim0.step();
+      }
+
+      // Score should be 6-2 since the last input from sim1 wasn't captured in the third packet yet
+      expect(game0.bag).toEqual({ p0Score: 6, p1Score: 2 });
+      const tape = sim0.saveTape();
+
+      // Load tape into fresh game instance
+      const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
+      replayGame.system("score", {
+        update({ bag, players }) {
+          // TODO: fix workaround for not being able to trigger "down" or up on every frame. see failing test in inputs.test.ts
+          const player0Keys = unwrap(players[0]).keys;
+          const player1Keys = unwrap(players[1]).keys;
+          if (
+            player0Keys.digit0.down ||
+            player0Keys.digit1.down ||
+            player0Keys.digit2.down ||
+            player0Keys.digit3.down ||
+            player0Keys.digit4.down ||
+            player0Keys.digit5.down ||
+            player0Keys.digit6.down
+          )
+            bag.p0Score++;
+
+          if (
+            player1Keys.digit0.down ||
+            player1Keys.digit1.down ||
+            player1Keys.digit2.down ||
+            player1Keys.digit3.down ||
+            player1Keys.digit4.down ||
+            player1Keys.digit5.down ||
+            player1Keys.digit6.down
+          )
+            bag.p1Score++;
+        },
+      });
+      const { sim: replaySim } = await mount(replayGame, {
+        startRecording: false,
+      });
+      replaySim.loadTape(tape);
+      expect(replayGame.bag).toEqual({ p0Score: 3, p1Score: 0 });
+
+      // Replay next 3 frames - with input buffer snapshots, replay correctly
+      // processes peer inputs that were unconfirmed when recording started
+      for (let i = 0; i < 4; i++) {
+        replaySim.step();
+      }
+      expect(replayGame.bag).toEqual({ p0Score: 6, p1Score: 2 });
     });
   });
 
