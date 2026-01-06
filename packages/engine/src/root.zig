@@ -456,6 +456,29 @@ pub const Engine = struct {
             defer snapshot.deinit(self.allocator);
             try self.vcr.startRecording(start_frame, snapshot, max_events, max_packet_bytes);
         }
+
+        // Capture any pending platform events for the current frame.
+        // These were emitted before recording started (observer was null),
+        // but need to be in the tape for proper replay.
+        const pending_events = self.platform_buffer.get(start_frame);
+        for (pending_events) |event| {
+            self.vcr.tape.?.append_event(event) catch {
+                @panic("Failed to append pending platform event to tape");
+            };
+        }
+
+        // Capture any pending input events for the upcoming frame.
+        // Input events emitted at frame N go to match_frame N+1, so we need
+        // to capture events at start_frame + 1.
+        const pending_match_frame = start_frame + 1;
+        const local_peer = self.sim.net_ctx.local_peer_id;
+        const pending_inputs = self.input_buffer.get(local_peer, pending_match_frame);
+        for (pending_inputs) |event| {
+            if (!self.vcr.recordEvent(event)) {
+                @panic("Failed to record pending input event to tape");
+            }
+        }
+
         self.enableTapeObserver();
     }
 
