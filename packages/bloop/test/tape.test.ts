@@ -893,4 +893,81 @@ describe("tapes", () => {
       expect(replayGame.bag.spacePressed).toBe(true);
     });
   });
+
+  it("regress: doesn't crash when seeking a network tape due to duplicate platform events", async () => {
+    // This tests a bug where seeking in a session tape would cause
+    // "Platform event slot full" panic due to duplicate tape replay
+    // during rollback resimulation in sessionStep().
+    //
+    // The bug manifests when:
+    // 1. Load a session tape
+    // 2. Step forward (playing through the tape)
+    // 3. Seek to a frame that requires restoring to an earlier snapshot
+    //
+    // During the seek, the engine restores to a snapshot then resims forward.
+    // The bug was that sessionStep() was replaying tape events during resim,
+    // but those events were already in PlatformEventBuffer from the original
+    // playthrough in step 2.
+
+    // Create a session with delayed packet delivery that triggers rollbacks
+    const [sim0, sim1] = await startOnlineMatch(() => {
+      const game = Bloop.create({ bag: { value: 0 } });
+      game.system("inc", {
+        update({ bag, players }) {
+          // Increment on any player click
+          if (players[0]?.mouse.left.down) bag.value++;
+          if (players[1]?.mouse.left.down) bag.value++;
+        },
+      });
+      return game;
+    });
+
+    // Generate some frames with delayed packets that trigger rollbacks
+    for (let i = 0; i < 20; i++) {
+      // Player 0 and 1 click at different times
+      if (i % 3 === 0) sim0.emit.mousedown("Left", 0);
+      if (i % 5 === 0) sim1.emit.mousedown("Left", 1);
+
+      // Delay packet delivery to trigger rollbacks
+      if (i % 4 === 0 && i > 0) {
+        const packet = sim1.getOutboundPacket(0);
+        if (packet) sim0.emit.packet(packet);
+      }
+
+      sim0.step();
+      sim1.step();
+    }
+
+    // Save tape from sim0's perspective
+    const tape = sim0.saveTape();
+
+    // Create fresh replay game
+    const replayGame = Bloop.create({ bag: { value: 0 } });
+    replayGame.system("inc", {
+      update({ bag, players }) {
+        if (players[0]?.mouse.left.down) bag.value++;
+        if (players[1]?.mouse.left.down) bag.value++;
+      },
+    });
+
+    const { sim: replaySim } = await mount(replayGame, {
+      startRecording: false,
+    });
+
+    // Load the session tape
+    replaySim.loadTape(tape);
+
+    // Step forward through most of the tape
+    for (let i = 0; i < 15; i++) {
+      replaySim.step();
+    }
+    const frameAfterStepping = replayGame.context.time.frame;
+
+    // Seek to a later frame - this requires restoring to tape start and resimming
+    // through frames we already stepped through, which previously caused the crash
+    replaySim.seek(frameAfterStepping + 3);
+
+    // If we get here without crashing, the test passes
+    expect(replayGame.context.time.frame).toBe(frameAfterStepping + 3);
+  });
 });

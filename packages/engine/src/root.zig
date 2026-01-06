@@ -335,13 +335,6 @@ pub const Engine = struct {
             var frames_resimmed: u32 = 0;
             var f = current_confirmed + 1;
             while (f <= next_confirm) : (f += 1) {
-                // During tape replay, we need to replay tape data for each resim frame
-                // because the tape contains packets that arrived during the original session
-                if (self.vcr.is_replaying) {
-                    self.replayTapeNetEvents();
-                    self.replayTapePackets();
-                    self.replayTapeInputs();
-                }
                 const is_current_frame = (f == target_match_frame);
                 // beforeTickListener syncs net_ctx with correct match_frame
                 self.sim.tick(!is_current_frame);
@@ -360,12 +353,6 @@ pub const Engine = struct {
             if (next_confirm < target_match_frame) {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
-                    // During tape replay, we need to replay tape data for each predicted frame
-                    if (self.vcr.is_replaying) {
-                        self.replayTapeNetEvents();
-                        self.replayTapePackets();
-                        self.replayTapeInputs();
-                    }
                     const is_current_frame = (f == target_match_frame);
                     // beforeTickListener syncs net_ctx with correct match_frame
                     self.sim.tick(!is_current_frame);
