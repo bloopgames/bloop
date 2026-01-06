@@ -52,10 +52,11 @@ pub const VCR = struct {
     }
 
     /// Start recording to a new tape.
+    /// start_frame: The frame number where recording starts (tape header start_frame)
     /// snapshot: Initial state snapshot to store in tape header
     /// max_events: Maximum number of events the tape can hold
     /// max_packet_bytes: Maximum bytes for network packet storage
-    pub fn startRecording(self: *VCR, snapshot: *Tapes.Snapshot, max_events: u32, max_packet_bytes: u32) RecordingError!void {
+    pub fn startRecording(self: *VCR, start_frame: u32, snapshot: *Tapes.Snapshot, max_events: u32, max_packet_bytes: u32) RecordingError!void {
         if (self.is_recording) {
             return RecordingError.AlreadyRecording;
         }
@@ -66,9 +67,10 @@ pub const VCR = struct {
             self.tape = null;
         }
 
-        self.tape = Tapes.Tape.init(self.allocator, snapshot, max_events, max_packet_bytes) catch {
+        self.tape = Tapes.Tape.init(self.allocator, start_frame, snapshot, max_events, max_packet_bytes) catch {
             return RecordingError.OutOfMemory;
         };
+
         self.is_recording = true;
 
         // Start the first frame marker so events are captured correctly
@@ -99,9 +101,11 @@ pub const VCR = struct {
         // Return initial snapshot for caller to restore
         const snapshot = self.tape.?.closest_snapshot(0);
 
-        // Validate snapshot version - version 2 added room_code to NetCtx
-        if (snapshot.version != 2) {
-            Log.log("Snapshot version mismatch: expected 2, got {d}", .{snapshot.version});
+        // Validate snapshot version
+        // v2: added room_code to NetCtx
+        // v3: added input_buffer_len for network session tape recording
+        if (snapshot.version < 2 or snapshot.version > 3) {
+            Log.log("Snapshot version mismatch: expected 2 or 3, got {d}", .{snapshot.version});
             return error.UnsupportedVersion;
         }
 
@@ -119,6 +123,19 @@ pub const VCR = struct {
     /// Check if we have a tape loaded (recording or replaying)
     pub fn hasTape(self: *const VCR) bool {
         return self.tape != null;
+    }
+
+    /// Get the match_frame at which the tape started (from the tape's snapshot)
+    pub fn getTapeStartMatchFrame(self: *const VCR) u32 {
+        if (self.tape) |tape| {
+            // Read snapshot directly from tape buffer
+            const header: *Tapes.TapeHeader = @ptrCast(@alignCast(tape.buf.ptr));
+            const snapshot_offset = header.snapshot_offset;
+            const snapshot_slice = tape.buf[snapshot_offset .. snapshot_offset + @sizeOf(Tapes.Snapshot)];
+            const snapshot: *const Tapes.Snapshot = @ptrCast(@alignCast(snapshot_slice.ptr));
+            return snapshot.net.match_frame;
+        }
+        return 0;
     }
 
     /// Record an event to tape (if recording)
@@ -320,14 +337,14 @@ test "VCR startRecording fails if already recording" {
     defer vcr.deinit();
 
     // Create a minimal snapshot for testing
-    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.is_recording);
 
     // Second call should fail
-    const result = vcr.startRecording(snap, 1024, 0);
+    const result = vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectError(VCR.RecordingError.AlreadyRecording, result);
 }
 
@@ -335,10 +352,10 @@ test "VCR stopRecording" {
     var vcr = VCR.init(std.testing.allocator);
     defer vcr.deinit();
 
-    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.is_recording);
 
     vcr.stopRecording();
@@ -354,10 +371,10 @@ test "VCR hasTape" {
 
     try std.testing.expectEqual(false, vcr.hasTape());
 
-    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
     try std.testing.expectEqual(true, vcr.hasTape());
 }
 
@@ -368,10 +385,10 @@ test "VCR recordEvent" {
     // Recording without tape does nothing
     try std.testing.expectEqual(true, vcr.recordEvent(Event.keyDown(.KeyA, 0, .LocalKeyboard)));
 
-    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer snap.deinit(std.testing.allocator);
 
-    try vcr.startRecording(snap, 1024, 0);
+    try vcr.startRecording(0, snap, 1024, 0);
 
     // Recording with tape works
     try std.testing.expectEqual(true, vcr.recordEvent(Event.keyDown(.KeyA, 0, .LocalKeyboard)));
@@ -423,7 +440,7 @@ test "VCR storeCheckpoint and clearCheckpoints" {
     vcr.configureCheckpoints(120, 10 * 1024 * 1024);
 
     // Store a checkpoint
-    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap1.time.frame = 120;
     vcr.storeCheckpoint(120, snap1);
 
@@ -431,7 +448,7 @@ test "VCR storeCheckpoint and clearCheckpoints" {
     try std.testing.expectEqual(@as(u32, 120), vcr.checkpoints.items[0].frame);
 
     // Store another checkpoint
-    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap2.time.frame = 240;
     vcr.storeCheckpoint(240, snap2);
 
@@ -450,15 +467,15 @@ test "VCR storeCheckpoint maintains sorted order" {
     vcr.configureCheckpoints(60, 10 * 1024 * 1024);
 
     // Store checkpoints out of order
-    const snap3 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap3 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap3.time.frame = 180;
     vcr.storeCheckpoint(180, snap3);
 
-    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap1.time.frame = 60;
     vcr.storeCheckpoint(60, snap1);
 
-    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap2.time.frame = 120;
     vcr.storeCheckpoint(120, snap2);
 
@@ -477,13 +494,13 @@ test "VCR storeCheckpoint respects size budget" {
     vcr.configureCheckpoints(60, snapshot_size);
 
     // First checkpoint should be stored
-    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap1 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap1.time.frame = 60;
     vcr.storeCheckpoint(60, snap1);
     try std.testing.expectEqual(@as(usize, 1), vcr.checkpoints.items.len);
 
     // Second checkpoint should be rejected (over budget)
-    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap2 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap2.time.frame = 120;
     vcr.storeCheckpoint(120, snap2);
     try std.testing.expectEqual(@as(usize, 1), vcr.checkpoints.items.len);
@@ -499,7 +516,7 @@ test "VCR shouldCheckpoint avoids duplicates" {
     try std.testing.expectEqual(true, vcr.shouldCheckpoint(120));
 
     // Store a checkpoint at frame 120
-    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap.time.frame = 120;
     vcr.storeCheckpoint(120, snap);
 
@@ -512,19 +529,19 @@ test "VCR closestSnapshot uses checkpoints" {
     defer vcr.deinit();
 
     // Create initial snapshot and start recording
-    const initial_snap = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const initial_snap = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     defer initial_snap.deinit(std.testing.allocator);
     initial_snap.time.frame = 0;
-    try vcr.startRecording(initial_snap, 1024, 0);
+    try vcr.startRecording(0, initial_snap, 1024, 0);
 
     vcr.configureCheckpoints(100, 10 * 1024 * 1024);
 
     // Store checkpoints at frames 100 and 200
-    const snap100 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap100 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap100.time.frame = 100;
     vcr.storeCheckpoint(100, snap100);
 
-    const snap200 = try Tapes.Snapshot.init(std.testing.allocator, 0);
+    const snap200 = try Tapes.Snapshot.init(std.testing.allocator, 0, 0);
     snap200.time.frame = 200;
     vcr.storeCheckpoint(200, snap200);
 

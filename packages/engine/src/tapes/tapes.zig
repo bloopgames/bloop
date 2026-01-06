@@ -6,8 +6,108 @@ const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const MAX_EVENTS = Events.MAX_EVENTS;
 const log = @import("../log.zig").log;
+const IB = @import("../input_buffer.zig");
 
 const EnginePointer = if (builtin.target.cpu.arch.isWasm()) u32 else usize;
+const MAX_PEERS = IB.MAX_PEERS;
+
+// ─────────────────────────────────────────────────────────────
+// Input Buffer Snapshot Types
+// ─────────────────────────────────────────────────────────────
+
+/// Input buffer snapshot header (fixed portion)
+/// Contains peer_confirmed state and metadata for variable-length events that follow
+pub const InputBufferSnapshotHeader = extern struct {
+    peer_confirmed: [MAX_PEERS]u32, // 48 bytes - confirmed frame per peer
+    peer_count: u8, // number of active peers
+    _padding: [3]u8 = .{ 0, 0, 0 },
+    event_count: u16, // how many SnapshotWireEvents follow
+    _padding2: [2]u8 = .{ 0, 0 },
+};
+
+/// Wire event with peer_id for snapshot storage (10 bytes)
+/// Similar to transport.WireEvent but includes peer_id since we encode all peers' events
+pub const SnapshotWireEvent = extern struct {
+    peer_id: u8, // which peer this event belongs to
+    _padding: u8 = 0,
+    frame: u16, // match frame (lower 16 bits, assumes match_frame < 65536)
+    kind: Events.EventType,
+    device: Events.InputSource,
+    payload: [4]u8, // compact payload (key code, mouse button, etc.)
+
+    /// Create from an engine Event
+    pub fn fromEvent(event: Event, peer_id: u8, match_frame: u16) SnapshotWireEvent {
+        var payload: [4]u8 = .{ 0, 0, 0, 0 };
+
+        switch (event.kind) {
+            .KeyDown, .KeyUp => {
+                payload[0] = @intFromEnum(event.payload.key);
+            },
+            .MouseDown, .MouseUp => {
+                payload[0] = @intFromEnum(event.payload.mouse_button);
+            },
+            .MouseMove => {
+                const x: i16 = @intFromFloat(std.math.clamp(event.payload.mouse_move.x, -32768.0, 32767.0));
+                const y: i16 = @intFromFloat(std.math.clamp(event.payload.mouse_move.y, -32768.0, 32767.0));
+                std.mem.writeInt(i16, payload[0..2], x, .little);
+                std.mem.writeInt(i16, payload[2..4], y, .little);
+            },
+            .MouseWheel => {
+                const dx: i16 = @intFromFloat(std.math.clamp(event.payload.delta.delta_x, -32768.0, 32767.0));
+                const dy: i16 = @intFromFloat(std.math.clamp(event.payload.delta.delta_y, -32768.0, 32767.0));
+                std.mem.writeInt(i16, payload[0..2], dx, .little);
+                std.mem.writeInt(i16, payload[2..4], dy, .little);
+            },
+            else => {},
+        }
+
+        return SnapshotWireEvent{
+            .peer_id = peer_id,
+            .frame = match_frame,
+            .kind = event.kind,
+            .device = event.device,
+            .payload = payload,
+        };
+    }
+
+    /// Convert back to an engine Event
+    pub fn toEvent(self: SnapshotWireEvent) Event {
+        var event = Event{
+            .kind = self.kind,
+            .device = self.device,
+            .peer_id = self.peer_id,
+            .payload = undefined,
+        };
+
+        switch (self.kind) {
+            .KeyDown, .KeyUp => {
+                event.payload = .{ .key = @enumFromInt(self.payload[0]) };
+            },
+            .MouseDown, .MouseUp => {
+                event.payload = .{ .mouse_button = @enumFromInt(self.payload[0]) };
+            },
+            .MouseMove => {
+                const x = std.mem.readInt(i16, self.payload[0..2], .little);
+                const y = std.mem.readInt(i16, self.payload[2..4], .little);
+                event.payload = .{ .mouse_move = .{ .x = @floatFromInt(x), .y = @floatFromInt(y) } };
+            },
+            .MouseWheel => {
+                const dx = std.mem.readInt(i16, self.payload[0..2], .little);
+                const dy = std.mem.readInt(i16, self.payload[2..4], .little);
+                event.payload = .{ .delta = .{ .delta_x = @floatFromInt(dx), .delta_y = @floatFromInt(dy) } };
+            },
+            else => {
+                event.payload = .{ .key = .None };
+            },
+        }
+
+        return event;
+    }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Snapshot
+// ─────────────────────────────────────────────────────────────
 
 pub const Snapshot = extern struct {
     version: u32,
@@ -18,6 +118,7 @@ pub const Snapshot = extern struct {
     input_len: u32,
     net_len: u32,
     events_len: u32,
+    input_buffer_len: u32, // v3: length of input buffer snapshot data (0 for v2 compatibility)
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
     net: Ctx.NetCtx,
@@ -26,17 +127,20 @@ pub const Snapshot = extern struct {
     pub fn init(
         alloc: std.mem.Allocator,
         user_data_len: u32,
+        input_buffer_len: u32,
     ) !*Snapshot {
         const alignment = comptime std.mem.Alignment.fromByteUnits(@alignOf(Snapshot));
-        const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + @as(usize, user_data_len));
+        const total_variable_len = @as(usize, user_data_len) + @as(usize, input_buffer_len);
+        const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + total_variable_len);
 
         const snapshot: *Snapshot = @ptrCast(bytes.ptr);
-        snapshot.*.version = 2;
+        snapshot.*.version = 3;
         snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
         snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
         snapshot.*.events_len = @sizeOf(EventBuffer);
         snapshot.*.net_len = @sizeOf(Ctx.NetCtx);
         snapshot.*.user_data_len = user_data_len;
+        snapshot.*.input_buffer_len = input_buffer_len;
         snapshot.*.engine_data_len = @sizeOf(Snapshot);
         snapshot.*.time = Ctx.TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
         snapshot.*.net = Ctx.NetCtx{ .peer_count = 0, .match_frame = 0, .session_start_frame = 0 };
@@ -45,7 +149,7 @@ pub const Snapshot = extern struct {
     }
 
     pub fn deinit(self: *Snapshot, alloc: std.mem.Allocator) void {
-        const total_size = @sizeOf(Snapshot) + @as(usize, self.user_data_len);
+        const total_size = @sizeOf(Snapshot) + @as(usize, self.user_data_len) + @as(usize, self.input_buffer_len);
         const base_ptr: [*]align(@alignOf(Snapshot)) u8 = @ptrCast(self);
         const bytes = @as([*]align(@alignOf(Snapshot)) u8, base_ptr)[0..total_size];
         alloc.free(bytes);
@@ -100,6 +204,13 @@ pub const Snapshot = extern struct {
         const user_data_offset = @sizeOf(Snapshot);
         return base[user_data_offset .. user_data_offset + self.user_data_len];
     }
+
+    /// Get the input buffer snapshot data slice (follows user_data)
+    pub fn input_buffer_data(self: *Snapshot) []u8 {
+        const base = @as([*]u8, @ptrCast(self));
+        const input_buffer_offset = @sizeOf(Snapshot) + self.user_data_len;
+        return base[input_buffer_offset .. input_buffer_offset + self.input_buffer_len];
+    }
 };
 
 pub const TapeHeader = extern struct {
@@ -110,7 +221,7 @@ pub const TapeHeader = extern struct {
 
     // frame and event data
     start_frame: u32 = 0,
-    frame_count: u32 = 0, // expanded from u16 to u32
+    frame_count: u32 = 0,
     max_events: u32 = 0,
 
     // offsets for events
@@ -157,7 +268,7 @@ pub const Tape = struct {
     /// Default packet buffer size (2mb for network sessions, override with 0 for local recordings if desired)
     pub const DEFAULT_MAX_PACKET_BYTES: u32 = 2 * 1024 * 1024;
 
-    pub fn init(gpa: std.mem.Allocator, snapshot: *Snapshot, max_events: u32, max_packet_bytes: u32) !Tape {
+    pub fn init(gpa: std.mem.Allocator, tape_start_frame: u32, snapshot: *Snapshot, max_events: u32, max_packet_bytes: u32) !Tape {
         // Calculate aligned offsets and sizes
         const header_offset = 0;
         const header_size = @sizeOf(TapeHeader);
@@ -168,7 +279,11 @@ pub const Tape = struct {
         const user_data_offset = snapshot_offset + snapshot_size;
         const user_data_size = snapshot.user_data_len;
 
-        const events_offset = std.mem.alignForward(usize, user_data_offset + user_data_size, @alignOf(Event));
+        // v3: input buffer data comes after user data
+        const input_buffer_offset = user_data_offset + user_data_size;
+        const input_buffer_size = snapshot.input_buffer_len;
+
+        const events_offset = std.mem.alignForward(usize, input_buffer_offset + input_buffer_size, @alignOf(Event));
         const events_size = @sizeOf(Event) * max_events;
 
         // Packet storage comes after events
@@ -181,7 +296,7 @@ pub const Tape = struct {
         const header = TapeHeader{
             .event_count = 0,
             .max_events = max_events,
-            .start_frame = snapshot.time.frame,
+            .start_frame = tape_start_frame,
             .frame_count = 0,
             .snapshot_offset = @intCast(snapshot_offset),
             .user_data_offset = @intCast(user_data_offset),
@@ -203,6 +318,14 @@ pub const Tape = struct {
             const user_data_src = base[@sizeOf(Snapshot) .. @sizeOf(Snapshot) + user_data_size];
             const user_data_dst = tape_buf[user_data_offset .. user_data_offset + user_data_size];
             @memcpy(user_data_dst, user_data_src);
+        }
+
+        // Write snapshot input buffer data if any (v3)
+        if (input_buffer_size > 0) {
+            const base = @as([*]u8, @ptrCast(snapshot));
+            const input_buffer_src = base[@sizeOf(Snapshot) + user_data_size .. @sizeOf(Snapshot) + user_data_size + input_buffer_size];
+            const input_buffer_dst = tape_buf[input_buffer_offset .. input_buffer_offset + input_buffer_size];
+            @memcpy(input_buffer_dst, input_buffer_src);
         }
 
         return Tape{ .buf = tape_buf };
@@ -420,9 +543,9 @@ pub const Tape = struct {
 };
 
 test "snapshot headers with no user data" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
-    defer std.testing.allocator.destroy(snapshot);
-    try std.testing.expectEqual(2, snapshot.version);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
+    defer snapshot.deinit(std.testing.allocator);
+    try std.testing.expectEqual(3, snapshot.version);
     try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx), snapshot.time_len);
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);
@@ -433,7 +556,7 @@ test "snapshot headers with no user data" {
 }
 
 test "snapshot engine data" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
     const time_ctx = Ctx.TimeCtx{
@@ -466,7 +589,7 @@ test "snapshot engine data" {
 test "snapshot user data" {
     const user_data = [4]u8{ 0xDE, 0xAD, 0xBE, 0xEF };
     const user_data_len = user_data.len;
-    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len);
+    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len, 0);
     defer snapshot.deinit(std.testing.allocator);
 
     const user_data_offset = @sizeOf(Snapshot);
@@ -486,12 +609,12 @@ test "snapshot user data" {
 test "tape can store user data" {
     const user_data = [4]u8{ 0xDE, 0xAD, 0xBE, 0xEF };
     const user_data_len = user_data.len;
-    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len);
+    const snapshot = try Snapshot.init(std.testing.allocator, user_data_len, 0);
 
     @memcpy(snapshot.user_data(), user_data[0..]);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 0);
     defer tape.free(std.testing.allocator);
 
     const snap = tape.closest_snapshot(0);
@@ -503,10 +626,10 @@ test "tape can store user data" {
 }
 
 test "tape can index events by frame" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 5, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 5, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -560,10 +683,10 @@ test "tape can index events by frame" {
 }
 
 test "tape can index events by frame with unaligned user data" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 2);
+    const snapshot = try Snapshot.init(std.testing.allocator, 2, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -574,10 +697,10 @@ test "tape can index events by frame with unaligned user data" {
 }
 
 test "tape header is updated with event count" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 3, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 3, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.append_event(Event.keyDown(.KeyA, Events.LOCAL_PEER, .LocalKeyboard));
@@ -590,10 +713,10 @@ test "tape header is updated with event count" {
 }
 
 test "tape can be serialized and deserialized" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 5, 0);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 5, 0);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -635,11 +758,11 @@ test "tape can be serialized and deserialized" {
 }
 
 test "append_packet stores data correctly" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Small packet buffer for testing
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     const packet_data = [_]u8{ 0x01, 0x02, 0x03, 0x04, 0x05 };
@@ -653,10 +776,10 @@ test "append_packet stores data correctly" {
 }
 
 test "get_packets_for_frame returns correct packets" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     // Add packets for different frames
@@ -706,11 +829,11 @@ test "get_packets_for_frame returns correct packets" {
 }
 
 test "packet buffer overflow returns error" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
     // Very small buffer: only room for one small packet
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 16);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 16);
     defer tape.free(std.testing.allocator);
 
     // First packet should fit (8 byte header + 4 byte data = 12 bytes)
@@ -723,10 +846,10 @@ test "packet buffer overflow returns error" {
 }
 
 test "tape with packets can be serialized and deserialized" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     try tape.start_frame();
@@ -758,10 +881,10 @@ test "tape with packets can be serialized and deserialized" {
 }
 
 test "multiple packets per frame are all stored and retrieved" {
-    const snapshot = try Snapshot.init(std.testing.allocator, 0);
+    const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
 
-    var tape = try Tape.init(std.testing.allocator, snapshot, 4, 256);
+    var tape = try Tape.init(std.testing.allocator, 0, snapshot, 4, 256);
     defer tape.free(std.testing.allocator);
 
     // Add 3 packets for the same frame

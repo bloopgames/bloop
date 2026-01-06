@@ -222,5 +222,49 @@ describe("inputs", () => {
   });
 
   it.skip("handles multiple frames between accumulated inputs", async () => {});
-  it.skip("handles down and up between frames", async () => {});
+
+  it.skip("handles down and up between frames", async () => {
+    const bloop = Bloop.create({
+      bag: {
+        down: false as boolean,
+        held: false as boolean,
+        up: false as boolean,
+      },
+    });
+
+    bloop.system("mouse state", {
+      update({ inputs, bag }) {
+        bag.down = inputs.mouse.left.down;
+        bag.held = inputs.mouse.left.held;
+        bag.up = inputs.mouse.left.up;
+      },
+    });
+
+    const { sim } = await mount(bloop);
+
+    // Initial state
+    sim.step();
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: false,
+    });
+
+    // Emit down and up before stepping
+    sim.emit.mousedown("Left");
+    sim.emit.mouseup("Left");
+    sim.step();
+    expect(bloop.bag).toEqual({
+      down: true,
+      held: true,
+      up: true,
+    });
+
+    sim.step();
+    expect(bloop.bag).toEqual({
+      down: false,
+      held: false,
+      up: false,
+    });
+  });
 });

@@ -283,7 +283,7 @@ pub export fn take_snapshot(user_data_len: u32) wasmPointer {
 
 pub export fn restore(snapshot_ptr: wasmPointer) void {
     const snap: *Tapes.Snapshot = @ptrFromInt(snapshot_ptr);
-    engine.?.sim.restore(snap);
+    engine.?.sim.restore(snap, true); // Restore full state including input buffer
 }
 
 pub export fn seek(frame: u32) void {

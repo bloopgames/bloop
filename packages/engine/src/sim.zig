@@ -198,7 +198,11 @@ pub const Sim = struct {
 
     /// Take a snapshot of current state
     pub fn take_snapshot(self: *Sim, user_data_len: u32) !*Tapes.Snapshot {
-        const snap = try Tapes.Snapshot.init(self.allocator, user_data_len);
+        // Calculate input buffer snapshot size
+        const current_match_frame = self.net_ctx.match_frame;
+        const input_buffer_len = self.input_buffer.snapshotSize(current_match_frame);
+
+        const snap = try Tapes.Snapshot.init(self.allocator, user_data_len, input_buffer_len);
 
         snap.write_time(@intFromPtr(self.time));
         snap.write_inputs(@intFromPtr(self.inputs));
@@ -211,13 +215,21 @@ pub const Sim = struct {
             }
         }
 
+        // Write input buffer snapshot data
+        if (input_buffer_len > 0) {
+            self.input_buffer.writeSnapshot(current_match_frame, snap.input_buffer_data());
+        }
+
         return snap;
     }
 
     /// Restore state from a snapshot.
     /// Only restores basic Sim state (time, inputs, events, net_ctx).
     /// Session/rollback state is handled by Engine.
-    pub fn restore(self: *Sim, snapshot: *Tapes.Snapshot) void {
+    /// If restore_input_buffer is false, input buffer state is NOT restored.
+    /// This is used during rollback where we want to keep the current input buffer
+    /// (which has inputs from packets that just arrived).
+    pub fn restore(self: *Sim, snapshot: *Tapes.Snapshot, restore_input_buffer: bool) void {
         @memcpy(std.mem.asBytes(self.time), std.mem.asBytes(&snapshot.time));
         @memcpy(std.mem.asBytes(self.inputs), std.mem.asBytes(&snapshot.inputs));
         @memcpy(std.mem.asBytes(self.events), std.mem.asBytes(&snapshot.events));
@@ -227,6 +239,11 @@ pub const Sim = struct {
             if (self.callbacks.user_deserialize) |deserialize| {
                 deserialize(@intFromPtr(snapshot.user_data().ptr), snapshot.user_data_len);
             }
+        }
+
+        // Restore input buffer state if present and requested
+        if (restore_input_buffer and snapshot.input_buffer_len > 0) {
+            self.input_buffer.restoreFromSnapshot(snapshot.input_buffer_data());
         }
     }
 };
@@ -456,7 +473,7 @@ test "restore restores time state" {
     try std.testing.expectEqual(5, ctx.sim.time.frame);
 
     // Restore
-    ctx.sim.restore(snapshot);
+    ctx.sim.restore(snapshot, true);
     try std.testing.expectEqual(2, ctx.sim.time.frame);
     try std.testing.expectEqual(hz * 2, ctx.sim.time.total_ms);
 }
@@ -483,7 +500,7 @@ test "snapshot preserves input state" {
     try std.testing.expectEqual(0, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);
 
     // Restore
-    ctx.sim.restore(snapshot);
+    ctx.sim.restore(snapshot, true);
 
     // Verify input state restored
     try std.testing.expectEqual(1, ctx.sim.inputs.players[0].key_ctx.key_states[@intFromEnum(Events.Key.KeyA)] & 1);

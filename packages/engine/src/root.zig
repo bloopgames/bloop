@@ -322,9 +322,12 @@ pub const Engine = struct {
             // Note: peers array contains live connection tracking (seq/ack) that must NOT roll back.
             // Network events in PlatformEventBuffer are replayed for topology (peer join/leave),
             // but seq/ack tracking is updated by packet processing and must be preserved.
+            // The input buffer is also preserved because:
+            // - It contains inputs from packets that just arrived (triggering this rollback)
+            // - Restoring it would wipe out those inputs, breaking resimulation
             const saved_peers = self.sim.net_ctx.peers;
             if (self.confirmed_snapshot) |snap| {
-                self.sim.restore(snap);
+                self.sim.restore(snap, false); // Don't restore input buffer during rollback
             }
             self.sim.net_ctx.peers = saved_peers;
 
@@ -332,6 +335,13 @@ pub const Engine = struct {
             var frames_resimmed: u32 = 0;
             var f = current_confirmed + 1;
             while (f <= next_confirm) : (f += 1) {
+                // During tape replay, we need to replay tape data for each resim frame
+                // because the tape contains packets that arrived during the original session
+                if (self.vcr.is_replaying) {
+                    self.replayTapeNetEvents();
+                    self.replayTapePackets();
+                    self.replayTapeInputs();
+                }
                 const is_current_frame = (f == target_match_frame);
                 // beforeTickListener syncs net_ctx with correct match_frame
                 self.sim.tick(!is_current_frame);
@@ -350,6 +360,12 @@ pub const Engine = struct {
             if (next_confirm < target_match_frame) {
                 f = next_confirm + 1;
                 while (f <= target_match_frame) : (f += 1) {
+                    // During tape replay, we need to replay tape data for each predicted frame
+                    if (self.vcr.is_replaying) {
+                        self.replayTapeNetEvents();
+                        self.replayTapePackets();
+                        self.replayTapeInputs();
+                    }
                     const is_current_frame = (f == target_match_frame);
                     // beforeTickListener syncs net_ctx with correct match_frame
                     self.sim.tick(!is_current_frame);
@@ -400,14 +416,46 @@ pub const Engine = struct {
 
     /// Start recording to a new tape
     pub fn startRecording(self: *Engine, user_data_len: u32, max_events: u32, max_packet_bytes: u32) RecordingError!void {
-        const snapshot = self.sim.take_snapshot(user_data_len) catch {
-            return RecordingError.OutOfMemory;
-        };
-        defer snapshot.deinit(self.allocator);
+        const start_frame = self.sim.time.frame;
 
-        try self.vcr.startRecording(snapshot, max_events, max_packet_bytes);
+        // If in active session with confirmed_snapshot, stitch together:
+        // - The confirmed game state (from confirmed_snapshot)
+        // - The current input buffer state (with all unconfirmed events)
+        if (self.session.active and self.confirmed_snapshot != null) {
+            const confirmed = self.confirmed_snapshot.?;
 
-        // Enable tape observer to record local inputs
+            // Calculate input buffer size for current match frame
+            const current_match_frame = self.session.getMatchFrame(self.sim.time.frame);
+            const input_buffer_len = self.input_buffer.snapshotSize(current_match_frame);
+
+            // Allocate new snapshot with space for current input buffer
+            const tape_snapshot = Tapes.Snapshot.init(self.allocator, confirmed.user_data_len, input_buffer_len) catch {
+                return RecordingError.OutOfMemory;
+            };
+            defer tape_snapshot.deinit(self.allocator);
+
+            // Copy confirmed snapshot (struct header + user_data) via memcpy
+            const confirmed_bytes: [*]const u8 = @ptrCast(confirmed);
+            const tape_bytes: [*]u8 = @ptrCast(tape_snapshot);
+            const copy_len = @sizeOf(Tapes.Snapshot) + confirmed.user_data_len;
+            @memcpy(tape_bytes[0..copy_len], confirmed_bytes[0..copy_len]);
+
+            // Update input_buffer_len (was overwritten by memcpy)
+            tape_snapshot.input_buffer_len = input_buffer_len;
+
+            // Write current input buffer data
+            if (input_buffer_len > 0) {
+                self.input_buffer.writeSnapshot(current_match_frame, tape_snapshot.input_buffer_data());
+            }
+
+            try self.vcr.startRecording(start_frame, tape_snapshot, max_events, max_packet_bytes);
+        } else {
+            const snapshot = self.sim.take_snapshot(user_data_len) catch {
+                return RecordingError.OutOfMemory;
+            };
+            defer snapshot.deinit(self.allocator);
+            try self.vcr.startRecording(start_frame, snapshot, max_events, max_packet_bytes);
+        }
         self.enableTapeObserver();
     }
 
@@ -428,7 +476,8 @@ pub const Engine = struct {
         const snapshot = try self.vcr.loadTape(tape_buf);
 
         // Restore basic Sim state (time, inputs, events, net_ctx)
-        self.sim.restore(snapshot);
+        // Restore input buffer too - this is the initial tape state
+        self.sim.restore(snapshot, true);
 
         if (snapshot.net.in_session == 0) {
             return;
@@ -441,16 +490,19 @@ pub const Engine = struct {
         }
         self.net.deinit();
 
-        // Reinitialize InputBuffer with session state from snapshot
+        // Session tapes must have input buffer data
+        if (snapshot.input_buffer_len == 0) {
+            @panic("Session tape missing input buffer data");
+        }
+
         // Preserve observer (tape recording) across restore
         const saved_observer = self.input_buffer.observer;
-        self.input_buffer.* = .{};
-        self.input_buffer.init(snapshot.net.peer_count, snapshot.net.session_start_frame);
+        self.input_buffer.session_start_frame = snapshot.net.session_start_frame;
         self.input_buffer.observer = saved_observer;
 
-        // Initialize session state directly from snapshot
+        // Initialize session state from snapshot
         self.session.start_frame = snapshot.net.session_start_frame;
-        self.session.confirmed_frame = 0;
+        self.session.confirmed_frame = snapshot.time.frame - snapshot.net.session_start_frame;
         self.session.stats = .{};
         self.session.active = true;
 
@@ -460,8 +512,20 @@ pub const Engine = struct {
             .net_ctx = self.sim.net_ctx,
         };
 
-        // Take initial confirmed snapshot for rollback
-        self.confirmed_snapshot = self.sim.take_snapshot(snapshot.user_data_len) catch null;
+        // Take confirmed_snapshot for rollback during replay
+        self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
+
+        // Roll forward from snapshot (confirmed state) to tape start_frame (prediction state)
+        // This happens when recording started mid-session with prediction ahead of confirmed
+        const header = self.vcr.tape.?.get_header();
+        if (header.start_frame > snapshot.time.frame) {
+            while (self.sim.time.frame < header.start_frame) {
+                const count = self.advance(hz);
+                if (count == 0) {
+                    @panic("Failed to advance frame during loadTape roll-forward");
+                }
+            }
+        }
     }
 
     /// Get the current tape buffer (for serialization)
@@ -764,7 +828,7 @@ pub const Engine = struct {
 
         const snapshot = self.vcr.closestSnapshot(frame);
         Log.log("Seeking to frame {} using snapshot at frame {}", .{ frame, snapshot.time.frame });
-        self.sim.restore(snapshot);
+        self.sim.restore(snapshot, true); // Restore input buffer for seek
 
         // Remember if we were already replaying (from loadTape)
         const was_replaying = self.vcr.is_replaying;
@@ -888,12 +952,6 @@ pub const Engine = struct {
             if (wire_event.frame > old_seq) {
                 // Reconstruct full u32 frame from u16 + base_frame_high
                 const full_frame = header.toFullFrame(wire_event.frame);
-                Log.debug("Processing input event from packet: peer={} match_frame={} engine_frame={} kind={}", .{
-                    header.peer_id,
-                    full_frame,
-                    self.sim.time.frame,
-                    input_event.kind,
-                });
                 self.input_buffer.emit(header.peer_id, full_frame, &[_]Event{input_event});
             }
 

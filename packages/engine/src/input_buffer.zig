@@ -1,6 +1,7 @@
 const std = @import("std");
 const Events = @import("events.zig");
 const Event = Events.Event;
+const Tapes = @import("tapes/tapes.zig");
 
 pub const MAX_PEERS = 12;
 pub const MAX_FRAMES = 500;
@@ -141,6 +142,139 @@ pub const InputBuffer = struct {
             }
         }
         return min_frame;
+    }
+
+    // ========================================================================
+    // Snapshot Support
+    // ========================================================================
+
+    /// Calculate the size needed for snapshot data.
+    /// Returns the total bytes needed for InputBufferSnapshotHeader + all unconfirmed events.
+    pub fn snapshotSize(self: *const InputBuffer, current_match_frame: u32) u32 {
+        // For single-player (peer_count <= 1), no input buffer snapshot needed
+        if (self.peer_count <= 1) return 0;
+
+        var event_count: u32 = 0;
+        const min_confirmed = self.calculateNextConfirmFrame(current_match_frame);
+
+        // Count events across all peers from min_confirmed to current_match_frame
+        for (0..self.peer_count) |peer| {
+            var frame = min_confirmed;
+            while (frame <= current_match_frame) : (frame += 1) {
+                const slot = &self.slots[peer][frame % MAX_FRAMES];
+                // Only count if slot is for the correct frame (not stale)
+                if (slot.match_frame == frame) {
+                    event_count += slot.count;
+                }
+            }
+        }
+
+        return @sizeOf(Tapes.InputBufferSnapshotHeader) + event_count * @sizeOf(Tapes.SnapshotWireEvent);
+    }
+
+    /// Write snapshot data to buffer.
+    /// Buffer must be at least snapshotSize() bytes.
+    pub fn writeSnapshot(self: *const InputBuffer, current_match_frame: u32, buf: []u8) void {
+        if (buf.len == 0) return;
+
+        const min_confirmed = self.calculateNextConfirmFrame(current_match_frame);
+
+        // Write header
+        var header = Tapes.InputBufferSnapshotHeader{
+            .peer_confirmed = undefined,
+            .peer_count = self.peer_count,
+            .event_count = 0,
+        };
+
+        // Copy peer_confirmed
+        for (0..MAX_PEERS) |i| {
+            header.peer_confirmed[i] = self.peer_confirmed[i];
+        }
+
+        // Count and write events
+        var write_offset: usize = @sizeOf(Tapes.InputBufferSnapshotHeader);
+
+        for (0..self.peer_count) |peer| {
+            var frame = min_confirmed;
+            while (frame <= current_match_frame) : (frame += 1) {
+                const slot = &self.slots[peer][frame % MAX_FRAMES];
+                // Only include if slot is for the correct frame (not stale)
+                if (slot.match_frame == frame) {
+                    for (slot.slice()) |event| {
+                        const wire_event = Tapes.SnapshotWireEvent.fromEvent(
+                            event,
+                            @intCast(peer),
+                            @truncate(frame), // u16 truncation - assumes match_frame < 65536
+                        );
+                        const event_bytes = std.mem.asBytes(&wire_event);
+                        @memcpy(buf[write_offset .. write_offset + @sizeOf(Tapes.SnapshotWireEvent)], event_bytes);
+                        write_offset += @sizeOf(Tapes.SnapshotWireEvent);
+                        header.event_count += 1;
+                    }
+                }
+            }
+        }
+
+        // Write header at the beginning
+        const header_bytes = std.mem.asBytes(&header);
+        @memcpy(buf[0..@sizeOf(Tapes.InputBufferSnapshotHeader)], header_bytes);
+    }
+
+    /// Restore input buffer state from snapshot.
+    /// Sets peer_confirmed and emits all unconfirmed events into the buffer.
+    pub fn restoreFromSnapshot(self: *InputBuffer, buf: []const u8) void {
+        if (buf.len < @sizeOf(Tapes.InputBufferSnapshotHeader)) return;
+
+        // Read header using memcpy to avoid alignment issues
+        var header: Tapes.InputBufferSnapshotHeader = undefined;
+        @memcpy(std.mem.asBytes(&header), buf[0..@sizeOf(Tapes.InputBufferSnapshotHeader)]);
+
+        // Restore peer_confirmed
+        for (0..MAX_PEERS) |i| {
+            self.peer_confirmed[i] = header.peer_confirmed[i];
+        }
+        self.peer_count = header.peer_count;
+
+        // Temporarily disable observer to prevent recording restored events
+        const saved_observer = self.observer;
+        self.observer = null;
+        defer self.observer = saved_observer;
+
+        // Read and emit events
+        var read_offset: usize = @sizeOf(Tapes.InputBufferSnapshotHeader);
+        for (0..header.event_count) |_| {
+            // Read wire event using memcpy to avoid alignment issues
+            var wire_event: Tapes.SnapshotWireEvent = undefined;
+            @memcpy(std.mem.asBytes(&wire_event), buf[read_offset .. read_offset + @sizeOf(Tapes.SnapshotWireEvent)]);
+
+            const event = wire_event.toEvent();
+            const match_frame: u32 = wire_event.frame;
+
+            // Emit single event into buffer
+            self.emitSingleEvent(wire_event.peer_id, match_frame, event);
+
+            read_offset += @sizeOf(Tapes.SnapshotWireEvent);
+        }
+    }
+
+    /// Emit a single event (helper for restore, bypasses observer since it's null during restore)
+    fn emitSingleEvent(self: *InputBuffer, peer: u8, match_frame: u32, event: Event) void {
+        if (peer >= self.peer_count) return;
+
+        const slot_idx = match_frame % MAX_FRAMES;
+        var slot = &self.slots[peer][slot_idx];
+
+        // Only clear if this slot was for a different frame
+        if (slot.match_frame != match_frame) {
+            slot.clear();
+            slot.match_frame = match_frame;
+        }
+
+        slot.add(event) catch {
+            // Slot full - silently ignore during restore
+        };
+
+        // Don't update peer_confirmed here - it's already set from header
     }
 };
 
@@ -367,4 +501,61 @@ test "standalone frame utilities" {
     try std.testing.expectEqual(@as(u32, 5), toMatchFrame(105, 100));
     try std.testing.expectEqual(@as(u32, 100), toAbsoluteFrame(0, 100));
     try std.testing.expectEqual(@as(u32, 105), toAbsoluteFrame(5, 100));
+}
+
+test "InputBuffer snapshot round-trip" {
+    var buffer = InputBuffer{};
+    buffer.init(2, 0); // 2 peers
+
+    // Emit events for peer 0 at frames 0, 1, 2
+    buffer.emit(0, 0, &[_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)});
+    buffer.emit(0, 1, &[_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)});
+    buffer.emit(0, 2, &[_]Event{Event.keyDown(.KeyC, 0, .LocalKeyboard)});
+
+    // peer_confirmed[0] should be 2, peer_confirmed[1] should be 0
+    try std.testing.expectEqual(@as(u32, 2), buffer.peer_confirmed[0]);
+    try std.testing.expectEqual(@as(u32, 0), buffer.peer_confirmed[1]);
+
+    // Calculate snapshot size at current_match_frame=2
+    const size = buffer.snapshotSize(2);
+    try std.testing.expect(size > 0);
+
+    // Allocate and write snapshot
+    var snap_buf: [1024]u8 = undefined;
+    buffer.writeSnapshot(2, snap_buf[0..size]);
+
+    // Create new buffer and restore
+    var restored = InputBuffer{};
+    restored.init(1, 0); // Start with different peer_count
+
+    restored.restoreFromSnapshot(snap_buf[0..size]);
+
+    // Verify peer_confirmed was restored
+    try std.testing.expectEqual(@as(u32, 2), restored.peer_confirmed[0]);
+    try std.testing.expectEqual(@as(u32, 0), restored.peer_confirmed[1]);
+    try std.testing.expectEqual(@as(u8, 2), restored.peer_count);
+
+    // Verify events were restored
+    const frame0 = restored.get(0, 0);
+    try std.testing.expectEqual(@as(usize, 1), frame0.len);
+    try std.testing.expectEqual(Events.Key.KeyA, frame0[0].payload.key);
+
+    const frame1 = restored.get(0, 1);
+    try std.testing.expectEqual(@as(usize, 1), frame1.len);
+    try std.testing.expectEqual(Events.Key.KeyB, frame1[0].payload.key);
+
+    const frame2 = restored.get(0, 2);
+    try std.testing.expectEqual(@as(usize, 1), frame2.len);
+    try std.testing.expectEqual(Events.Key.KeyC, frame2[0].payload.key);
+}
+
+test "InputBuffer snapshot returns 0 for single player" {
+    var buffer = InputBuffer{};
+    buffer.init(1, 0); // Single player
+
+    buffer.emit(0, 0, &[_]Event{Event.keyDown(.KeyA, 0, .LocalKeyboard)});
+
+    // Should return 0 for single player (no network session)
+    const size = buffer.snapshotSize(0);
+    try std.testing.expectEqual(@as(u32, 0), size);
 }
