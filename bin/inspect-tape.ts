@@ -50,7 +50,7 @@ function readTapeHeader(view: DataView): TapeHeader {
   const magic = view.getUint32(0, true);
   if (magic !== TAPE_MAGIC) {
     throw new Error(
-      `Invalid tape format: expected magic ${TAPE_MAGIC.toString(16)}, got ${magic.toString(16)}`
+      `Invalid tape format: expected magic ${TAPE_MAGIC.toString(16)}, got ${magic.toString(16)}`,
     );
   }
   return {
@@ -172,7 +172,11 @@ async function main() {
   if (snapshot.userDataLen > 0) {
     const userDataStart = header.userDataOffset;
     const userDataEnd = userDataStart + snapshot.userDataLen;
-    const userDataBytes = new Uint8Array(bytes, userDataStart, snapshot.userDataLen);
+    const userDataBytes = new Uint8Array(
+      bytes,
+      userDataStart,
+      snapshot.userDataLen,
+    );
     const decoder = new TextDecoder();
     const userDataJson = decoder.decode(userDataBytes);
 
