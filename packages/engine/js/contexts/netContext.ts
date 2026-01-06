@@ -32,6 +32,11 @@ const MAX_PEERS = 12;
 const PEERS_ARRAY_OFFSET = 32; // After _pad at offset 29-31
 const PEER_CTX_SIZE = 8; // connected(1) + packet_count(1) + seq(2) + ack(2) + ack_count(1) + pad(1)
 
+// Rollback stats offsets (after peers array at 32 + 12*8 = 128)
+const LAST_ROLLBACK_DEPTH_OFFSET = 128;
+const TOTAL_ROLLBACKS_OFFSET = 132;
+const FRAMES_RESIMULATED_OFFSET = 136;
+
 // Offsets within PeerCtx struct
 const PEER_CONNECTED_OFFSET = 0;
 const PEER_PACKET_COUNT_OFFSET = 1;
@@ -254,5 +259,30 @@ export class NetContext {
       this.#peersResult.push(peer);
     }
     return this.#peersResult;
+  }
+
+  /** Last rollback depth (how many frames were rolled back) */
+  get lastRollbackDepth(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    return this.dataView!.getUint32(LAST_ROLLBACK_DEPTH_OFFSET, true);
+  }
+
+  /** Total number of rollbacks during this session */
+  get totalRollbacks(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    return this.dataView!.getUint32(TOTAL_ROLLBACKS_OFFSET, true);
+  }
+
+  /** Total frames resimulated during this session */
+  get framesResimulated(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    // Read u64 as BigInt then convert to number (safe for reasonable frame counts)
+    return Number(this.dataView!.getBigUint64(FRAMES_RESIMULATED_OFFSET, true));
   }
 }

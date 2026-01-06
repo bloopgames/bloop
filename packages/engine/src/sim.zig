@@ -3,7 +3,6 @@ const Ctx = @import("context.zig");
 const Events = @import("events.zig");
 const Tapes = @import("tapes/tapes.zig");
 const IB = @import("input_buffer.zig");
-const Ses = @import("netcode/session.zig");
 const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
@@ -32,9 +31,6 @@ pub const Callbacks = struct {
     /// Called when tape buffer fills up and recording stops
     on_tape_full: ?*const fn () void = null,
 };
-
-// Re-export RollbackStats for external access
-pub const RollbackStats = Ses.RollbackStats;
 
 /// Tick lifecycle listeners for Engine coordination.
 /// Engine registers these to intercept tick() calls for tape replay, VCR advancement, etc.
