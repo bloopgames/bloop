@@ -18,10 +18,10 @@ pub const NetStatus = enum(u8) {
 /// Per-peer connection and synchronization state (8 bytes)
 pub const PeerCtx = extern struct {
     connected: u8 = 0, // offset 0: 1 = connected
-    packet_count: u8 = 0, // offset 1: packets received (0 = no data yet)
-    seq: u16 = 0, // offset 2: Latest frame received from this peer
-    ack: u16 = 0, // offset 4: Latest frame this peer acked from us
-    ack_count: u8 = 0, // offset 6: acks received (0 = no ack yet)
+    packet_count: u8 = 0, // offset 1: packets received (for stats)
+    seq: i16 = -1, // offset 2: Latest frame received from this peer (-1 = none)
+    ack: i16 = -1, // offset 4: Latest frame this peer acked from us (-1 = none)
+    ack_count: u8 = 0, // offset 6: acks received (for stats)
     _pad: u8 = 0, // offset 7: padding for alignment
 };
 
@@ -39,8 +39,13 @@ pub const NetCtx = extern struct {
 
     _pad: [3]u8 = .{ 0, 0, 0 }, // offset 29, align for peers array
 
-    // Per-peer state (AoS layout, 72 bytes = 12 × 6)
+    // Per-peer state (AoS layout, 96 bytes = 12 × 8)
     peers: [12]PeerCtx = [_]PeerCtx{.{}} ** 12, // offset 32
+
+    // Rollback stats (offset 128 = 32 + 12*8)
+    last_rollback_depth: u32 = 0,
+    total_rollbacks: u32 = 0,
+    frames_resimulated: u64 = 0,
 };
 
 pub const MAX_PLAYERS: u8 = 12;
@@ -195,9 +200,9 @@ test "NetCtx seq/ack updates" {
         .match_frame = 0,
     };
 
-    // Initially all seq/ack/packet_count are 0
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].seq);
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].ack);
+    // Initially all seq/ack are -1 (no data), packet_count is 0
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].seq);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].ack);
     try std.testing.expectEqual(@as(u8, 0), net_ctx.peers[0].packet_count);
 
     // Update seq/ack for peer 1
@@ -205,17 +210,49 @@ test "NetCtx seq/ack updates" {
     net_ctx.peers[1].ack = 50;
     net_ctx.peers[1].packet_count = 1;
 
-    try std.testing.expectEqual(@as(u16, 100), net_ctx.peers[1].seq);
-    try std.testing.expectEqual(@as(u16, 50), net_ctx.peers[1].ack);
+    try std.testing.expectEqual(@as(i16, 100), net_ctx.peers[1].seq);
+    try std.testing.expectEqual(@as(i16, 50), net_ctx.peers[1].ack);
     try std.testing.expectEqual(@as(u8, 1), net_ctx.peers[1].packet_count);
 
-    // Peer 0 should still be 0
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].seq);
+    // Peer 0 should still be -1
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].seq);
 
     // Reset peer 1 (on disconnect)
     net_ctx.peers[1] = .{};
 
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[1].seq);
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[1].ack);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[1].seq);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[1].ack);
     try std.testing.expectEqual(@as(u8, 0), net_ctx.peers[1].packet_count);
+}
+
+test "NetCtx rollback stats layout and defaults" {
+    var net_ctx = NetCtx{
+        .peer_count = 0,
+        .match_frame = 0,
+    };
+
+    // Default values should be 0
+    try std.testing.expectEqual(@as(u32, 0), net_ctx.last_rollback_depth);
+    try std.testing.expectEqual(@as(u32, 0), net_ctx.total_rollbacks);
+    try std.testing.expectEqual(@as(u64, 0), net_ctx.frames_resimulated);
+
+    // Verify offsets for TypeScript bindings
+    try std.testing.expectEqual(@as(usize, 128), @offsetOf(NetCtx, "last_rollback_depth"));
+    try std.testing.expectEqual(@as(usize, 132), @offsetOf(NetCtx, "total_rollbacks"));
+    try std.testing.expectEqual(@as(usize, 136), @offsetOf(NetCtx, "frames_resimulated"));
+}
+
+test "NetCtx rollback stats update" {
+    var net_ctx = NetCtx{
+        .peer_count = 2,
+        .match_frame = 0,
+    };
+
+    net_ctx.total_rollbacks = 5;
+    net_ctx.last_rollback_depth = 3;
+    net_ctx.frames_resimulated = 100;
+
+    try std.testing.expectEqual(@as(u32, 5), net_ctx.total_rollbacks);
+    try std.testing.expectEqual(@as(u32, 3), net_ctx.last_rollback_depth);
+    try std.testing.expectEqual(@as(u64, 100), net_ctx.frames_resimulated);
 }

@@ -8,10 +8,8 @@ const Events = @import("events.zig");
 const IB = @import("input_buffer.zig");
 const PEB = @import("platform_event_buffer.zig");
 const VCR = @import("tapes/vcr.zig").VCR;
-const Ses = @import("netcode/session.zig");
 const Log = @import("log.zig");
 
-const Session = Ses.Session;
 const InputBuffer = IB.InputBuffer;
 const PlatformEventBuffer = PEB.PlatformEventBuffer;
 const PacketBuilder = Transport.PacketBuilder;
@@ -35,8 +33,6 @@ pub const Engine = struct {
     // ─────────────────────────────────────────────────────────────
     /// Tape recorder/player
     vcr: VCR,
-    /// Multiplayer session state
-    session: Session = .{},
     /// Confirmed snapshot for rollback
     confirmed_snapshot: ?*Tapes.Snapshot = null,
     /// Canonical input buffer - single source of truth for all inputs
@@ -92,11 +88,6 @@ pub const Engine = struct {
 
     fn beforeTickListener(ctx: *anyopaque) void {
         const self: *Engine = @ptrCast(@alignCast(ctx));
-        // Update sim.net_ctx from Engine's network state before tick processes events
-        // Note: Tape replay is handled by Engine.advance() before tick() is called
-        self.syncNetCtx();
-
-        // Process platform events from PlatformEventBuffer
         self.processPlatformEvents();
     }
 
@@ -202,13 +193,14 @@ pub const Engine = struct {
                 self.input_buffer.init(peer_count, start_frame);
                 self.input_buffer.observer = saved_observer;
 
-                // Initialize session state
-                self.session.start(start_frame);
-
-                // Update net_ctx
+                // Initialize session state in net_ctx
                 self.sim.net_ctx.in_session = 1;
                 self.sim.net_ctx.session_start_frame = start_frame;
                 self.sim.net_ctx.peers[local_peer_id].connected = 1;
+                // Reset rollback stats for new session
+                self.sim.net_ctx.last_rollback_depth = 0;
+                self.sim.net_ctx.total_rollbacks = 0;
+                self.sim.net_ctx.frames_resimulated = 0;
 
                 // Reinitialize NetState with NetCtx reference
                 self.net.* = .{
@@ -227,6 +219,9 @@ pub const Engine = struct {
     fn afterTickListener(ctx: *anyopaque, is_resimulating: bool) void {
         const self: *Engine = @ptrCast(@alignCast(ctx));
 
+        // match_frame was already set by beforeTickListener - no update needed here.
+        // The value represents the frame we just processed (elapsed frames since session start).
+
         // Advance tape frame if recording a new frame (not replaying or resimulating)
         if (self.vcr.is_recording and !self.vcr.is_replaying and !is_resimulating) {
             if (!self.vcr.advanceFrame()) {
@@ -241,17 +236,21 @@ pub const Engine = struct {
         }
     }
 
-    /// Sync sim.net_ctx from Engine's network state before each tick.
-    /// Sets match_frame to the NEXT frame that tick will process (time.frame + 1).
-    /// Note: peer_count, status, room_code, and in_session are managed by network events
-    /// in process_events(), not here.
-    fn syncNetCtx(self: *Engine) void {
-        // Calculate the target match_frame for the upcoming tick
-        self.sim.net_ctx.match_frame = if (self.session.active)
-            self.session.getMatchFrame(self.sim.time.frame) + 1
-        else
-            self.sim.time.frame + 1;
-        self.sim.net_ctx.session_start_frame = self.session.start_frame;
+    /// Get the confirmed match frame from the confirmed_snapshot.
+    /// Returns -1 if no snapshot exists or if snapshot is from session start (before any frames processed).
+    /// After processing match_frame N, snapshot has time.frame = session_start + N + 1,
+    /// so confirmed_match_frame = time.frame - session_start - 1.
+    fn getConfirmedMatchFrame(self: *const Engine) i32 {
+        if (self.confirmed_snapshot) |snap| {
+            if (snap.time.frame < snap.net.session_start_frame) {
+                @panic("confirmed snapshot time.frame < session_start_frame");
+            }
+            // Initial snapshot taken at session start has time.frame == session_start
+            // This represents "before frame 0", so nothing is confirmed yet
+            if (snap.time.frame == snap.net.session_start_frame) return -1;
+            return @as(i32, @intCast(snap.time.frame - snap.net.session_start_frame)) - 1;
+        }
+        return -1;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -278,11 +277,16 @@ pub const Engine = struct {
             }
 
             // If in a session, handle rollback
-            if (self.session.active) {
+            if (self.sim.net_ctx.in_session != 0) {
                 self.sessionStep();
             } else {
+                self.sim.net_ctx.match_frame = self.sim.time.frame;
                 self.sim.tick(false);
             }
+
+            // Update match_frame to reflect new time.frame after tick
+            // This is the user-facing value: elapsed frames since session start
+            self.sim.net_ctx.match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
 
             step_count += 1;
             self.accumulator -= hz;
@@ -296,16 +300,17 @@ pub const Engine = struct {
 
     /// Session-aware step that handles rollback when late inputs arrive
     fn sessionStep(self: *Engine) void {
-        // The frame we're about to process (after this tick, match_frame will be this value)
-        const target_match_frame = self.session.getMatchFrame(self.sim.time.frame) + 1;
+        // The frame we're processing NOW
+        const current_match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
 
         // Calculate how many frames can be confirmed based on received inputs
-        const next_confirm = self.input_buffer.calculateNextConfirmFrame(target_match_frame);
-        const current_confirmed = self.session.confirmed_frame;
+        // Both return i32 (-1 = nothing confirmed/no inputs yet)
+        const next_confirm = self.input_buffer.calculateNextConfirmFrame(current_match_frame);
+        const current_confirmed = self.getConfirmedMatchFrame();
 
-        Log.debug("sessionStep: time.frame={} target_mf={} next_confirm={} current_confirmed={} peer_count={}", .{
+        Log.debug("sessionStep: time.frame={} match_frame={} next_confirm={} current_confirmed={} peer_count={}", .{
             self.sim.time.frame,
-            target_match_frame,
+            current_match_frame,
             next_confirm,
             current_confirmed,
             self.input_buffer.peer_count,
@@ -313,7 +318,11 @@ pub const Engine = struct {
 
         if (next_confirm > current_confirmed) {
             // New confirmed frames available - need to rollback and resim
-            const rollback_depth = target_match_frame - 1 - current_confirmed;
+            // Convert to u32 for use in loops (safe since next_confirm > current_confirmed means next_confirm >= 0)
+            const confirm_frame: u32 = @intCast(next_confirm);
+            const resim_start: u32 = if (current_confirmed < 0) 0 else @intCast(current_confirmed + 1);
+
+            const rollback_depth = @as(i32, @intCast(current_match_frame)) - current_confirmed;
             if (rollback_depth > Transport.MAX_ROLLBACK_FRAMES) {
                 @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
             }
@@ -326,17 +335,25 @@ pub const Engine = struct {
             // - It contains inputs from packets that just arrived (triggering this rollback)
             // - Restoring it would wipe out those inputs, breaking resimulation
             const saved_peers = self.sim.net_ctx.peers;
+            const saved_stats = .{
+                .last_rollback_depth = self.sim.net_ctx.last_rollback_depth,
+                .total_rollbacks = self.sim.net_ctx.total_rollbacks,
+                .frames_resimulated = self.sim.net_ctx.frames_resimulated,
+            };
             if (self.confirmed_snapshot) |snap| {
                 self.sim.restore(snap, false); // Don't restore input buffer during rollback
             }
             self.sim.net_ctx.peers = saved_peers;
+            self.sim.net_ctx.last_rollback_depth = saved_stats.last_rollback_depth;
+            self.sim.net_ctx.total_rollbacks = saved_stats.total_rollbacks;
+            self.sim.net_ctx.frames_resimulated = saved_stats.frames_resimulated;
 
             // 2. Resim confirmed frames with all peer inputs
             var frames_resimmed: u32 = 0;
-            var f = current_confirmed + 1;
-            while (f <= next_confirm) : (f += 1) {
-                const is_current_frame = (f == target_match_frame);
-                // beforeTickListener syncs net_ctx with correct match_frame
+            var f = resim_start;
+            while (f <= confirm_frame) : (f += 1) {
+                self.sim.net_ctx.match_frame = f;
+                const is_current_frame = (f == current_match_frame);
                 self.sim.tick(!is_current_frame);
                 if (!is_current_frame) {
                     frames_resimmed += 1;
@@ -349,12 +366,12 @@ pub const Engine = struct {
             }
             self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
 
-            // 4. If we haven't reached target_match_frame yet, predict forward
-            if (next_confirm < target_match_frame) {
-                f = next_confirm + 1;
-                while (f <= target_match_frame) : (f += 1) {
-                    const is_current_frame = (f == target_match_frame);
-                    // beforeTickListener syncs net_ctx with correct match_frame
+            // 4. If we haven't reached current_match_frame yet, predict forward
+            if (confirm_frame < current_match_frame) {
+                f = confirm_frame + 1;
+                while (f <= current_match_frame) : (f += 1) {
+                    self.sim.net_ctx.match_frame = f;
+                    const is_current_frame = (f == current_match_frame);
                     self.sim.tick(!is_current_frame);
                     if (!is_current_frame) {
                         frames_resimmed += 1;
@@ -362,16 +379,22 @@ pub const Engine = struct {
                 }
             }
 
-            // Update session with new confirmed frame and stats
-            self.session.confirmFrame(next_confirm, frames_resimmed);
+            // Update rollback stats directly in net_ctx
+            if (frames_resimmed > 0) {
+                self.sim.net_ctx.total_rollbacks += 1;
+                self.sim.net_ctx.last_rollback_depth = @intCast(next_confirm - current_confirmed);
+                self.sim.net_ctx.frames_resimulated += frames_resimmed;
+            }
         } else {
-            // No rollback needed - this is the target frame, not resimulating
+            // No rollback needed - tick at current_match_frame
+            self.sim.net_ctx.match_frame = current_match_frame;
             self.sim.tick(false);
         }
 
         // Always advance local peer's confirmed frame, even if there's no input.
-        if (target_match_frame > self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id]) {
-            self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id] = target_match_frame;
+        const current_match_i32: i32 = @intCast(current_match_frame);
+        if (current_match_i32 > self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id]) {
+            self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id] = current_match_i32;
         }
     }
 
@@ -408,11 +431,11 @@ pub const Engine = struct {
         // If in active session with confirmed_snapshot, stitch together:
         // - The confirmed game state (from confirmed_snapshot)
         // - The current input buffer state (with all unconfirmed events)
-        if (self.session.active and self.confirmed_snapshot != null) {
+        if (self.sim.net_ctx.in_session != 0 and self.confirmed_snapshot != null) {
             const confirmed = self.confirmed_snapshot.?;
 
             // Calculate input buffer size for current match frame
-            const current_match_frame = self.session.getMatchFrame(self.sim.time.frame);
+            const current_match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
             const input_buffer_len = self.input_buffer.snapshotSize(current_match_frame);
 
             // Allocate new snapshot with space for current input buffer
@@ -454,10 +477,9 @@ pub const Engine = struct {
             };
         }
 
-        // Capture any pending input events for the upcoming frame.
-        // Input events emitted at frame N go to match_frame N+1, so we need
-        // to capture events at start_frame + 1.
-        const pending_match_frame = start_frame + 1;
+        // Capture any pending input events for the current frame.
+        // Inputs captured at frame N are stored in InputBuffer[N].
+        const pending_match_frame = start_frame - self.sim.net_ctx.session_start_frame;
         const local_peer = self.sim.net_ctx.local_peer_id;
         const pending_inputs = self.input_buffer.get(local_peer, pending_match_frame);
         for (pending_inputs) |event| {
@@ -510,11 +532,11 @@ pub const Engine = struct {
         self.input_buffer.session_start_frame = snapshot.net.session_start_frame;
         self.input_buffer.observer = saved_observer;
 
-        // Initialize session state from snapshot
-        self.session.start_frame = snapshot.net.session_start_frame;
-        self.session.confirmed_frame = snapshot.time.frame - snapshot.net.session_start_frame;
-        self.session.stats = .{};
-        self.session.active = true;
+        // Session state is already restored from snapshot (net_ctx.in_session, net_ctx.session_start_frame)
+        // Reset rollback stats for replay
+        self.sim.net_ctx.last_rollback_depth = 0;
+        self.sim.net_ctx.total_rollbacks = 0;
+        self.sim.net_ctx.frames_resimulated = 0;
 
         self.net.* = .{
             .allocator = self.allocator,
@@ -523,6 +545,7 @@ pub const Engine = struct {
         };
 
         // Take confirmed_snapshot for rollback during replay
+        // TODO: why is this needed? couldn't we just use the snapshot we restored from?
         self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
 
         // Roll forward from snapshot (confirmed state) to tape start_frame (prediction state)
@@ -559,7 +582,7 @@ pub const Engine = struct {
 
     /// Check if session is active
     pub fn inSession(self: *const Engine) bool {
-        return self.session.active;
+        return self.sim.net_ctx.in_session != 0;
     }
 
     /// Initialize session - queues NetSessionInit event.
@@ -590,9 +613,6 @@ pub const Engine = struct {
         self.input_buffer.init(1, 0);
         self.input_buffer.observer = saved_observer;
 
-        // Reset session state
-        self.session.end();
-
         self.net.deinit();
         self.net.* = .{
             .allocator = self.allocator,
@@ -600,7 +620,7 @@ pub const Engine = struct {
             .net_ctx = self.sim.net_ctx,
         };
 
-        // Net events will clear in_session, peer_count, etc. in process_events()
+        // Reset session state in net_ctx
         self.sim.net_ctx.in_session = 0;
         self.sim.net_ctx.peer_count = 0;
         self.sim.net_ctx.session_start_frame = 0;
@@ -625,15 +645,14 @@ pub const Engine = struct {
         self.input_buffer.init(1, 0);
         self.input_buffer.observer = saved_observer;
 
-        // Reset session state
-        self.session.end();
-
         self.net.deinit();
         self.net.* = .{
             .allocator = self.allocator,
             .input_buffer = self.input_buffer,
             .net_ctx = self.sim.net_ctx,
         };
+
+        // Reset session state in net_ctx
         self.sim.net_ctx.in_session = 0;
         self.sim.net_ctx.peer_count = 0;
         self.sim.net_ctx.session_start_frame = 0;
@@ -645,8 +664,8 @@ pub const Engine = struct {
 
     /// Build an outbound packet for a target peer
     pub fn buildOutboundPacket(self: *Engine, target_peer: u8) void {
-        const match_frame: u32 = if (self.session.active)
-            self.session.getMatchFrame(self.sim.time.frame)
+        const match_frame: u32 = if (self.sim.net_ctx.in_session != 0)
+            self.sim.time.frame - self.sim.net_ctx.session_start_frame
         else
             self.sim.time.frame;
         self.net.buildOutboundPacket(target_peer, match_frame) catch {
@@ -672,7 +691,7 @@ pub const Engine = struct {
     /// Packet is processed synchronously (while memory is valid),
     /// then event is queued so users can observe it via the event buffer.
     pub fn emit_receive_packet(self: *Engine, ptr: usize, len: u32) u8 {
-        if (!self.session.active) return 1;
+        if (self.sim.net_ctx.in_session == 0) return 1;
 
         // Minimal validation - just check buffer size
         if (len < Transport.HEADER_SIZE) return 2;
@@ -736,15 +755,12 @@ pub const Engine = struct {
 
     /// Append a fresh local event. Writes to Engine's canonical InputBuffer.
     fn appendInputEvent(self: *Engine, event: Event) void {
-        // Calculate match_frame for the upcoming tick
-        const match_frame = if (self.session.active)
-            self.session.getMatchFrame(self.sim.time.frame) + 1
-        else
-            self.sim.time.frame + 1;
+        // Inputs captured at frame N are stored in InputBuffer[N]
+        const match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
 
         // In session mode, use local_peer_id for network consistency
         // In non-session mode, preserve the event's peer_id for local multiplayer
-        const peer_id = if (self.session.active) self.sim.net_ctx.local_peer_id else event.peer_id;
+        const peer_id = if (self.sim.net_ctx.in_session != 0) self.sim.net_ctx.local_peer_id else event.peer_id;
 
         // Tag the event with the resolved peer ID
         var local_event = event;
@@ -754,7 +770,7 @@ pub const Engine = struct {
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{local_event});
 
         // If in a session, extend unacked window for packet sending to peers
-        if (self.session.active) {
+        if (self.sim.net_ctx.in_session != 0) {
             self.net.extendUnackedWindow(match_frame);
         }
     }
@@ -805,24 +821,30 @@ pub const Engine = struct {
 
     /// Get current match frame (0 if no session)
     pub fn getMatchFrame(self: *const Engine) u32 {
-        return self.session.getMatchFrame(self.sim.time.frame);
+        if (self.sim.net_ctx.in_session == 0) return 0;
+        return self.sim.time.frame - self.sim.net_ctx.session_start_frame;
     }
 
-    /// Get confirmed frame (0 if no session)
-    pub fn getConfirmedFrame(self: *const Engine) u32 {
-        return self.session.getConfirmedFrame();
+    /// Get confirmed frame (-1 if no frames confirmed yet, 0 if no session)
+    pub fn getConfirmedFrame(self: *const Engine) i32 {
+        if (self.sim.net_ctx.in_session == 0) return 0;
+        return self.getConfirmedMatchFrame();
     }
 
-    /// Get confirmed frame for a specific peer
-    pub fn getPeerFrame(self: *const Engine, peer: u8) u32 {
-        if (!self.session.active) return 0;
+    /// Get confirmed frame for a specific peer (-1 = no inputs yet)
+    pub fn getPeerFrame(self: *const Engine, peer: u8) i32 {
+        if (self.sim.net_ctx.in_session == 0) return 0;
         if (peer >= IB.MAX_PEERS) return 0;
         return self.input_buffer.peer_confirmed[peer];
     }
 
     /// Get rollback depth (match_frame - confirmed_frame)
     pub fn getRollbackDepth(self: *const Engine) u32 {
-        return self.session.getRollbackDepth(self.sim.time.frame);
+        if (self.sim.net_ctx.in_session == 0) return 0;
+        const match_frame: i32 = @intCast(self.sim.time.frame - self.sim.net_ctx.session_start_frame);
+        const confirmed = self.getConfirmedMatchFrame();
+        if (confirmed < 0) return @intCast(match_frame + 1); // No confirmed frames yet
+        return @intCast(match_frame - confirmed);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -912,18 +934,21 @@ pub const Engine = struct {
         const peer = &net_ctx.peers[header.peer_id];
 
         // Capture old seq before updating to filter duplicate events
+        // -1 means no packets received yet, so any frame >= 0 is new
         const old_seq = peer.seq;
 
-        // Update seq/ack in NetCtx (single source of truth)
-        if (header.frame_seq > peer.seq or peer.packet_count == 0) {
-            peer.seq = header.frame_seq;
+        // Update seq in NetCtx (single source of truth)
+        const frame_seq_i16: i16 = @intCast(header.frame_seq);
+        if (frame_seq_i16 > peer.seq) {
+            peer.seq = frame_seq_i16;
         }
 
         // Update ack - what frame they've received from us
-        // 0xFFFF is sentinel for "no ack yet" - don't count it
+        // 0xFFFF is wire sentinel for "no ack yet" - don't update
         if (header.frame_ack != 0xFFFF) {
-            if (header.frame_ack > peer.ack or peer.ack_count == 0) {
-                peer.ack = header.frame_ack;
+            const frame_ack_i16: i16 = @intCast(header.frame_ack);
+            if (frame_ack_i16 > peer.ack) {
+                peer.ack = frame_ack_i16;
                 // Increment ack count (saturate at 255)
                 if (peer.ack_count < 255) {
                     peer.ack_count += 1;
@@ -959,7 +984,9 @@ pub const Engine = struct {
             // Only add events for frames we haven't received yet.
             // Each packet retransmits all unacked events, so we filter duplicates
             // by only accepting events for frames > our last received frame.
-            if (wire_event.frame > old_seq) {
+            // old_seq is -1 if no packets received yet, so frame 0 naturally passes.
+            const event_frame_i16: i16 = @intCast(wire_event.frame);
+            if (event_frame_i16 > old_seq) {
                 // Reconstruct full u32 frame from u16 + base_frame_high
                 const full_frame = header.toFullFrame(wire_event.frame);
                 self.input_buffer.emit(header.peer_id, full_frame, &[_]Event{input_event});
@@ -971,8 +998,9 @@ pub const Engine = struct {
         // Update peer_confirmed even if there were no events.
         // The frame_seq tells us the peer has reached this frame,
         // which is sufficient for confirmation regardless of input activity.
-        if (header.frame_seq > self.input_buffer.peer_confirmed[header.peer_id]) {
-            self.input_buffer.peer_confirmed[header.peer_id] = header.frame_seq;
+        const full_frame_seq: i32 = @intCast(header.fullFrameSeq());
+        if (full_frame_seq > self.input_buffer.peer_confirmed[header.peer_id]) {
+            self.input_buffer.peer_confirmed[header.peer_id] = full_frame_seq;
         }
     }
 
@@ -983,11 +1011,8 @@ pub const Engine = struct {
             // Skip FrameStart markers and session events
             if (event.kind == .FrameStart or event.kind.isSessionEvent()) continue;
 
-            // Calculate match_frame for the upcoming tick
-            const match_frame = if (self.session.active)
-                self.session.getMatchFrame(self.sim.time.frame) + 1
-            else
-                self.sim.time.frame + 1;
+            // Inputs captured at frame N are stored in InputBuffer[N]
+            const match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
 
             // Use the peer_id from the tape event (preserves original peer)
             const peer_id = event.peer_id;
@@ -1175,19 +1200,19 @@ test "Engine emit_keydown adds event to InputBuffer" {
     engine.wireListeners();
     defer engine.deinit();
 
-    // Emit keydown - goes to InputBuffer at match_frame = time.frame + 1
+    // Emit keydown - goes to InputBuffer at match_frame = time.frame (0)
     engine.emit_keydown(.KeyA, 0);
 
-    // Check InputBuffer has the event at frame 1 (time.frame=0, so match_frame=1)
-    const events = engine.input_buffer.get(0, 1);
+    // Check InputBuffer has the event at frame 0 (inputs at frame N go to match_frame N)
+    const events = engine.input_buffer.get(0, 0);
     try std.testing.expectEqual(@as(usize, 1), events.len);
     try std.testing.expectEqual(.KeyDown, events[0].kind);
     try std.testing.expectEqual(.KeyA, events[0].payload.key);
     try std.testing.expectEqual(.LocalKeyboard, events[0].device);
 
-    // Emit keyup - also goes to InputBuffer at frame 1
+    // Emit keyup - also goes to InputBuffer at frame 0
     engine.emit_keyup(.KeyA, 0);
-    const events2 = engine.input_buffer.get(0, 1);
+    const events2 = engine.input_buffer.get(0, 0);
     try std.testing.expectEqual(@as(usize, 2), events2.len);
     try std.testing.expectEqual(.KeyUp, events2[1].kind);
 }
@@ -1199,8 +1224,8 @@ test "Engine emit_mousemove adds event to InputBuffer" {
 
     engine.emit_mousemove(100.5, 200.5, 0);
 
-    // Check InputBuffer has the event at frame 1
-    const events = engine.input_buffer.get(0, 1);
+    // Check InputBuffer has the event at frame 0 (inputs at frame N go to match_frame N)
+    const events = engine.input_buffer.get(0, 0);
     try std.testing.expectEqual(@as(usize, 1), events.len);
     try std.testing.expectEqual(.MouseMove, events[0].kind);
     try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
@@ -1222,5 +1247,4 @@ comptime {
 
     // Netcode modules
     _ = @import("netcode/transport.zig");
-    _ = @import("netcode/session.zig");
 }

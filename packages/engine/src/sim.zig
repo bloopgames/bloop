@@ -3,7 +3,6 @@ const Ctx = @import("context.zig");
 const Events = @import("events.zig");
 const Tapes = @import("tapes/tapes.zig");
 const IB = @import("input_buffer.zig");
-const Ses = @import("netcode/session.zig");
 const Log = @import("log.zig");
 
 const TimeCtx = Ctx.TimeCtx;
@@ -32,9 +31,6 @@ pub const Callbacks = struct {
     /// Called when tape buffer fills up and recording stops
     on_tape_full: ?*const fn () void = null,
 };
-
-// Re-export RollbackStats for external access
-pub const RollbackStats = Ses.RollbackStats;
 
 /// Tick lifecycle listeners for Engine coordination.
 /// Engine registers these to intercept tick() calls for tape replay, VCR advancement, etc.
@@ -286,7 +282,8 @@ const TestSimContext = struct {
         const self: *TestSimContext = @ptrCast(@alignCast(ctx_ptr));
         // Sync net_ctx like Engine does
         self.sim.net_ctx.peer_count = self.input_buffer.peer_count;
-        self.sim.net_ctx.match_frame = self.sim.time.frame + 1;
+        // match_frame = current elapsed frames (inputs at frame N go to match_frame N)
+        self.sim.net_ctx.match_frame = self.sim.time.frame;
     }
 
     fn deinit(self: *TestSimContext) void {
@@ -296,17 +293,18 @@ const TestSimContext = struct {
 
     // Event emission helpers for tests (writes directly to input_buffer)
     fn emit_keydown(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        // Inputs at frame N go to match_frame N
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyDown(key, peer_id, .LocalKeyboard)});
     }
 
     fn emit_keyup(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyUp(key, peer_id, .LocalKeyboard)});
     }
 
     fn emit_mousemove(self: *TestSimContext, x: f32, y: f32, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.mouseMove(x, y, peer_id, .LocalMouse)});
     }
 };

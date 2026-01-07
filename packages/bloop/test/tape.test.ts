@@ -647,13 +647,12 @@ describe("tapes", () => {
       setupSession(sim0, sim1);
 
       for (let i = 0; i < 3; i++) {
+        sim0.emit.keydown(`Digit${i}` as Key);
+        sim1.emit.keydown(`Digit${i}` as Key);
         const packet0 = unwrap(sim0.getOutboundPacket(1));
         sim0Packets.push(packet0);
         const packet1 = unwrap(sim1.getOutboundPacket(0));
         sim1Packets.push(packet1);
-
-        sim0.emit.keydown(`Digit${i}` as Key);
-        sim1.emit.keydown(`Digit${i}` as Key);
         sim0.step();
         sim1.step();
       }
@@ -673,8 +672,8 @@ describe("tapes", () => {
         sim0.step();
       }
 
-      // Score should be 6-2 since the last input from sim1 wasn't captured in the third packet yet
-      expect(game0.bag).toEqual({ p0Score: 6, p1Score: 2 });
+      // Score should be 6-3
+      expect(game0.bag).toEqual({ p0Score: 6, p1Score: 3 });
       const tape = sim0.saveTape();
 
       // Load tape into fresh game instance
@@ -718,7 +717,7 @@ describe("tapes", () => {
       for (let i = 0; i < 3; i++) {
         replaySim.step();
       }
-      expect(replayGame.bag).toEqual({ p0Score: 6, p1Score: 2 });
+      expect(replayGame.bag).toEqual({ p0Score: 6, p1Score: 3 });
     });
   });
 

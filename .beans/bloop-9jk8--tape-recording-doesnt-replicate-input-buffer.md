@@ -1,11 +1,11 @@
 ---
 # bloop-9jk8
 title: Tape recording doesn't replicate input buffer
-status: in-progress
+status: completed
 type: bug
 priority: high
 created_at: 2026-01-05T05:51:59Z
-updated_at: 2026-01-06T05:50:56Z
+updated_at: 2026-01-06T21:34:10Z
 parent: bloop-7ivl
 ---
 

@@ -32,6 +32,11 @@ const MAX_PEERS = 12;
 const PEERS_ARRAY_OFFSET = 32; // After _pad at offset 29-31
 const PEER_CTX_SIZE = 8; // connected(1) + packet_count(1) + seq(2) + ack(2) + ack_count(1) + pad(1)
 
+// Rollback stats offsets (after peers array at 32 + 12*8 = 128)
+const LAST_ROLLBACK_DEPTH_OFFSET = 128;
+const TOTAL_ROLLBACKS_OFFSET = 132;
+const FRAMES_RESIMULATED_OFFSET = 136;
+
 // Offsets within PeerCtx struct
 const PEER_CONNECTED_OFFSET = 0;
 const PEER_PACKET_COUNT_OFFSET = 1;
@@ -216,14 +221,15 @@ export class NetContext {
     const localPeerId = this.localPeerId;
     const matchFrame = this.matchFrame;
 
-    // Calculate local peer ack = min(seq) across connected remotes with packets
+    // Calculate local peer ack = min(seq) across connected remotes with data
     let minRemoteSeq = -1;
     for (let i = 0; i < MAX_PEERS; i++) {
       if (i === localPeerId) continue;
       const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
       if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
-      if (dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET) === 0) continue;
-      const seq = dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
+      // seq is now i16 with -1 meaning "no data yet"
+      const seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
+      if (seq < 0) continue; // No data from this peer yet
       if (minRemoteSeq === -1 || seq < minRemoteSeq) {
         minRemoteSeq = seq;
       }
@@ -246,13 +252,37 @@ export class NetContext {
         peer.seq = matchFrame;
         peer.ack = minRemoteSeq;
       } else {
-        const packetCount = dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET);
-        const ackCount = dv.getUint8(peerOffset + PEER_ACK_COUNT_OFFSET);
-        peer.seq = packetCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
-        peer.ack = ackCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_ACK_OFFSET, true);
+        // seq and ack are now i16 with -1 meaning "no data yet"
+        peer.seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
+        peer.ack = dv.getInt16(peerOffset + PEER_ACK_OFFSET, true);
       }
       this.#peersResult.push(peer);
     }
     return this.#peersResult;
+  }
+
+  /** Last rollback depth (how many frames were rolled back) */
+  get lastRollbackDepth(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    return this.dataView!.getUint32(LAST_ROLLBACK_DEPTH_OFFSET, true);
+  }
+
+  /** Total number of rollbacks during this session */
+  get totalRollbacks(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    return this.dataView!.getUint32(TOTAL_ROLLBACKS_OFFSET, true);
+  }
+
+  /** Total frames resimulated during this session */
+  get framesResimulated(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    // Read u64 as BigInt then convert to number (safe for reasonable frame counts)
+    return Number(this.dataView!.getBigUint64(FRAMES_RESIMULATED_OFFSET, true));
   }
 }

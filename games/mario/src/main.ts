@@ -38,6 +38,8 @@ await toodle.assets.registerBundle("main", {
     marioWalk: spriteUrl("MarioWalk"),
     marioJump: spriteUrl("MarioJump"),
     marioSkid: spriteUrl("MarioSkid"),
+    brick: spriteUrl("Brick"),
+    ground: spriteUrl("Ground"),
   },
   autoLoad: true,
 });

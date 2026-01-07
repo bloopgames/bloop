@@ -350,8 +350,9 @@ pub const PacketBuilder = struct {
 
         const peer_window = &self.peer_unacked[target_peer];
         const local_peer_id = net_ctx.local_peer_id;
-        // Use 0xFFFF as sentinel for "no ack yet" when we haven't received packets from target
-        const remote_seq: u16 = if (target.packet_count == 0) 0xFFFF else target.seq;
+        // seq is i16 with -1 meaning "no data yet", which bitcasts to 0xFFFF for frame_ack
+        // TODO: is this really necessary? we should just use i32 everywhere and kill the sentinel value
+        const remote_seq: u16 = @bitCast(target.seq);
 
         // Count events across all unacked frames (reading from InputBuffer)
         var total_events: usize = 0;
