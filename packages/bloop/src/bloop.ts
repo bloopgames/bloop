@@ -152,8 +152,8 @@ export class Bloop<GS extends BloopSchema> {
       this.#engineBuffer = buffer;
     },
 
+    // TODO - move this to engine
     setContext: (ptr: EnginePointer) => {
-      // todo - move this to engine
       if (!this.#engineBuffer) {
         throw new Error("Tried to set context before engine buffer");
       }
@@ -163,7 +163,7 @@ export class Bloop<GS extends BloopSchema> {
       const netCtxPtr = dv.getUint32(NET_CTX_OFFSET, true);
 
       this.#context.rawPointer = ptr;
-      // todo - only rebuild these if the buffer has changed due to memory growth or the pointers have changed
+      // TODO - only rebuild these if the buffer has changed due to memory growth or the pointers have changed
       this.#context.inputs.dataView = new DataView(
         this.#engineBuffer,
         inputCtxPtr,

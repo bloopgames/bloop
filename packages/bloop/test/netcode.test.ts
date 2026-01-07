@@ -217,13 +217,18 @@ describe("netcode integration", () => {
       return game;
     });
 
+    // After startOnlineMatch, one tick has run (match_frame 0), and matchFrame is now 1.
+    // The bag stores values from the tick at match_frame 0.
     const matchFrame = game0.context.net.matchFrame;
+    expect(matchFrame).toEqual(1);
 
-    expect(game0.bag.local.seq).toEqual(matchFrame);
+    // bag.local.seq is the matchFrame during tick = matchFrame - 1
+    expect(game0.bag.local.seq).toEqual(matchFrame - 1);
     expect(game0.bag.local.ack).toEqual(-1);
     expect(game0.bag.remote.seq).toEqual(-1);
     expect(game0.bag.remote.ack).toEqual(-1);
 
+    // Packets are built with the current matchFrame value
     const packet0 = unwrap(
       sim1.getOutboundPacket(0),
       "peer 1 to peer 0 has no packet",
@@ -234,12 +239,12 @@ describe("netcode integration", () => {
     );
 
     // 2-frame delay before we receive the first packet.
-    // Our local seq should advance, but we haven't gotten any packets yet so ack is still -1
+    // Our local seq should advance (bag stores matchFrame - 1 from the tick)
     sim0.step();
     sim1.step();
     sim0.step();
     sim1.step();
-    expect(game0.bag.local.seq).toEqual(matchFrame + 2);
+    expect(game0.bag.local.seq).toEqual(matchFrame + 2 - 1);
     expect(game0.bag.local.ack).toEqual(-1);
     expect(game0.bag.remote.seq).toEqual(-1);
     expect(game0.bag.remote.ack).toEqual(-1);
@@ -249,7 +254,8 @@ describe("netcode integration", () => {
     sim1.emit.packet(packet1);
     sim0.step();
     sim1.step();
-    expect(game0.bag.local.seq).toEqual(matchFrame + 3);
+    expect(game0.bag.local.seq).toEqual(matchFrame + 3 - 1);
+    // ack = min(remote seqs) = remote.seq from packet = matchFrame (packet was built at matchFrame = 1)
     expect(game0.bag.local.ack).toEqual(matchFrame);
     expect(game0.bag.remote.seq).toEqual(matchFrame);
     expect(game0.bag.remote.ack).toEqual(-1);
@@ -273,7 +279,7 @@ describe("netcode integration", () => {
     sim1.emit.packet(packet2_1);
     sim0.step();
     sim1.step();
-    expect(game0.bag.local.seq).toEqual(receiveFrame + 3);
+    expect(game0.bag.local.seq).toEqual(receiveFrame + 3 - 1);
     expect(game0.bag.local.ack).toEqual(receiveFrame);
     expect(game0.bag.remote.seq).toEqual(receiveFrame);
     expect(game0.bag.remote.ack).toEqual(matchFrame);

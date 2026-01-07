@@ -221,14 +221,15 @@ export class NetContext {
     const localPeerId = this.localPeerId;
     const matchFrame = this.matchFrame;
 
-    // Calculate local peer ack = min(seq) across connected remotes with packets
+    // Calculate local peer ack = min(seq) across connected remotes with data
     let minRemoteSeq = -1;
     for (let i = 0; i < MAX_PEERS; i++) {
       if (i === localPeerId) continue;
       const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
       if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
-      if (dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET) === 0) continue;
-      const seq = dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
+      // seq is now i16 with -1 meaning "no data yet"
+      const seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
+      if (seq < 0) continue; // No data from this peer yet
       if (minRemoteSeq === -1 || seq < minRemoteSeq) {
         minRemoteSeq = seq;
       }
@@ -251,10 +252,9 @@ export class NetContext {
         peer.seq = matchFrame;
         peer.ack = minRemoteSeq;
       } else {
-        const packetCount = dv.getUint8(peerOffset + PEER_PACKET_COUNT_OFFSET);
-        const ackCount = dv.getUint8(peerOffset + PEER_ACK_COUNT_OFFSET);
-        peer.seq = packetCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_SEQ_OFFSET, true);
-        peer.ack = ackCount === 0 ? -1 : dv.getUint16(peerOffset + PEER_ACK_OFFSET, true);
+        // seq and ack are now i16 with -1 meaning "no data yet"
+        peer.seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
+        peer.ack = dv.getInt16(peerOffset + PEER_ACK_OFFSET, true);
       }
       this.#peersResult.push(peer);
     }

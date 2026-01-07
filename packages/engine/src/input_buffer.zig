@@ -53,8 +53,8 @@ pub const InputBuffer = struct {
     /// Ring buffer: slots[peer][match_frame % MAX_FRAMES]
     slots: [MAX_PEERS][MAX_FRAMES]InputSlot = [_][MAX_FRAMES]InputSlot{[_]InputSlot{.{}} ** MAX_FRAMES} ** MAX_PEERS,
 
-    /// Per-peer confirmed frame (inputs received up to this frame)
-    peer_confirmed: [MAX_PEERS]u32 = [_]u32{0} ** MAX_PEERS,
+    /// Per-peer confirmed frame (inputs received up to this frame, -1 = no inputs yet)
+    peer_confirmed: [MAX_PEERS]i32 = [_]i32{-1} ** MAX_PEERS,
 
     /// Session configuration
     peer_count: u8 = 1,
@@ -68,9 +68,9 @@ pub const InputBuffer = struct {
     pub fn init(self: *InputBuffer, peer_count: u8, session_start_frame: u32) void {
         self.peer_count = peer_count;
         self.session_start_frame = session_start_frame;
-        // Reset confirmed frames
+        // Reset confirmed frames to -1 (no inputs received yet)
         for (0..MAX_PEERS) |i| {
-            self.peer_confirmed[i] = 0;
+            self.peer_confirmed[i] = -1;
         }
     }
 
@@ -102,8 +102,9 @@ pub const InputBuffer = struct {
         }
 
         // Update confirmed frame for this peer
-        if (match_frame > self.peer_confirmed[peer]) {
-            self.peer_confirmed[peer] = match_frame;
+        const match_frame_i32 = @as(i32, @intCast(match_frame));
+        if (match_frame_i32 > self.peer_confirmed[peer]) {
+            self.peer_confirmed[peer] = match_frame_i32;
         }
     }
 
@@ -133,8 +134,9 @@ pub const InputBuffer = struct {
     }
 
     /// Calculate the next confirmable frame (minimum across all peers).
-    pub fn calculateNextConfirmFrame(self: *const InputBuffer, current_match_frame: u32) u32 {
-        var min_frame = current_match_frame;
+    /// Returns -1 if any peer has no confirmed inputs yet.
+    pub fn calculateNextConfirmFrame(self: *const InputBuffer, current_match_frame: u32) i32 {
+        var min_frame: i32 = @intCast(current_match_frame);
         for (0..self.peer_count) |i| {
             const peer_frame = self.peer_confirmed[i];
             if (peer_frame < min_frame) {
@@ -156,10 +158,12 @@ pub const InputBuffer = struct {
 
         var event_count: u32 = 0;
         const min_confirmed = self.calculateNextConfirmFrame(current_match_frame);
+        // If min_confirmed is -1 (no inputs yet), start from 0
+        const start_frame: u32 = if (min_confirmed < 0) 0 else @intCast(min_confirmed);
 
-        // Count events across all peers from min_confirmed to current_match_frame
+        // Count events across all peers from start_frame to current_match_frame
         for (0..self.peer_count) |peer| {
-            var frame = min_confirmed;
+            var frame = start_frame;
             while (frame <= current_match_frame) : (frame += 1) {
                 const slot = &self.slots[peer][frame % MAX_FRAMES];
                 // Only count if slot is for the correct frame (not stale)
@@ -178,6 +182,8 @@ pub const InputBuffer = struct {
         if (buf.len == 0) return;
 
         const min_confirmed = self.calculateNextConfirmFrame(current_match_frame);
+        // If min_confirmed is -1 (no inputs yet), start from 0
+        const start_frame: u32 = if (min_confirmed < 0) 0 else @intCast(min_confirmed);
 
         // Write header
         var header = Tapes.InputBufferSnapshotHeader{
@@ -195,7 +201,7 @@ pub const InputBuffer = struct {
         var write_offset: usize = @sizeOf(Tapes.InputBufferSnapshotHeader);
 
         for (0..self.peer_count) |peer| {
-            var frame = min_confirmed;
+            var frame = start_frame;
             while (frame <= current_match_frame) : (frame += 1) {
                 const slot = &self.slots[peer][frame % MAX_FRAMES];
                 // Only include if slot is for the correct frame (not stale)
@@ -349,7 +355,7 @@ test "InputBuffer emit and get round-trip" {
     try std.testing.expectEqual(Events.Key.KeyW, retrieved[1].payload.key);
 
     // Verify peer_confirmed was updated
-    try std.testing.expectEqual(@as(u32, 5), buffer.peer_confirmed[0]);
+    try std.testing.expectEqual(@as(i32, 5), buffer.peer_confirmed[0]);
 }
 
 test "InputBuffer ring buffer wraparound" {
@@ -467,20 +473,20 @@ test "InputBuffer calculateNextConfirmFrame" {
     var buffer = InputBuffer{};
     buffer.init(3, 0);
 
-    // All peers at frame 0 initially
-    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+    // All peers at -1 initially (no inputs yet)
+    try std.testing.expectEqual(@as(i32, -1), buffer.calculateNextConfirmFrame(10));
 
     // Peer 0 advances to frame 5
     buffer.peer_confirmed[0] = 5;
-    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+    try std.testing.expectEqual(@as(i32, -1), buffer.calculateNextConfirmFrame(10));
 
     // Peer 1 advances to frame 3
     buffer.peer_confirmed[1] = 3;
-    try std.testing.expectEqual(@as(u32, 0), buffer.calculateNextConfirmFrame(10));
+    try std.testing.expectEqual(@as(i32, -1), buffer.calculateNextConfirmFrame(10));
 
     // Peer 2 advances to frame 7 - now min is 3
     buffer.peer_confirmed[2] = 7;
-    try std.testing.expectEqual(@as(u32, 3), buffer.calculateNextConfirmFrame(10));
+    try std.testing.expectEqual(@as(i32, 3), buffer.calculateNextConfirmFrame(10));
 }
 
 test "InputBuffer ignores events for invalid peers" {
@@ -512,9 +518,9 @@ test "InputBuffer snapshot round-trip" {
     buffer.emit(0, 1, &[_]Event{Event.keyDown(.KeyB, 0, .LocalKeyboard)});
     buffer.emit(0, 2, &[_]Event{Event.keyDown(.KeyC, 0, .LocalKeyboard)});
 
-    // peer_confirmed[0] should be 2, peer_confirmed[1] should be 0
-    try std.testing.expectEqual(@as(u32, 2), buffer.peer_confirmed[0]);
-    try std.testing.expectEqual(@as(u32, 0), buffer.peer_confirmed[1]);
+    // peer_confirmed[0] should be 2, peer_confirmed[1] should be -1 (no inputs)
+    try std.testing.expectEqual(@as(i32, 2), buffer.peer_confirmed[0]);
+    try std.testing.expectEqual(@as(i32, -1), buffer.peer_confirmed[1]);
 
     // Calculate snapshot size at current_match_frame=2
     const size = buffer.snapshotSize(2);
@@ -531,8 +537,8 @@ test "InputBuffer snapshot round-trip" {
     restored.restoreFromSnapshot(snap_buf[0..size]);
 
     // Verify peer_confirmed was restored
-    try std.testing.expectEqual(@as(u32, 2), restored.peer_confirmed[0]);
-    try std.testing.expectEqual(@as(u32, 0), restored.peer_confirmed[1]);
+    try std.testing.expectEqual(@as(i32, 2), restored.peer_confirmed[0]);
+    try std.testing.expectEqual(@as(i32, -1), restored.peer_confirmed[1]);
     try std.testing.expectEqual(@as(u8, 2), restored.peer_count);
 
     // Verify events were restored

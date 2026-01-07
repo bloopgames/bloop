@@ -282,7 +282,8 @@ const TestSimContext = struct {
         const self: *TestSimContext = @ptrCast(@alignCast(ctx_ptr));
         // Sync net_ctx like Engine does
         self.sim.net_ctx.peer_count = self.input_buffer.peer_count;
-        self.sim.net_ctx.match_frame = self.sim.time.frame + 1;
+        // match_frame = current elapsed frames (inputs at frame N go to match_frame N)
+        self.sim.net_ctx.match_frame = self.sim.time.frame;
     }
 
     fn deinit(self: *TestSimContext) void {
@@ -292,17 +293,18 @@ const TestSimContext = struct {
 
     // Event emission helpers for tests (writes directly to input_buffer)
     fn emit_keydown(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        // Inputs at frame N go to match_frame N
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyDown(key, peer_id, .LocalKeyboard)});
     }
 
     fn emit_keyup(self: *TestSimContext, key: Events.Key, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.keyUp(key, peer_id, .LocalKeyboard)});
     }
 
     fn emit_mousemove(self: *TestSimContext, x: f32, y: f32, peer_id: u8) void {
-        const match_frame = self.sim.time.frame + 1;
+        const match_frame = self.sim.time.frame;
         self.input_buffer.emit(peer_id, match_frame, &[_]Event{Event.mouseMove(x, y, peer_id, .LocalMouse)});
     }
 };

@@ -18,10 +18,10 @@ pub const NetStatus = enum(u8) {
 /// Per-peer connection and synchronization state (8 bytes)
 pub const PeerCtx = extern struct {
     connected: u8 = 0, // offset 0: 1 = connected
-    packet_count: u8 = 0, // offset 1: packets received (0 = no data yet)
-    seq: u16 = 0, // offset 2: Latest frame received from this peer
-    ack: u16 = 0, // offset 4: Latest frame this peer acked from us
-    ack_count: u8 = 0, // offset 6: acks received (0 = no ack yet)
+    packet_count: u8 = 0, // offset 1: packets received (for stats)
+    seq: i16 = -1, // offset 2: Latest frame received from this peer (-1 = none)
+    ack: i16 = -1, // offset 4: Latest frame this peer acked from us (-1 = none)
+    ack_count: u8 = 0, // offset 6: acks received (for stats)
     _pad: u8 = 0, // offset 7: padding for alignment
 };
 
@@ -200,9 +200,9 @@ test "NetCtx seq/ack updates" {
         .match_frame = 0,
     };
 
-    // Initially all seq/ack/packet_count are 0
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].seq);
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].ack);
+    // Initially all seq/ack are -1 (no data), packet_count is 0
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].seq);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].ack);
     try std.testing.expectEqual(@as(u8, 0), net_ctx.peers[0].packet_count);
 
     // Update seq/ack for peer 1
@@ -210,18 +210,18 @@ test "NetCtx seq/ack updates" {
     net_ctx.peers[1].ack = 50;
     net_ctx.peers[1].packet_count = 1;
 
-    try std.testing.expectEqual(@as(u16, 100), net_ctx.peers[1].seq);
-    try std.testing.expectEqual(@as(u16, 50), net_ctx.peers[1].ack);
+    try std.testing.expectEqual(@as(i16, 100), net_ctx.peers[1].seq);
+    try std.testing.expectEqual(@as(i16, 50), net_ctx.peers[1].ack);
     try std.testing.expectEqual(@as(u8, 1), net_ctx.peers[1].packet_count);
 
-    // Peer 0 should still be 0
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[0].seq);
+    // Peer 0 should still be -1
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[0].seq);
 
     // Reset peer 1 (on disconnect)
     net_ctx.peers[1] = .{};
 
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[1].seq);
-    try std.testing.expectEqual(@as(u16, 0), net_ctx.peers[1].ack);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[1].seq);
+    try std.testing.expectEqual(@as(i16, -1), net_ctx.peers[1].ack);
     try std.testing.expectEqual(@as(u8, 0), net_ctx.peers[1].packet_count);
 }
 

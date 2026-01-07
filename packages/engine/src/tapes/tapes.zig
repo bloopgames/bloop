@@ -18,7 +18,7 @@ const MAX_PEERS = IB.MAX_PEERS;
 /// Input buffer snapshot header (fixed portion)
 /// Contains peer_confirmed state and metadata for variable-length events that follow
 pub const InputBufferSnapshotHeader = extern struct {
-    peer_confirmed: [MAX_PEERS]u32, // 48 bytes - confirmed frame per peer
+    peer_confirmed: [MAX_PEERS]i32, // 48 bytes - confirmed frame per peer (-1 = no inputs)
     peer_count: u8, // number of active peers
     _padding: [3]u8 = .{ 0, 0, 0 },
     event_count: u16, // how many SnapshotWireEvents follow

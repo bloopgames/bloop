@@ -79,9 +79,8 @@ export function createDrawState(toodle: Toodle): DrawState {
   );
 
   const block = gameScreen.add(
-    toodle.shapes.Rect({
+    toodle.Quad("brick", {
       size: { width: BLOCK_SIZE, height: BLOCK_SIZE },
-      color: BLOCK_COLOR,
     }),
   );
 
