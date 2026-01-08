@@ -1,7 +1,7 @@
 import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
 import { start } from "@bloopjs/web";
-import { createDrawState, draw } from "./draw";
+import { draw } from "./draw";
 import { game } from "./game";
 
 const wasmUrl = import.meta.env.DEV
@@ -86,10 +86,8 @@ async function loadTape(bytes: Uint8Array, fileName: string) {
     new URL("https://toodle.gg/fonts/Roboto-Regular-msdf.json"),
   );
 
-  const drawState = createDrawState(toodle);
-
   requestAnimationFrame(function frame() {
-    draw(app.game, toodle, drawState);
+    draw(app.game, toodle);
     requestAnimationFrame(frame);
   });
 

@@ -1,11 +1,5 @@
 import { unwrap } from "@bloopjs/bloop";
-import type {
-  Color,
-  QuadNode,
-  SceneNode,
-  TextNode,
-  Toodle,
-} from "@bloopjs/toodle";
+import type { Color, Toodle } from "@bloopjs/toodle";
 import { Colors } from "@bloopjs/toodle";
 import {
   BLOCK_SIZE,
@@ -20,253 +14,200 @@ import type { game, Player, Pose } from "./game";
 // Placeholder colors until sprites are added
 const MARIO_COLOR = Colors.web.red;
 const LUIGI_COLOR = Colors.web.green;
-const BLOCK_COLOR = Colors.web.sienna;
 const COIN_COLOR = Colors.web.gold;
 const GROUND_COLOR = Colors.web.saddleBrown;
 
-/** Quads for each pose animation */
-type PoseQuads = Record<Pose, QuadNode>;
+// Map pose to texture name
+const POSE_TEXTURES: Record<Pose, string> = {
+  idle: "marioIdle",
+  run: "marioWalk",
+  jump: "marioJump",
+  skid: "marioSkid",
+};
 
-export interface DrawState {
-  root: SceneNode;
-  // Screen containers
-  titleScreen: SceneNode;
-  gameScreen: SceneNode;
-  // Game elements (under gameScreen)
-  ground: QuadNode;
-  block: SceneNode;
-  coin: QuadNode;
-  p1: PoseQuads;
-  p2: PoseQuads;
-  viewport: SceneNode;
-  p1Score: TextNode;
-  p2Score: TextNode;
-  // Title elements (under titleScreen)
-  titleText: TextNode;
-  subtitleText: TextNode;
-}
-
-export function createDrawState(toodle: Toodle): DrawState {
-  const root = toodle.Node({ scale: 3 });
-
-  // Title screen container
-  const titleScreen = root.add(toodle.Node({}));
-  const titleText = titleScreen.add(
-    toodle.Text("Roboto", "MARIO ROLLBACK", {
-      fontSize: 24,
-      color: { r: 1, g: 1, b: 1, a: 1 },
-      position: { x: 0, y: 20 },
-    }),
-  );
-  const subtitleText = titleScreen.add(
-    toodle.Text("Roboto", "[Space] Local  [Enter] Online", {
-      fontSize: 10,
-      color: { r: 1, g: 1, b: 1, a: 1 },
-      position: { x: 0, y: 0 },
-    }),
-  );
-
-  // Game screen container
-  const gameScreen = root.add(toodle.Node({}));
-  gameScreen.isActive = false;
-
-  const ground = gameScreen.add(
-    toodle.shapes.Rect({
-      size: { width: 400, height: 40 },
-      position: { x: 0, y: GROUND_Y - 20 },
-      color: GROUND_COLOR,
-    }),
-  );
-
-  const block = gameScreen.add(
-    toodle.Quad("brick", {
-      size: { width: BLOCK_SIZE, height: BLOCK_SIZE },
-    }),
-  );
-
-  const coin = gameScreen.add(
-    toodle.shapes.Circle({
-      radius: COIN_SIZE / 2,
-      color: COIN_COLOR,
-    }),
-  );
-
-  // Map pose to texture name
-  const poseTextures: Record<Pose, string> = {
-    idle: "marioIdle",
-    run: "marioWalk",
-    jump: "marioJump",
-    skid: "marioSkid",
-  };
-
-  // Create pose quads for a player
-  const createPoseQuads = (color?: typeof LUIGI_COLOR): PoseQuads => {
-    const poses = {} as PoseQuads;
-    for (const pose of ["idle", "run", "jump", "skid"] satisfies Pose[]) {
-      const quad = gameScreen.add(
-        toodle.Quad(poseTextures[pose], {
-          size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-          region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
-          color,
-        }),
-      );
-      quad.isActive = false; // Start inactive, draw will activate the right one
-      poses[pose] = quad;
-    }
-    return poses;
-  };
-
-  const p1 = createPoseQuads();
-  const p2 = createPoseQuads(LUIGI_COLOR);
-
-  const p1Score = gameScreen.add(
-    toodle.Text("Roboto", "P9: 0", {
-      fontSize: 16,
-      color: MARIO_COLOR,
-    }),
-  );
-
-  const p2Score = gameScreen.add(
-    toodle.Text("Roboto", "P2: 0", {
-      fontSize: 16,
-      color: LUIGI_COLOR,
-    }),
-  );
-
-  const viewport = toodle.Node({
-    size: { width: toodle.resolution.width, height: toodle.resolution.height },
-  });
-
-  return {
-    root,
-    titleScreen,
-    gameScreen,
-    ground,
-    block,
-    coin,
-    p1,
-    p2,
-    p1Score,
-    p2Score,
-    titleText,
-    subtitleText,
-    viewport,
-  };
-}
-
-export function draw(g: typeof game, toodle: Toodle, state: DrawState) {
+export function draw(g: typeof game, toodle: Toodle) {
   const { bag } = g.context;
-
-  // Toggle screens
-  state.titleScreen.isActive = bag.phase !== "playing";
-  state.gameScreen.isActive = bag.phase === "playing";
-
-  // Update title text based on phase
-  if (bag.phase === "title") {
-    const isMobile = toodle.resolution.width < toodle.resolution.height;
-    state.subtitleText.text = isMobile
-      ? "Tap to find opponent"
-      : "[Enter/Click] Online  [Space] Local";
-  } else if (bag.phase === "waiting") {
-    state.subtitleText.text = "Waiting for opponent...";
-  }
-
-  // Update game positions only when playing
-  if (bag.phase === "playing") {
-    state.block.position = { x: bag.block.x, y: BLOCK_Y + BLOCK_SIZE / 2 };
-
-    state.coin.position = {
-      x: bag.coin.x,
-      y: bag.coin.y,
-    };
-    state.coin.isActive = bag.coin.visible;
-    state.coin.color =
-      bag.coin.winner === 1
-        ? MARIO_COLOR
-        : bag.coin.winner === 2
-          ? LUIGI_COLOR
-          : COIN_COLOR;
-    // Update player sprites
-    updatePlayerQuads(state.p1, bag.p1);
-    updatePlayerQuads(state.p2, bag.p2);
-
-    const padding = 20;
-
-    state.p1Score.text = `P1: ${bag.p1.score}`;
-    state.p2Score.text = `P2: ${bag.p2.score}`;
-
-    state.viewport.size = {
-      width: toodle.resolution.width,
-      height: toodle.resolution.height,
-    };
-
-    state.ground.size.width = state.viewport.size.width;
-
-    state.p1Score.setBounds({
-      left: state.viewport.bounds.left + padding,
-      top: state.viewport.bounds.top - padding,
-    });
-
-    state.p2Score.setBounds({
-      right: state.viewport.bounds.right - padding,
-      top: state.viewport.bounds.top - padding,
-    });
-  }
+  const isMobile = toodle.resolution.width < toodle.resolution.height;
 
   toodle.startFrame();
-  toodle.draw(state.root);
-  if (bag.debugHitboxes) {
-    drawHitboxes(toodle, state, bag);
+
+  const root = toodle.Node({ scale: 3 });
+
+  if (bag.phase !== "playing") {
+    // Title screen
+    const titleScreen = root.add(toodle.Node({}));
+
+    titleScreen.add(
+      toodle.Text("Roboto", "Mario Rollback", {
+        fontSize: 20,
+        align: "center",
+        color: { r: 1, g: 1, b: 1, a: 1 },
+        position: { x: 0, y: 20 },
+        size: {
+          width: toodle.resolution.width - 100,
+          height: toodle.resolution.height,
+        },
+        shrinkToFit: {
+          minFontSize: 4,
+        },
+      }),
+    );
+
+    const subtitleText =
+      bag.phase === "waiting"
+        ? "Waiting for opponent..."
+        : isMobile
+          ? "Tap to find opponent"
+          : "[Enter/Click] Online  [Space] Local";
+
+    const text = titleScreen.add(
+      toodle.Text("Roboto", subtitleText, {
+        fontSize: 10,
+        color: { r: 1, g: 1, b: 1, a: 1 },
+      }),
+    );
+  } else {
+    // Game screen
+    const gameScreen = root.add(toodle.Node({}));
+
+    const viewport = toodle.Node({
+      size: {
+        width: toodle.resolution.width,
+        height: toodle.resolution.height,
+      },
+    });
+
+    // Ground
+    gameScreen.add(
+      toodle.shapes.Rect({
+        size: { width: viewport.size!.width, height: 40 },
+        position: { x: 0, y: GROUND_Y - 20 },
+        color: GROUND_COLOR,
+      }),
+    );
+
+    // Block
+    gameScreen.add(
+      toodle.Quad("brick", {
+        size: { width: BLOCK_SIZE, height: BLOCK_SIZE },
+        position: { x: bag.block.x, y: BLOCK_Y + BLOCK_SIZE / 2 },
+      }),
+    );
+
+    // Coin
+    if (bag.coin.visible) {
+      const coinColor =
+        bag.coin.winner === 1
+          ? MARIO_COLOR
+          : bag.coin.winner === 2
+            ? LUIGI_COLOR
+            : COIN_COLOR;
+
+      gameScreen.add(
+        toodle.shapes.Circle({
+          radius: COIN_SIZE / 2,
+          color: coinColor,
+          position: { x: bag.coin.x, y: bag.coin.y },
+        }),
+      );
+    }
+
+    // Players
+    const p1Quad = drawPlayer(toodle, gameScreen, bag.p1);
+    const p2Quad = drawPlayer(toodle, gameScreen, bag.p2, LUIGI_COLOR);
+
+    // Scores
+    const padding = 20;
+
+    const p1Score = gameScreen.add(
+      toodle.Text("Roboto", `P1: ${bag.p1.score}`, {
+        fontSize: 16,
+        color: MARIO_COLOR,
+      }),
+    );
+    p1Score.setBounds({
+      left: viewport.bounds.left + padding,
+      top: viewport.bounds.top - padding,
+    });
+
+    const p2Score = gameScreen.add(
+      toodle.Text("Roboto", `P2: ${bag.p2.score}`, {
+        fontSize: 16,
+        color: LUIGI_COLOR,
+      }),
+    );
+    p2Score.setBounds({
+      right: viewport.bounds.right - padding,
+      top: viewport.bounds.top - padding,
+    });
+
+    // Debug hitboxes
+    if (bag.debugHitboxes) {
+      toodle.draw(root);
+      drawHitbox(toodle, p1Quad.bounds);
+      drawHitbox(toodle, p2Quad.bounds);
+      // Need to get block bounds - draw a hitbox at block position
+      drawHitbox(toodle, {
+        left: bag.block.x - BLOCK_SIZE / 2,
+        right: bag.block.x + BLOCK_SIZE / 2,
+        bottom: BLOCK_Y,
+        top: BLOCK_Y + BLOCK_SIZE,
+      });
+      if (bag.coin.visible) {
+        drawHitbox(toodle, {
+          left: bag.coin.x - COIN_SIZE / 2,
+          right: bag.coin.x + COIN_SIZE / 2,
+          bottom: bag.coin.y - COIN_SIZE / 2,
+          top: bag.coin.y + COIN_SIZE / 2,
+        });
+      }
+      toodle.endFrame();
+      return;
+    }
   }
+
+  toodle.draw(root);
   toodle.endFrame();
 }
 
-/** Updates a player's pose quads based on their current state */
-function updatePlayerQuads(quads: PoseQuads, player: Player) {
-  const poses: Pose[] = ["idle", "run", "jump", "skid"];
+/** Draws a player sprite and returns the quad for hitbox drawing */
+function drawPlayer(
+  toodle: Toodle,
+  parent: ReturnType<Toodle["Node"]>,
+  player: Player,
+  color?: Color,
+) {
+  const pose = player.pose;
+  const textureName = POSE_TEXTURES[pose];
 
-  for (const pose of poses) {
-    const quad = quads[pose];
-    const isActive = pose === player.pose;
-    quad.isActive = isActive;
-    if (!isActive) {
-      continue;
-    }
+  const quad = parent.add(
+    toodle.Quad(textureName, {
+      size: { width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+      region: { x: 0, y: 0, width: PLAYER_WIDTH, height: PLAYER_HEIGHT },
+      color,
+      position: {
+        x: player.x,
+        y: player.y + PLAYER_HEIGHT / 2,
+      },
+    }),
+  );
 
-    // Update position
-    quad.position = {
-      x: player.x,
-      y: player.y + PLAYER_HEIGHT / 2,
-    };
+  // Update flip based on facing direction
+  quad.flipX = player.facingDir === -1;
 
-    // Update flip based on facing direction
-    quad.flipX = player.facingDir === -1;
+  // Update region from flipbook frame
+  const flipbook = unwrap(
+    player.anims[pose],
+    `No runtime flipbook for pose ${pose}`,
+  );
+  const frameIndex = flipbook.frameIndex % flipbook.frames.length;
+  const frame = flipbook.frames[frameIndex];
+  quad.region.x = frame.pos.x;
+  quad.region.y = frame.pos.y;
+  quad.region.width = frame.width;
+  quad.region.height = frame.height;
 
-    // Update region from flipbook frame using static flipbooks + bag AnimState
-    const flipbook = unwrap(
-      player.anims[pose],
-      `No runtime flipbook for pose ${pose}`,
-    );
-    const frameIndex = flipbook.frameIndex % flipbook.frames.length;
-    const frame = flipbook.frames[frameIndex];
-    quad.region.x = frame.pos.x;
-    quad.region.y = frame.pos.y;
-    quad.region.width = frame.width;
-    quad.region.height = frame.height;
-  }
-}
-
-function drawHitboxes(toodle: Toodle, state: DrawState, bag: typeof game.bag) {
-  const p1Quad = state.p1[bag.p1.pose];
-  const p2Quad = state.p2[bag.p2.pose];
-
-  toodle.draw(makeHitbox(toodle, p1Quad.bounds));
-  toodle.draw(makeHitbox(toodle, p2Quad.bounds));
-  toodle.draw(makeHitbox(toodle, state.block.bounds));
-
-  if (bag.coin.visible) {
-    toodle.draw(makeHitbox(toodle, state.coin.bounds));
-  }
+  return quad;
 }
 
 const hitboxDefaultColor = { r: 1, g: 0, b: 1, a: 0.4 };
@@ -302,19 +243,21 @@ fn frag(vertex: VertexOutput) -> @location(0) vec4f {
   return hitboxShader;
 }
 
-function makeHitbox(
+function drawHitbox(
   toodle: Toodle,
   bounds: { left: number; right: number; top: number; bottom: number },
   color: Color = hitboxDefaultColor,
 ) {
-  return toodle.shapes
-    .Rect({
-      color,
-      size: {
-        width: bounds.right - bounds.left,
-        height: bounds.top - bounds.bottom,
-      },
-      shader: getHitboxShader(toodle),
-    })
-    .setBounds(bounds);
+  toodle.draw(
+    toodle.shapes
+      .Rect({
+        color,
+        size: {
+          width: bounds.right - bounds.left,
+          height: bounds.top - bounds.bottom,
+        },
+        shader: getHitboxShader(toodle),
+      })
+      .setBounds(bounds),
+  );
 }

@@ -2,10 +2,8 @@ import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
 import { start } from "@bloopjs/web";
 import { createChromaticAberrationEffect } from "./chromatic-aberration";
-import { createDrawState, draw as drawFn } from "./draw";
+import { draw } from "./draw";
 import { game } from "./game";
-
-let draw = drawFn;
 
 // boot up the game
 const app = await start({
@@ -22,9 +20,9 @@ if (import.meta.hot) {
     await app.acceptHmr(newModule?.game);
   });
 
-  import.meta.hot.accept("./draw", async (newModule) => {
-    draw = newModule?.draw;
-  });
+  // import.meta.hot.accept("./draw", async (newModule) => {
+  //   draw = newModule?.draw;
+  // });
 }
 
 const canvas = app.canvas;
@@ -61,10 +59,8 @@ await toodle.assets.loadFont(
   new URL("https://toodle.gg/fonts/Roboto-Regular-msdf.json"),
 );
 
-const drawState = createDrawState(toodle);
-
 requestAnimationFrame(function frame() {
-  draw(app.game, toodle, drawState);
+  draw(app.game, toodle);
   requestAnimationFrame(frame);
 });
 

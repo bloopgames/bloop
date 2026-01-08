@@ -100,6 +100,12 @@ game.system("session-watcher", {
   },
 });
 
+game.system("screen", {
+  resize({ screen }) {
+    console.log("resize", { width: screen.width, height: screen.height });
+  },
+});
+
 game.system(
   "title-screen",
   PhaseSystem("title", {
