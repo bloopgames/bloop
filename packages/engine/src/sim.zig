@@ -9,6 +9,7 @@ const TimeCtx = Ctx.TimeCtx;
 const InputCtx = Ctx.InputCtx;
 const NetCtx = Ctx.NetCtx;
 const NetStatus = Ctx.NetStatus;
+const ScreenCtx = Ctx.ScreenCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const EventType = Events.EventType;
@@ -52,6 +53,8 @@ pub const Sim = struct {
     input_buffer: *InputBuffer,
     /// Network context exposed to game systems via DataView (Engine syncs this)
     net_ctx: *NetCtx,
+    /// Screen/viewport context for rendering dimensions
+    screen_ctx: *ScreenCtx,
 
     // ─────────────────────────────────────────────────────────────
     // Tick Listeners (for Engine coordination)
@@ -85,12 +88,17 @@ pub const Sim = struct {
             .room_code = .{ 0, 0, 0, 0, 0, 0, 0, 0 },
         };
 
+        // Allocate ScreenCtx (platform will emit resize event to populate)
+        const screen_ctx = try allocator.create(ScreenCtx);
+        screen_ctx.* = .{};
+
         return Sim{
             .time = time,
             .inputs = inputs,
             .events = events,
             .input_buffer = input_buffer,
             .net_ctx = net_ctx,
+            .screen_ctx = screen_ctx,
             .allocator = allocator,
             .ctx_ptr = ctx_ptr,
         };
@@ -102,6 +110,7 @@ pub const Sim = struct {
         self.allocator.destroy(self.inputs);
         self.allocator.destroy(self.events);
         self.allocator.destroy(self.net_ctx);
+        self.allocator.destroy(self.screen_ctx);
     }
 
     /// Get current user data length from callback (or 0 if no callback set)

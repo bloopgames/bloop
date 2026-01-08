@@ -45,9 +45,12 @@ pub fn build(b: *std.Build) void {
         "emit_mouseup",
         "emit_mousemove",
         "emit_mousewheel",
+        // Platform events
+        "emit_resize",
         // Context accessors
         "get_time_ctx",
         "get_net_ctx",
+        "get_screen_ctx",
         "get_events_ptr",
         // Session / Rollback
         "session_end",

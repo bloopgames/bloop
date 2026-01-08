@@ -6,6 +6,7 @@ import type {
   MouseButtonEvent,
   MouseMoveEvent,
   MouseWheelEvent,
+  ResizeEvent,
 } from "./events";
 
 export type System<GS extends BloopSchema = BloopSchema> = {
@@ -53,6 +54,13 @@ export type System<GS extends BloopSchema = BloopSchema> = {
   netcode?: (
     context: Context<GS> & {
       event: NetEvent;
+    },
+  ) => void;
+
+  /** Handle screen/viewport resize events */
+  resize?: (
+    context: Context<GS> & {
+      event: ResizeEvent;
     },
   ) => void;
 };

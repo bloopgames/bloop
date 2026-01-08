@@ -2,6 +2,7 @@ import type {
   EnginePointer,
   InputContext,
   NetContext,
+  ScreenContext,
   TimeContext,
 } from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
@@ -36,4 +37,6 @@ export type Context<
   rawPointer: EnginePointer;
   /** Network context for multiplayer sessions */
   net: NetContext;
+  /** Screen/viewport dimensions and pixel ratio */
+  screen: ScreenContext;
 };

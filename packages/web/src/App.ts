@@ -179,6 +179,63 @@ export class App {
     // Skip emitting input events during replay to avoid filling the event buffer
     const shouldEmitInputs = () => !this.sim.isReplaying;
 
+    // Resize handling - emits resize events when viewport changes
+    let resizeObserver: ResizeObserver | null = null;
+    let cleanupPixelRatio: (() => void) | null = null;
+
+    const emitResize = () => {
+      const canvas = this.canvas;
+      const pixelRatio = window.devicePixelRatio || 1;
+
+      let width: number;
+      let height: number;
+
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        width = Math.round(rect.width);
+        height = Math.round(rect.height);
+      } else {
+        // Fallback to window dimensions if no canvas
+        width = window.innerWidth;
+        height = window.innerHeight;
+      }
+
+      this.sim.emit.resize(
+        width,
+        height,
+        Math.round(width * pixelRatio),
+        Math.round(height * pixelRatio),
+        pixelRatio,
+      );
+    };
+
+    // Observe canvas size changes
+    const canvas = this.canvas;
+    if (canvas) {
+      resizeObserver = new ResizeObserver(() => emitResize());
+      resizeObserver.observe(canvas);
+    } else {
+      // Fallback: observe window resize if no canvas
+      window.addEventListener("resize", emitResize);
+    }
+
+    // Detect devicePixelRatio changes (monitor switch, browser zoom)
+    const updatePixelRatioListener = () => {
+      const mediaQuery = window.matchMedia(
+        `(resolution: ${window.devicePixelRatio}dppx)`,
+      );
+      const handler = () => {
+        emitResize();
+        updatePixelRatioListener(); // Re-register for new ratio
+      };
+      mediaQuery.addEventListener("change", handler, { once: true });
+      return () => mediaQuery.removeEventListener("change", handler);
+    };
+    cleanupPixelRatio = updatePixelRatioListener();
+
+    // Emit initial resize event
+    emitResize();
+
     const handleKeydown = (event: KeyboardEvent) => {
       if (shouldEmitInputs()) this.sim.emit.keydown(event.code as Key);
     };
@@ -360,6 +417,9 @@ export class App {
       window.removeEventListener("touchstart", handleTouchstart);
       window.removeEventListener("touchend", handleTouchend);
       window.removeEventListener("touchmove", handleTouchmove);
+      window.removeEventListener("resize", emitResize);
+      resizeObserver?.disconnect();
+      cleanupPixelRatio?.();
       if (this.#rafHandle != null) {
         cancelAnimationFrame(this.#rafHandle);
       }

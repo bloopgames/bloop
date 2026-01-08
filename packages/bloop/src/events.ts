@@ -23,3 +23,13 @@ export type MouseWheelEvent = {
   x: number;
   y: number;
 };
+
+export type ResizeEvent = {
+  width: number;
+  height: number;
+  physicalWidth: number;
+  physicalHeight: number;
+  pixelRatio: number;
+};
+
+export type BloopEvent = InputEvent | ResizeEvent;

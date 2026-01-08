@@ -753,6 +753,24 @@ pub const Engine = struct {
         self.appendInputEvent(Event.mouseWheel(delta_x, delta_y, peer_id, .LocalMouse));
     }
 
+    /// Emit a resize event. Updates ScreenCtx and adds event to current frame's event buffer.
+    /// This is a platform event that reflects current viewport state (not recorded to tape).
+    pub fn emit_resize(self: *Engine, width: u32, height: u32, physical_width: u32, physical_height: u32, pixel_ratio: f32) void {
+        // Update screen context
+        self.sim.screen_ctx.width = width;
+        self.sim.screen_ctx.height = height;
+        self.sim.screen_ctx.physical_width = physical_width;
+        self.sim.screen_ctx.physical_height = physical_height;
+        self.sim.screen_ctx.pixel_ratio = pixel_ratio;
+
+        // Add resize event to current frame's event buffer
+        const idx = self.sim.events.count;
+        if (idx < Events.MAX_EVENTS) {
+            self.sim.events.count += 1;
+            self.sim.events.events[idx] = Event.resize();
+        }
+    }
+
     /// Append a fresh local event. Writes to Engine's canonical InputBuffer.
     fn appendInputEvent(self: *Engine, event: Event) void {
         // Inputs captured at frame N are stored in InputBuffer[N]

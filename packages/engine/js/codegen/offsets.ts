@@ -28,6 +28,13 @@ export const NET_CTX_TOTAL_ROLLBACKS_OFFSET = 132;
 export const NET_CTX_FRAMES_RESIMULATED_OFFSET = 136;
 export const NET_CTX_SIZE = 144;
 
+export const SCREEN_CTX_WIDTH_OFFSET = 0;
+export const SCREEN_CTX_HEIGHT_OFFSET = 4;
+export const SCREEN_CTX_PHYSICAL_WIDTH_OFFSET = 8;
+export const SCREEN_CTX_PHYSICAL_HEIGHT_OFFSET = 12;
+export const SCREEN_CTX_PIXEL_RATIO_OFFSET = 16;
+export const SCREEN_CTX_SIZE = 20;
+
 export const MOUSE_CTX_X_OFFSET = 0;
 export const MOUSE_CTX_Y_OFFSET = 4;
 export const MOUSE_CTX_WHEEL_X_OFFSET = 8;

@@ -50,6 +50,15 @@ pub const NetCtx = extern struct {
 
 pub const MAX_PLAYERS: u8 = 12;
 
+/// Screen/viewport context for rendering dimensions
+pub const ScreenCtx = extern struct {
+    width: u32 = 0, // logical pixels (CSS pixels on web)
+    height: u32 = 0, // logical pixels
+    physical_width: u32 = 0, // physical pixels (width * pixelRatio)
+    physical_height: u32 = 0, // physical pixels
+    pixel_ratio: f32 = 1.0, // devicePixelRatio
+};
+
 pub const KeyCtx = extern struct {
     /// Each byte represents last 8 frames of input
     key_states: [256]u8,
@@ -255,4 +264,22 @@ test "NetCtx rollback stats update" {
     try std.testing.expectEqual(@as(u32, 5), net_ctx.total_rollbacks);
     try std.testing.expectEqual(@as(u32, 3), net_ctx.last_rollback_depth);
     try std.testing.expectEqual(@as(u64, 100), net_ctx.frames_resimulated);
+}
+
+test "ScreenCtx layout" {
+    try std.testing.expectEqual(@as(usize, 20), @sizeOf(ScreenCtx));
+    try std.testing.expectEqual(@as(usize, 0), @offsetOf(ScreenCtx, "width"));
+    try std.testing.expectEqual(@as(usize, 4), @offsetOf(ScreenCtx, "height"));
+    try std.testing.expectEqual(@as(usize, 8), @offsetOf(ScreenCtx, "physical_width"));
+    try std.testing.expectEqual(@as(usize, 12), @offsetOf(ScreenCtx, "physical_height"));
+    try std.testing.expectEqual(@as(usize, 16), @offsetOf(ScreenCtx, "pixel_ratio"));
+}
+
+test "ScreenCtx defaults" {
+    const screen = ScreenCtx{};
+    try std.testing.expectEqual(@as(u32, 0), screen.width);
+    try std.testing.expectEqual(@as(u32, 0), screen.height);
+    try std.testing.expectEqual(@as(u32, 0), screen.physical_width);
+    try std.testing.expectEqual(@as(u32, 0), screen.physical_height);
+    try std.testing.expectEqual(@as(f32, 1.0), screen.pixel_ratio);
 }

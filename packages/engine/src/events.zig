@@ -142,6 +142,15 @@ pub const Event = extern struct {
             .payload = .{ .peer_id = 0 }, // Unused - values derived from context
         };
     }
+
+    /// Platform event: screen/viewport resized (values stored in ScreenCtx)
+    pub inline fn resize() Event {
+        return Event{
+            .kind = .Resize,
+            .device = .None,
+            .payload = .{ .peer_id = 0 }, // Unused - values read from ScreenCtx
+        };
+    }
 };
 
 /// Reason for join failure
@@ -200,6 +209,8 @@ pub const EventType = enum(u8) {
     NetPacketReceived,
     /// Session initialization event (recorded to tape for replay)
     NetSessionInit,
+    /// Platform event: screen/viewport dimensions changed
+    Resize,
 
     pub fn isSessionEvent(self: EventType) bool {
         _ = self;

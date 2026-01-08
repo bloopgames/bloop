@@ -9,6 +9,8 @@ import {
   NET_CTX_OFFSET,
   NetContext,
   type NetEvent,
+  SCREEN_CTX_OFFSET,
+  ScreenContext,
   TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
@@ -17,11 +19,12 @@ import type { Context } from "./context";
 import type { Bag } from "./data/bag";
 import type { BloopSchema } from "./data/schema";
 import type {
-  InputEvent,
+  BloopEvent,
   KeyEvent,
   MouseButtonEvent,
   MouseMoveEvent,
   MouseWheelEvent,
+  ResizeEvent,
 } from "./events";
 import type { EngineHooks } from "./sim";
 import type { System } from "./system";
@@ -77,6 +80,7 @@ export class Bloop<GS extends BloopSchema> {
 
     const inputs = new InputContext();
     const net = new NetContext();
+    const screen = new ScreenContext();
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
@@ -84,6 +88,7 @@ export class Bloop<GS extends BloopSchema> {
       players: new Players(inputs, net),
       rawPointer: -1,
       net,
+      screen,
     };
   }
 
@@ -160,6 +165,7 @@ export class Bloop<GS extends BloopSchema> {
       const timeCtxPtr = dv.getUint32(TIME_CTX_OFFSET, true);
       const inputCtxPtr = dv.getUint32(INPUT_CTX_OFFSET, true);
       const netCtxPtr = dv.getUint32(NET_CTX_OFFSET, true);
+      const screenCtxPtr = dv.getUint32(SCREEN_CTX_OFFSET, true);
 
       this.#context.rawPointer = ptr;
 
@@ -191,6 +197,16 @@ export class Bloop<GS extends BloopSchema> {
         this.#context.net.dataView = new DataView(
           this.#engineBuffer,
           netCtxPtr,
+        );
+      }
+
+      if (
+        this.#context.screen.dataView?.buffer !== this.#engineBuffer ||
+        this.#context.screen.dataView?.byteOffset !== screenCtxPtr
+      ) {
+        this.#context.screen.dataView = new DataView(
+          this.#engineBuffer,
+          screenCtxPtr,
         );
       }
     },
@@ -342,6 +358,18 @@ export class Bloop<GS extends BloopSchema> {
                 this.#context as Context<GS> & { event: NetEvent },
               );
               break;
+            case Enums.EventType.Resize:
+              // Resize event - values are read from screen context (already updated by engine)
+              system.resize?.(
+                attachEvent<ResizeEvent, GS>(this.#context, {
+                  width: this.#context.screen.width,
+                  height: this.#context.screen.height,
+                  physicalWidth: this.#context.screen.physicalWidth,
+                  physicalHeight: this.#context.screen.physicalHeight,
+                  pixelRatio: this.#context.screen.pixelRatio,
+                }),
+              );
+              break;
             default:
               // Session lifecycle and other internal events are handled by engine
               // They don't need to be dispatched to game systems
@@ -356,12 +384,12 @@ export class Bloop<GS extends BloopSchema> {
   };
 }
 
-function attachEvent<IE extends InputEvent, GS extends BloopSchema>(
+function attachEvent<E extends BloopEvent, GS extends BloopSchema>(
   context: Context<GS>,
-  event: IE,
-): Context<GS> & { event: IE } {
+  event: E,
+): Context<GS> & { event: E } {
   (context as any).event = event;
-  return context as Context<GS> & { event: IE };
+  return context as Context<GS> & { event: E };
 }
 
 type MakeGS<B extends Bag> = BloopSchema<B>;

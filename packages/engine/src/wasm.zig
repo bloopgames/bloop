@@ -98,7 +98,8 @@ pub export fn initialize() wasmPointer {
     // 1 - pointer to input context
     // 2 - pointer to events buffer
     // 3 - pointer to network context
-    ctx_ptr = alloc(@sizeOf(u32) * 4);
+    // 4 - pointer to screen context
+    ctx_ptr = alloc(@sizeOf(u32) * 5);
 
     // Initialize the Engine (which creates and owns Sim)
     engine = Engine.init(wasm_alloc, ctx_ptr) catch {
@@ -115,6 +116,7 @@ pub export fn initialize() wasmPointer {
     cb_data[1] = @intFromPtr(sim.inputs);
     cb_data[2] = @intFromPtr(sim.events);
     cb_data[3] = @intFromPtr(sim.net_ctx);
+    cb_data[4] = @intFromPtr(sim.screen_ctx);
 
     // Wire up WASM callbacks
     sim.callbacks = .{
@@ -334,6 +336,10 @@ pub export fn emit_mousewheel(delta_x: f32, delta_y: f32, peer_id: u8) void {
     engine.?.emit_mousewheel(delta_x, delta_y, peer_id);
 }
 
+pub export fn emit_resize(width: u32, height: u32, physical_width: u32, physical_height: u32, pixel_ratio: f32) void {
+    engine.?.emit_resize(width, height, physical_width, physical_height, pixel_ratio);
+}
+
 pub export fn get_time_ctx() wasmPointer {
     return @intFromPtr(engine.?.sim.time);
 }
@@ -354,6 +360,11 @@ pub export fn session_end() void {
 /// Get pointer to net context struct
 pub export fn get_net_ctx() usize {
     return @intFromPtr(engine.?.sim.net_ctx);
+}
+
+/// Get pointer to screen context struct
+pub export fn get_screen_ctx() usize {
+    return @intFromPtr(engine.?.sim.screen_ctx);
 }
 
 // ─────────────────────────────────────────────────────────────

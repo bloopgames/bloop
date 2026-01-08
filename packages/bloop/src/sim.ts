@@ -7,6 +7,7 @@ import {
   NetContext,
   type NetEvent,
   type NetEventType,
+  ScreenContext,
   SNAPSHOT_HEADER_ENGINE_LEN_OFFSET,
   SNAPSHOT_HEADER_USER_LEN_OFFSET,
   TimeContext,
@@ -105,6 +106,11 @@ export class Sim {
   #net: NetContext;
 
   /**
+   * Screen context - reads viewport dimensions from WASM memory.
+   */
+  #screen: ScreenContext;
+
+  /**
    * Callback fired when tape buffer fills up and recording stops.
    * The tape data is passed so you can save it before clearing.
    */
@@ -125,6 +131,7 @@ export class Sim {
 
     this.#serialize = opts?.serialize;
     this.#net = new NetContext();
+    this.#screen = new ScreenContext();
   }
 
   /**
@@ -379,6 +386,20 @@ export class Sim {
     return this.#net;
   }
 
+  get screen(): ScreenContext {
+    if (
+      !this.#screen.dataView ||
+      this.#screen.dataView.buffer !== this.#memory.buffer
+    ) {
+      // update the data view to the latest memory buffer
+      this.#screen.dataView = new DataView(
+        this.#memory.buffer,
+        this.wasm.get_screen_ctx(),
+      );
+    }
+    return this.#screen;
+  }
+
   get buffer(): ArrayBuffer {
     return this.#memory.buffer;
   }
@@ -413,6 +434,23 @@ export class Sim {
     },
     mousewheel: (x: number, y: number, peerId: number = 0): void => {
       this.wasm.emit_mousewheel(x, y, peerId);
+    },
+    /**
+     * Emit a resize event. Updates screen context and fires resize callback in systems.
+     * @param width Logical width in CSS pixels
+     * @param height Logical height in CSS pixels
+     * @param physicalWidth Physical width in device pixels
+     * @param physicalHeight Physical height in device pixels
+     * @param pixelRatio Device pixel ratio
+     */
+    resize: (
+      width: number,
+      height: number,
+      physicalWidth: number,
+      physicalHeight: number,
+      pixelRatio: number,
+    ): void => {
+      this.wasm.emit_resize(width, height, physicalWidth, physicalHeight, pixelRatio);
     },
     /**
      * Emit a network event (join:ok, peer:join, etc.)

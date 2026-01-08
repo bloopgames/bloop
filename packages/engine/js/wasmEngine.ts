@@ -106,6 +106,27 @@ export type WasmEngine = {
    * Get pointer to net context struct
    */
   get_net_ctx: () => EnginePointer;
+  /**
+   * Get pointer to screen context struct
+   */
+  get_screen_ctx: () => EnginePointer;
+
+  // Screen / Viewport events
+  /**
+   * Emit resize event - updates screen context and fires resize callback
+   * @param width Logical width in CSS pixels
+   * @param height Logical height in CSS pixels
+   * @param physical_width Physical width in device pixels
+   * @param physical_height Physical height in device pixels
+   * @param pixel_ratio Device pixel ratio
+   */
+  emit_resize: (
+    width: number,
+    height: number,
+    physical_width: number,
+    physical_height: number,
+    pixel_ratio: number,
+  ) => void;
 
   // Network / Packets
   /**
