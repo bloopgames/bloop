@@ -6,7 +6,6 @@ type: task
 priority: low
 created_at: 2025-12-16T23:45:12Z
 updated_at: 2025-12-16T23:45:12Z
-parent: bloop-u3h8
 ---
 
 Local play is a session with peer_count=1 where all frames are immediately confirmed. Currently step() has a branch:
