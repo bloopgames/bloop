@@ -56,7 +56,7 @@ bun run deploy-games
 **Games (example apps):**
 
 - `games/hello` - Minimal example game
-- `games/quickdraw` - Vue-based prototype with netcode (uses Vite, not Bun.serve)
+- `games/buzzer` - Web-based prototype with netcode
 - `games/mario` - Mario platformer with rollback netcode
 
 ## Architecture

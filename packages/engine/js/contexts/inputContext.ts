@@ -1,12 +1,16 @@
 import * as Enums from "../codegen/enums";
 import {
-  KEYBOARD_OFFSET,
-  type KeyState,
   MAX_PLAYERS,
-  MOUSE_BUTTONS_OFFSET,
-  MOUSE_OFFSET,
+  PLAYER_INPUTS_KEY_CTX_OFFSET,
+  PLAYER_INPUTS_MOUSE_CTX_OFFSET,
   PLAYER_INPUTS_SIZE,
-} from "../inputs";
+  MOUSE_CTX_X_OFFSET,
+  MOUSE_CTX_Y_OFFSET,
+  MOUSE_CTX_WHEEL_X_OFFSET,
+  MOUSE_CTX_WHEEL_Y_OFFSET,
+  MOUSE_CTX_BUTTON_STATES_OFFSET,
+} from "../codegen/offsets";
+import { type KeyState } from "../inputs";
 
 /**
  * Per-player input state containing keyboard and mouse state
@@ -25,7 +29,7 @@ export class PlayerInputContext {
       this.#keys = new KeyboardContext(
         new DataView(
           this.#dataView.buffer,
-          this.#dataView.byteOffset + KEYBOARD_OFFSET,
+          this.#dataView.byteOffset + PLAYER_INPUTS_KEY_CTX_OFFSET,
         ),
       );
     }
@@ -37,7 +41,7 @@ export class PlayerInputContext {
       this.#mouse = new MouseContext(
         new DataView(
           this.#dataView.buffer,
-          this.#dataView.byteOffset + MOUSE_OFFSET,
+          this.#dataView.byteOffset + PLAYER_INPUTS_MOUSE_CTX_OFFSET,
         ),
       );
     }
@@ -75,6 +79,10 @@ export class InputContext {
   set dataView(dataView: DataView) {
     this.#dataView = dataView;
     this.#buildPlayers();
+  }
+
+  hasDataView(): boolean {
+    return !!this.#dataView;
   }
 
   #buildPlayers() {
@@ -123,11 +131,11 @@ export class MouseContext {
   }
 
   get x(): number {
-    return this.#dataView.getFloat32(0, true);
+    return this.#dataView.getFloat32(MOUSE_CTX_X_OFFSET, true);
   }
 
   get y(): number {
-    return this.#dataView.getFloat32(4, true);
+    return this.#dataView.getFloat32(MOUSE_CTX_Y_OFFSET, true);
   }
 
   get wheel(): { x: number; y: number } {
@@ -135,11 +143,11 @@ export class MouseContext {
   }
 
   get wheelX(): number {
-    return this.#dataView.getFloat32(8, true);
+    return this.#dataView.getFloat32(MOUSE_CTX_WHEEL_X_OFFSET, true);
   }
 
   get wheelY(): number {
-    return this.#dataView.getFloat32(12, true);
+    return this.#dataView.getFloat32(MOUSE_CTX_WHEEL_Y_OFFSET, true);
   }
 
   get left(): KeyState {
@@ -165,7 +173,7 @@ export class MouseContext {
     // xxxx xxx1 = held
     // xxxx xx01 = down
     // xxxx xx10 = up
-    const offset = MOUSE_BUTTONS_OFFSET;
+    const offset = MOUSE_CTX_BUTTON_STATES_OFFSET;
     state.held = !!(this.#dataView.getUint8(offset + code) & 1);
     state.down = state.held && !(this.#dataView.getUint8(offset + code) & 2);
     state.up = !state.held && !!(this.#dataView.getUint8(offset + code) & 2);

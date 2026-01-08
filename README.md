@@ -92,25 +92,75 @@ Working on this for Q1 2026. Follow along in the [discord](https://discord.gg/qQ
 
 ## Rollback Netcode
 
-Rollback netcode is built in using the same mechanism used to create tapes and snapshots, so if you wrote a local multiplayer game it'll work as an online multiplayer game with 10 new lines of code.
+### What is rollback netcode?
 
-See https://trybloop.gg/nu11/mario for a demo of local multiplayer mario with working rollback netcode for 2 players.
+Rollback netcode is a technique for online multiplayer networking that synchronizes inputs instead of state.
 
-Demo inspired by the excellent [rollback explainer](https://bymuno.com/post/rollback) by [Muno](https://bymuno.com/).
+* See this [ excellent rollback explainer](https://bymuno.com/post/rollback) by [Muno](https://bymuno.com/)
 
-## One Week Challenge
+* Try out this [demo of a 2 player mario game](https://trybloop.gg/nu11/mario) ([source code](./games/mario/src/game.ts)) inspired by muno's post.
 
-If you're an indie dev who has shipped games and is working on a game written in TypeScript and is intrigued by one or all of:
+### How to add rollback netcode to your game
 
-* time travel debugging with hot reload
+It's easy to create an online multiplayer action game for 2-12 players with bloop, thanks to the rewindable architecture used by tapes.
 
-* realtime online multiplayer with rollback netcode
+If you have a local multiplayer game, you can make it work as an online multiplayer game with 20 lines of code.
 
-* porting to difficult native platforms, including mobile or console
+With these controls for a simple pong-like:
 
-I bet I can integrate bloop into your game for free in one week or less without a rewrite of your game code.
+```ts
+game.system('gameplay', {
+  update({players, bag}) {
+    if (players[0].keys.arrowUp.held) {
+      bag.leftPaddle.y += 5;
+    }
+    if (players[0].keys.arrowDown.held) {
+      bag.leftPaddle.y -= 5;
+    }
+    if (players[1].keys.w.held) {
+      bag.rightPaddle.y += 5;
+    }
+    if (players[1].keys.s.held) {
+      bag.rightPaddle.y -= 5;
+    }
+  }
+})
+```
 
-Hit me up on [discord](https://discord.gg/qQHZQeFYXF) to claim one of 3 spots.
+You can add rollback netcode like this:
+
+```ts
+game.system('matchmaking', {
+  keydown({event, net, bag}) {
+    // create or join a room called 'TEST'
+    if (event.key == 'Enter') {
+      net.wantsRoomCode = 'TEST'
+      bag.status = 'Waiting for opponent...'
+    }
+  },
+
+  netcode({event}) {
+    // a rollback session is started when someone else joins the room
+    if (event.type === 'session:start') {
+      bag.status = 'Opponent joined! Start game'
+    }
+  }
+})
+```
+
+Under the hood, bloop will:
+
+* use a websocket server for signaling
+
+* establish a peer-to-peer connection using WebRTC
+
+* send packets each frame with unacked local inputs
+
+* listen for incoming packets and track confirmed state
+
+* listen for packet events and reconcile inputs between peers
+
+* perform rollback and resimulation using your game systems
 
 ## Built with Bloop
 

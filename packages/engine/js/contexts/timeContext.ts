@@ -1,3 +1,9 @@
+import {
+  TIME_CTX_FRAME_OFFSET,
+  TIME_CTX_DT_MS_OFFSET,
+  TIME_CTX_TOTAL_MS_OFFSET,
+} from "../codegen/offsets";
+
 export class TimeContext {
   dataView?: DataView;
 
@@ -10,7 +16,7 @@ export class TimeContext {
     if (!this.dataView) {
       throw new Error("TimeContext DataView is not initialized");
     }
-    return this.dataView.getUint32(0, true);
+    return this.dataView.getUint32(TIME_CTX_FRAME_OFFSET, true);
   }
 
   /** The number of seconds since the last frame */
@@ -18,7 +24,7 @@ export class TimeContext {
     if (!this.dataView) {
       throw new Error("TimeContext DataView is not initialized");
     }
-    return this.dataView.getUint32(4, true) / 1000;
+    return this.dataView.getUint32(TIME_CTX_DT_MS_OFFSET, true) / 1000;
   }
 
   /** The total number of seconds since the engine started */
@@ -26,6 +32,6 @@ export class TimeContext {
     if (!this.dataView) {
       throw new Error("TimeContext DataView is not initialized");
     }
-    return this.dataView.getUint32(8, true) / 1000;
+    return this.dataView.getUint32(TIME_CTX_TOTAL_MS_OFFSET, true) / 1000;
   }
 }

@@ -10,6 +10,38 @@ export type JoinRollbackRoomOptions = {
   onSessionEnd?: () => void;
 };
 
+// actual netcode state (vs desired)
+const actual = {
+  roomCode: "",
+};
+
+export async function lemmyloop(app: App, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await sleep(1000);
+  const { net } = app.game.context;
+  console.log("lemmyloop");
+  if (net.wantsRoomCode && actual.roomCode !== net.wantsRoomCode) {
+    console.log("wants a room code", {
+      actual: actual.roomCode,
+      wants: net.wantsRoomCode,
+    });
+    actual.roomCode = net.wantsRoomCode;
+    joinRollbackRoom(net.wantsRoomCode, app, {
+      onSessionStart() {
+        console.log("session started");
+      },
+      onSessionEnd() {
+        console.log("session ended");
+      },
+    });
+  }
+  await lemmyloop(app, signal);
+}
+
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Join a rollback netcode room and wire up packet processing.
  * This is a scaffold/stopgap - not the final architecture.
@@ -127,7 +159,6 @@ export function joinRollbackRoom(
         app.sim.emit.network("session:start", {});
 
         sessionActive = true;
-        opts?.onSessionStart?.();
       }
     },
     onPeerConnected(peerId) {
@@ -147,14 +178,14 @@ export function joinRollbackRoom(
       if (remotePeerId !== null && peerId === remoteStringPeerId) {
         app.sim.emit.network("peer:leave", { peerId: remotePeerId });
         sessionActive = false;
-        opts?.onSessionEnd?.();
+        app.sim.emit.network("session:end", {});
       }
     },
   });
 
   // Process packets and send our state each frame
   app.beforeFrame.subscribe((_frame) => {
-    if (!sessionActive || !udp || remotePeerId === null) {
+    if (!app.game.context.net.isInSession) {
       return;
     }
 

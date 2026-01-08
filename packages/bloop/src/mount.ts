@@ -47,6 +47,7 @@ export async function mount(
       memory,
       __systems: function (system_handle: number, ptr: number) {
         mountable.hooks.setBuffer(memory.buffer);
+        mountable.hooks.setContext(ptr);
         mountable.hooks.systemsCallback(system_handle, ptr);
       },
       __before_frame: function (ptr: EnginePointer, frame: number) {

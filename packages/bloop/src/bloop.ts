@@ -152,7 +152,6 @@ export class Bloop<GS extends BloopSchema> {
       this.#engineBuffer = buffer;
     },
 
-    // TODO - move this to engine
     setContext: (ptr: EnginePointer) => {
       if (!this.#engineBuffer) {
         throw new Error("Tried to set context before engine buffer");
@@ -163,16 +162,37 @@ export class Bloop<GS extends BloopSchema> {
       const netCtxPtr = dv.getUint32(NET_CTX_OFFSET, true);
 
       this.#context.rawPointer = ptr;
-      // TODO - only rebuild these if the buffer has changed due to memory growth or the pointers have changed
-      this.#context.inputs.dataView = new DataView(
-        this.#engineBuffer,
-        inputCtxPtr,
-      );
-      this.#context.time.dataView = new DataView(
-        this.#engineBuffer,
-        timeCtxPtr,
-      );
-      this.#context.net.dataView = new DataView(this.#engineBuffer, netCtxPtr);
+
+      if (
+        !this.#context.inputs.hasDataView() ||
+        this.#context.inputs.dataView.buffer !== this.#engineBuffer ||
+        this.#context.inputs.dataView.byteOffset !== inputCtxPtr
+      ) {
+        this.#context.inputs.dataView = new DataView(
+          this.#engineBuffer,
+          inputCtxPtr,
+        );
+      }
+
+      if (
+        this.#context.time.dataView?.buffer !== this.#engineBuffer ||
+        this.#context.time.dataView?.byteOffset !== timeCtxPtr
+      ) {
+        this.#context.time.dataView = new DataView(
+          this.#engineBuffer,
+          timeCtxPtr,
+        );
+      }
+
+      if (
+        this.#context.net.dataView?.buffer !== this.#engineBuffer ||
+        this.#context.net.dataView?.byteOffset !== netCtxPtr
+      ) {
+        this.#context.net.dataView = new DataView(
+          this.#engineBuffer,
+          netCtxPtr,
+        );
+      }
     },
 
     systemsCallback: (system_handle: number, ptr: EnginePointer) => {
@@ -313,6 +333,15 @@ export class Bloop<GS extends BloopSchema> {
               );
               break;
             }
+            case Enums.EventType.NetSessionInit:
+              console.log("[bloop] NetSessionInit event received");
+              (this.#context as any).event = {
+                type: "session:start",
+              };
+              system.netcode?.(
+                this.#context as Context<GS> & { event: NetEvent },
+              );
+              break;
             default:
               // Session lifecycle and other internal events are handled by engine
               // They don't need to be dispatched to game systems

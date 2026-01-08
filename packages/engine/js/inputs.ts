@@ -1,20 +1,24 @@
 import * as Enums from "./codegen/enums";
 
-// Constants for memory layout
-// TODO: move magic numbers to codegen
-export const MAX_PLAYERS = 12;
+// Re-export layout constants from generated offsets
+export {
+  MAX_PLAYERS,
+  KEY_CTX_SIZE,
+  MOUSE_CTX_SIZE,
+  PLAYER_INPUTS_SIZE,
+  INPUT_CTX_SIZE,
+  PLAYER_INPUTS_KEY_CTX_OFFSET,
+  PLAYER_INPUTS_MOUSE_CTX_OFFSET,
+  MOUSE_CTX_BUTTON_STATES_OFFSET,
+} from "./codegen/offsets";
 
-// Per-player offsets (relative to start of PlayerInputs)
-export const KEYBOARD_OFFSET = 0;
-export const KEYBOARD_SIZE = 256;
-export const MOUSE_OFFSET = 256; // After keyboard
-export const MOUSE_BUTTONS_OFFSET = 16; // Within MouseCtx, after x, y, wheel_x, wheel_y (4 floats = 16 bytes)
-
-// PlayerInputs size = KeyCtx (256) + MouseCtx (24) = 280 bytes
-export const PLAYER_INPUTS_SIZE = 280;
-
-// InputCtx layout: players[12] = 12 * 280 = 3360 bytes
-export const INPUT_CTX_SIZE = MAX_PLAYERS * PLAYER_INPUTS_SIZE;
+// Backwards compatibility aliases
+export {
+  PLAYER_INPUTS_KEY_CTX_OFFSET as KEYBOARD_OFFSET,
+  KEY_CTX_SIZE as KEYBOARD_SIZE,
+  PLAYER_INPUTS_MOUSE_CTX_OFFSET as MOUSE_OFFSET,
+  MOUSE_CTX_BUTTON_STATES_OFFSET as MOUSE_BUTTONS_OFFSET,
+} from "./codegen/offsets";
 
 export const EVENT_PAYLOAD_SIZE = 8;
 export const EVENT_PAYLOAD_ALIGN = 4;

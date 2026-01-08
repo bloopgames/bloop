@@ -800,7 +800,7 @@ describe("tapes", () => {
       sim.emit.network("peer:assign_local_id", { peerId: 0 });
       sim.emit.network("session:start", {});
 
-      // Now start recording (inside the "onSessionStart" callback)
+      // Now start recording
       sim.record(10000);
 
       // Step to process the events
