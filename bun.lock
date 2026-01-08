@@ -53,6 +53,19 @@
         "vite": "^7.2.2",
       },
     },
+    "games/pong": {
+      "name": "pong",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/toodle": "^0.1.3",
+        "@bloopjs/web": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "~5.9.3",
+        "vite": "^7.2.2",
+      },
+    },
     "packages/bloop": {
       "name": "@bloopjs/bloop",
       "version": "0.0.0",
@@ -262,6 +275,8 @@
 
     "picomatch": ["picomatch@4.0.3", "", {}, "sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q=="],
 
+    "pong": ["pong@workspace:games/pong"],
+
     "postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
     "preact": ["preact@10.28.0", "", {}, "sha512-rytDAoiXr3+t6OIP3WGlDd0ouCUG1iCWzkcY3++Nreuoi17y6T5i/zRhe6uYfoVcxq6YU+sBtJouuRDsq8vvqA=="],
@@ -303,6 +318,8 @@
     "hello/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
 
     "mario-rollback/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
+
+    "pong/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
 
     "@bloopjs/bloop/@types/bun/bun-types": ["bun-types@1.3.5", "", { "dependencies": { "@types/node": "*" } }, "sha512-inmAYe2PFLs0SUbFOWSVD24sg1jFlMPxOjOSSCYqUgn4Hsc3rDc7dFvfVYjFPNHtov6kgUeulV4SxbuIV/stPw=="],
 

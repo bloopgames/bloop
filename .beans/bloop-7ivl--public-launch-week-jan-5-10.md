@@ -11,11 +11,11 @@ updated_at: 2026-01-08T07:42:56Z
 Goal: Start streaming, get initial content up, begin star outreach
 
 ## Must Haves
-- [ ] Design and document the user-facing netcode API (bloop-3jp0)
+- [x] Design and document the user-facing netcode API (bloop-3jp0)
 - [ ] Put up a v0 documentation website (bloop-08em)
 - [ ] Fix mario demo on mobile (bloop-74va)
 - [x] Do first stream (bloop-m2mk)
-- [ ] Fix known bugs:
+- [x] Fix known bugs:
   - [x] Tape playback performance (bloop-sgc7)
   - [x] Input buffer replication (bloop-9jk8)
 - [ ] Hook HMR up to mario glitch shader (bloop-3bmd)

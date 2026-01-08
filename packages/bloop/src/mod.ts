@@ -6,3 +6,4 @@ export { unwrap, assert } from "./util";
 export { mount, type Mountable, type MountOptions } from "./mount";
 export { Bloop } from "./bloop";
 export { Sim, type LoadTapeOptions } from "./sim";
+export { Players } from "./players";

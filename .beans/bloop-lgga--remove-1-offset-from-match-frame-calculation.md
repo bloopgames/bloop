@@ -1,11 +1,11 @@
 ---
 # bloop-lgga
 title: Remove +1 offset from match_frame calculation
-status: in-progress
+status: completed
 type: task
 priority: normal
 created_at: 2026-01-06T21:16:43Z
-updated_at: 2026-01-06T21:16:48Z
+updated_at: 2026-01-08T17:07:34Z
 ---
 
 Simplify input timing by eliminating getTargetMatchFrame() and the +1 offset.

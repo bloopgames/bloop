@@ -8,8 +8,8 @@ describe("netcode integration", () => {
       const game = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
       game.system("clicks", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Clicks++;
-          if (players[1]?.mouse.left.down) bag.p1Clicks++;
+          if (players.get(0).mouse.left.down) bag.p0Clicks++;
+          if (players.get(1).mouse.left.down) bag.p1Clicks++;
         },
       });
       return game;
@@ -45,8 +45,8 @@ describe("netcode integration", () => {
       const game = Bloop.create({ bag: { p0Clicks: 0, p1Clicks: 0 } });
       game.system("clicks", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Clicks++;
-          if (players[1]?.mouse.left.down) bag.p1Clicks++;
+          if (players.get(0).mouse.left.down) bag.p0Clicks++;
+          if (players.get(1).mouse.left.down) bag.p1Clicks++;
         },
       });
       return game;
@@ -78,8 +78,8 @@ describe("netcode integration", () => {
       const game = Bloop.create({ bag: { aCount: 0, bCount: 0 } });
       game.system("track-keys", {
         update({ bag, players }) {
-          if (players[0]?.keys.a.down) bag.aCount++;
-          if (players[0]?.keys.b.down) bag.bCount++;
+          if (players.get(0).keys.a.down) bag.aCount++;
+          if (players.get(0).keys.b.down) bag.bCount++;
         },
       });
       return game;

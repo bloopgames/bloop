@@ -12,6 +12,7 @@ import {
   TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
+import { Players } from "./players";
 import type { Context } from "./context";
 import type { Bag } from "./data/bag";
 import type { BloopSchema } from "./data/schema";
@@ -75,15 +76,14 @@ export class Bloop<GS extends BloopSchema> {
     }
 
     const inputs = new InputContext();
+    const net = new NetContext();
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
       inputs,
-      get players() {
-        return inputs.players;
-      },
+      players: new Players(inputs, net),
       rawPointer: -1,
-      net: new NetContext(),
+      net,
     };
   }
 

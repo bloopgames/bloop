@@ -31,14 +31,14 @@ game.context.net.wantsRoomCode = "BUZZER";
 // Game-specific netcode logger
 game.system("netcode logger", {
   update({ players }) {
-    if (players[0]!.mouse.left.down) {
+    if (players.get(0).mouse.left.down) {
       logger.log({
         source: "local",
         label: "[PlayerID=0] Mouse Click",
       });
     }
 
-    if (players[1]!.mouse.left.down) {
+    if (players.get(1).mouse.left.down) {
       logger.log({
         source: "local",
         label: "[PlayerID=1] Mouse Click",

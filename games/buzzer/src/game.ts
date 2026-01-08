@@ -84,10 +84,10 @@ game.system("handle inputs", {
     // Don't process inputs during connecting phase
     if (bag.phase === "connecting") return;
 
-    // Player 1 = local player (players[0])
-    // Player 2 = remote peer (players[1])
-    const player1Input = players[0]?.mouse.left.down ?? false;
-    const player2Input = players[1]?.mouse.left.down ?? false;
+    // Player 1 = local player (players.get(0))
+    // Player 2 = remote peer (players.get(1))
+    const player1Input = players.get(0).mouse.left.down;
+    const player2Input = players.get(1).mouse.left.down;
 
     if (bag.phase === "waiting") {
       // Clicking before buzzer = lose
@@ -115,10 +115,8 @@ game.system("handle inputs", {
 // Sync remote player cursor position
 game.system("sync remote cursor", {
   update({ bag, players }) {
-    const remoteMouse = players[1]?.mouse;
-    if (remoteMouse) {
-      bag.remoteCursorX = remoteMouse.x;
-      bag.remoteCursorY = remoteMouse.y;
-    }
+    const remoteMouse = players.get(1).mouse;
+    bag.remoteCursorX = remoteMouse.x;
+    bag.remoteCursorY = remoteMouse.y;
   },
 });

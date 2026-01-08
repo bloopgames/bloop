@@ -2,10 +2,10 @@ import type {
   EnginePointer,
   InputContext,
   NetContext,
-  PlayerInputContext,
   TimeContext,
 } from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
+import type { Players } from "./players";
 
 export type Context<
   GS extends BloopSchema = BloopSchema,
@@ -27,10 +27,11 @@ export type Context<
   /** The input snapshot */
   inputs: InputContext;
   /**
-   * Per-player input states. Shorthand for inputs.players.
-   * Access via: context.players[0].keys.a.held
+   * Per-player input states.
+   * Access via: context.players.get(0).keys.a.held
+   * Iterate connected players: for (const p of context.players) { ... }
    */
-  players: readonly PlayerInputContext[];
+  players: Players;
   /** The engine pointer to the injected system arguments (for advanced use cases) */
   rawPointer: EnginePointer;
   /** Network context for multiplayer sessions */

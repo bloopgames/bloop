@@ -297,8 +297,8 @@ describe("tapes", () => {
         const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
         game.system("score", {
           update({ bag, players }) {
-            if (players[0]?.mouse.left.down) bag.p0Score++;
-            if (players[1]?.mouse.left.down) bag.p1Score++;
+            if (players.get(0).mouse.left.down) bag.p0Score++;
+            if (players.get(1).mouse.left.down) bag.p1Score++;
           },
         });
         return game;
@@ -343,8 +343,8 @@ describe("tapes", () => {
       const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       replayGame.system("score", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
+          if (players.get(0).mouse.left.down) bag.p0Score++;
+          if (players.get(1).mouse.left.down) bag.p1Score++;
         },
       });
       const { sim: replaySim } = await mount(replayGame, {
@@ -383,15 +383,15 @@ describe("tapes", () => {
 
       game0.system("score", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
+          if (players.get(0).mouse.left.down) bag.p0Score++;
+          if (players.get(1).mouse.left.down) bag.p1Score++;
         },
       });
 
       game1.system("score", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
+          if (players.get(0).mouse.left.down) bag.p0Score++;
+          if (players.get(1).mouse.left.down) bag.p1Score++;
         },
       });
 
@@ -442,8 +442,8 @@ describe("tapes", () => {
       const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       replayGame.system("score", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
+          if (players.get(0).mouse.left.down) bag.p0Score++;
+          if (players.get(1).mouse.left.down) bag.p1Score++;
         },
       });
       const { sim: replaySim } = await mount(replayGame, {
@@ -471,8 +471,8 @@ describe("tapes", () => {
         const game = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
         game.system("score", {
           update({ bag, players }) {
-            if (players[0]?.mouse.left.down) bag.p0Score++;
-            if (players[1]?.mouse.left.down) bag.p1Score++;
+            if (players.get(0).mouse.left.down) bag.p0Score++;
+            if (players.get(1).mouse.left.down) bag.p1Score++;
           },
         });
         return game;
@@ -521,8 +521,8 @@ describe("tapes", () => {
       const replayGame = Bloop.create({ bag: { p0Score: 0, p1Score: 0 } });
       replayGame.system("score", {
         update({ bag, players }) {
-          if (players[0]?.mouse.left.down) bag.p0Score++;
-          if (players[1]?.mouse.left.down) bag.p1Score++;
+          if (players.get(0).mouse.left.down) bag.p0Score++;
+          if (players.get(1).mouse.left.down) bag.p1Score++;
         },
       });
       const { sim: replaySim } = await mount(replayGame, {
@@ -602,8 +602,8 @@ describe("tapes", () => {
         game.system("score", {
           update({ bag, players }) {
             // TODO: fix workaround for not being able to trigger "down" or up on every frame. see failing test in inputs.test.ts
-            const player0Keys = unwrap(players[0]).keys;
-            const player1Keys = unwrap(players[1]).keys;
+            const player0Keys = players.get(0).keys;
+            const player1Keys = players.get(1).keys;
             if (
               player0Keys.digit0.down ||
               player0Keys.digit1.down ||
@@ -681,8 +681,8 @@ describe("tapes", () => {
       replayGame.system("score", {
         update({ bag, players }) {
           // TODO: fix workaround for not being able to trigger "down" or up on every frame. see failing test in inputs.test.ts
-          const player0Keys = unwrap(players[0]).keys;
-          const player1Keys = unwrap(players[1]).keys;
+          const player0Keys = players.get(0).keys;
+          const player1Keys = players.get(1).keys;
           if (
             player0Keys.digit0.down ||
             player0Keys.digit1.down ||
@@ -914,8 +914,8 @@ describe("tapes", () => {
       game.system("inc", {
         update({ bag, players }) {
           // Increment on any player click
-          if (players[0]?.mouse.left.down) bag.value++;
-          if (players[1]?.mouse.left.down) bag.value++;
+          if (players.get(0).mouse.left.down) bag.value++;
+          if (players.get(1).mouse.left.down) bag.value++;
         },
       });
       return game;
@@ -944,8 +944,8 @@ describe("tapes", () => {
     const replayGame = Bloop.create({ bag: { value: 0 } });
     replayGame.system("inc", {
       update({ bag, players }) {
-        if (players[0]?.mouse.left.down) bag.value++;
-        if (players[1]?.mouse.left.down) bag.value++;
+        if (players.get(0).mouse.left.down) bag.value++;
+        if (players.get(1).mouse.left.down) bag.value++;
       },
     });
 
