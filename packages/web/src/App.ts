@@ -19,7 +19,7 @@ import {
   type RoomEvents,
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
-import { lemmyloop } from "./netcode/scaffold.ts";
+import { reconcile } from "./netcode/reconcile.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -110,7 +110,7 @@ export class App {
 
     this.subscribe();
 
-    lemmyloop(this, this.#abortController.signal).catch((err) => {
+    reconcile(this, this.#abortController.signal).catch((err) => {
       console.error("Error in lemmyloop:", err);
     });
   }
