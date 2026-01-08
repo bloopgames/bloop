@@ -1,0 +1,48 @@
+// AUTO-GENERATED FILE - DO NOT MODIFY
+
+export const TIME_CTX_FRAME_OFFSET = 0;
+export const TIME_CTX_DT_MS_OFFSET = 4;
+export const TIME_CTX_TOTAL_MS_OFFSET = 8;
+export const TIME_CTX_IS_RESIMULATING_OFFSET = 16;
+export const TIME_CTX_SIZE = 24;
+
+export const PEER_CTX_CONNECTED_OFFSET = 0;
+export const PEER_CTX_PACKET_COUNT_OFFSET = 1;
+export const PEER_CTX_SEQ_OFFSET = 2;
+export const PEER_CTX_ACK_OFFSET = 4;
+export const PEER_CTX_ACK_COUNT_OFFSET = 6;
+export const PEER_CTX_SIZE = 8;
+
+export const NET_CTX_PEER_COUNT_OFFSET = 0;
+export const NET_CTX_LOCAL_PEER_ID_OFFSET = 1;
+export const NET_CTX_IN_SESSION_OFFSET = 2;
+export const NET_CTX_STATUS_OFFSET = 3;
+export const NET_CTX_MATCH_FRAME_OFFSET = 4;
+export const NET_CTX_SESSION_START_FRAME_OFFSET = 8;
+export const NET_CTX_ROOM_CODE_OFFSET = 12;
+export const NET_CTX_WANTS_ROOM_CODE_OFFSET = 20;
+export const NET_CTX_WANTS_DISCONNECT_OFFSET = 28;
+export const NET_CTX_PEERS_OFFSET = 32;
+export const NET_CTX_LAST_ROLLBACK_DEPTH_OFFSET = 128;
+export const NET_CTX_TOTAL_ROLLBACKS_OFFSET = 132;
+export const NET_CTX_FRAMES_RESIMULATED_OFFSET = 136;
+export const NET_CTX_SIZE = 144;
+
+export const MOUSE_CTX_X_OFFSET = 0;
+export const MOUSE_CTX_Y_OFFSET = 4;
+export const MOUSE_CTX_WHEEL_X_OFFSET = 8;
+export const MOUSE_CTX_WHEEL_Y_OFFSET = 12;
+export const MOUSE_CTX_BUTTON_STATES_OFFSET = 16;
+export const MOUSE_CTX_SIZE = 24;
+
+export const KEY_CTX_KEY_STATES_OFFSET = 0;
+export const KEY_CTX_SIZE = 256;
+
+export const PLAYER_INPUTS_KEY_CTX_OFFSET = 0;
+export const PLAYER_INPUTS_MOUSE_CTX_OFFSET = 256;
+export const PLAYER_INPUTS_SIZE = 280;
+
+export const INPUT_CTX_PLAYERS_OFFSET = 0;
+export const INPUT_CTX_SIZE = 3360;
+
+export const MAX_PLAYERS = 12;

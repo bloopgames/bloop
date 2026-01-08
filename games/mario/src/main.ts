@@ -1,12 +1,13 @@
 import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
-import { joinRollbackRoom, start } from "@bloopjs/web";
+import { start } from "@bloopjs/web";
 import { createChromaticAberrationEffect } from "./chromatic-aberration";
 import { createDrawState, draw as drawFn } from "./draw";
 import { game } from "./game";
 
 let draw = drawFn;
 
+// boot up the game
 const app = await start({
   game,
   startRecording: false,
@@ -14,6 +15,17 @@ const app = await start({
     initiallyVisible: false,
   },
 });
+
+// HMR support
+if (import.meta.hot) {
+  import.meta.hot.accept("./game", async (newModule) => {
+    await app.acceptHmr(newModule?.game);
+  });
+
+  import.meta.hot.accept("./draw", async (newModule) => {
+    draw = newModule?.draw;
+  });
+}
 
 const canvas = app.canvas;
 if (!canvas) throw new Error("No canvas element found");
@@ -56,7 +68,20 @@ requestAnimationFrame(function frame() {
   requestAnimationFrame(frame);
 });
 
-let networkJoined = false;
+game.system("recording-watcher", {
+  netcode({ event, time }) {
+    console.log("[netcode]", event.type, event);
+    if (event.type === "session:start") {
+      console.log(
+        "[netcode]",
+        "session started, recording at frame",
+        time.frame,
+      );
+
+      app.sim.record(100_000);
+    }
+  },
+});
 
 // Debug: Press R to start recording mid-game
 window.addEventListener("keydown", (e) => {
@@ -75,45 +100,5 @@ if (toodle.backend.type === "webgpu") {
       glitchEnabled = !glitchEnabled;
       toodle.postprocess = glitchEnabled ? glitchEffect : null;
     }
-  });
-}
-
-game.system("title-input", {
-  update({ bag, inputs }) {
-    if (bag.phase !== "title") return;
-
-    if ((inputs.keys.enter.down || inputs.mouse.left.down) && !networkJoined) {
-      // Online multiplayer - wait for connection
-      bag.mode = "online";
-      bag.phase = "waiting";
-      networkJoined = true;
-
-      // Phase transitions are handled by the session-watcher system
-      joinRollbackRoom("mario-demo", app, {
-        onSessionStart() {
-          bag.phase = "playing";
-
-          app.sim.record(100_000);
-          console.log(
-            "Network session started, recording at frame",
-            app.sim.time.frame,
-          );
-        },
-        onSessionEnd() {
-          networkJoined = false;
-        },
-      });
-    }
-  },
-});
-
-// HMR support
-if (import.meta.hot) {
-  import.meta.hot.accept("./game", async (newModule) => {
-    await app.acceptHmr(newModule?.game);
-  });
-
-  import.meta.hot.accept("./draw", async (newModule) => {
-    draw = newModule?.draw;
   });
 }

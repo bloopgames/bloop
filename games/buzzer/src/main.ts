@@ -1,6 +1,6 @@
 import "./style.css";
 import { unwrap } from "@bloopjs/bloop";
-import { joinRollbackRoom, logger, start } from "@bloopjs/web";
+import { logger, start } from "@bloopjs/web";
 import { game } from "./game";
 import { createRenderer } from "./render";
 
@@ -26,8 +26,7 @@ const canvas = unwrap(app.canvas, "expected canvas from debug UI");
 // Use a getter so HMR can replace the game and renderer stays connected
 const render = createRenderer(canvas, () => app.game.bag);
 
-// Join rollback room
-joinRollbackRoom("nope", app);
+game.context.net.wantsRoomCode = "BUZZER";
 
 // Game-specific netcode logger
 game.system("netcode logger", {

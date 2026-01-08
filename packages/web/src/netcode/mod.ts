@@ -9,8 +9,6 @@ export type {
 } from "./logs.ts";
 export type { WebRtcPipe } from "./transport.ts";
 export type { RoomEvents } from "./broker.ts";
-export type { JoinRollbackRoomOptions } from "./scaffold.ts";
 
 export { PacketType } from "./protocol.ts";
 export { logger } from "./logs.ts";
-export { joinRollbackRoom } from "./scaffold.ts";

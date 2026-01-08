@@ -19,6 +19,7 @@ import {
   type RoomEvents,
 } from "./netcode/broker";
 import { logger } from "./netcode/logs.ts";
+import { reconcile } from "./netcode/reconcile.ts";
 
 export type StartOptions = {
   /** A bloop game instance */
@@ -85,6 +86,8 @@ export class App {
   #now: number = performance.now();
   #debugUi: DebugUi | null = null;
 
+  #abortController: AbortController = new AbortController();
+
   constructor(
     sim: Sim,
     game: Bloop<any>,
@@ -106,6 +109,10 @@ export class App {
     };
 
     this.subscribe();
+
+    reconcile(this, this.#abortController.signal).catch((err) => {
+      console.error("Error in lemmyloop:", err);
+    });
   }
 
   /** The simulation instance associated with this app */
@@ -367,6 +374,7 @@ export class App {
     this.afterFrame.unsubscribeAll();
     this.onHmr.unsubscribeAll();
     this.#debugUi?.unmount();
+    this.#abortController.abort();
   }
 
   /**

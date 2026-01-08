@@ -1,3 +1,24 @@
+import {
+  MAX_PLAYERS,
+  NET_CTX_PEERS_OFFSET,
+  NET_CTX_LAST_ROLLBACK_DEPTH_OFFSET,
+  NET_CTX_TOTAL_ROLLBACKS_OFFSET,
+  NET_CTX_FRAMES_RESIMULATED_OFFSET,
+  NET_CTX_PEER_COUNT_OFFSET,
+  NET_CTX_LOCAL_PEER_ID_OFFSET,
+  NET_CTX_IN_SESSION_OFFSET,
+  NET_CTX_STATUS_OFFSET,
+  NET_CTX_MATCH_FRAME_OFFSET,
+  NET_CTX_SESSION_START_FRAME_OFFSET,
+  NET_CTX_ROOM_CODE_OFFSET,
+  NET_CTX_WANTS_ROOM_CODE_OFFSET,
+  NET_CTX_WANTS_DISCONNECT_OFFSET,
+  PEER_CTX_SIZE,
+  PEER_CTX_CONNECTED_OFFSET,
+  PEER_CTX_SEQ_OFFSET,
+  PEER_CTX_ACK_OFFSET,
+} from "../codegen/offsets";
+
 /**
  * Network status values matching Zig NetStatus enum
  */
@@ -28,22 +49,6 @@ export type PeerInfo = {
   ack: number; // -1 if no packets received
 };
 
-const MAX_PEERS = 12;
-const PEERS_ARRAY_OFFSET = 32; // After _pad at offset 29-31
-const PEER_CTX_SIZE = 8; // connected(1) + packet_count(1) + seq(2) + ack(2) + ack_count(1) + pad(1)
-
-// Rollback stats offsets (after peers array at 32 + 12*8 = 128)
-const LAST_ROLLBACK_DEPTH_OFFSET = 128;
-const TOTAL_ROLLBACKS_OFFSET = 132;
-const FRAMES_RESIMULATED_OFFSET = 136;
-
-// Offsets within PeerCtx struct
-const PEER_CONNECTED_OFFSET = 0;
-const PEER_PACKET_COUNT_OFFSET = 1;
-const PEER_SEQ_OFFSET = 2;
-const PEER_ACK_OFFSET = 4;
-const PEER_ACK_COUNT_OFFSET = 6;
-
 const STATUS_MAP: Record<number, NetStatus> = {
   0: "offline",
   1: "local",
@@ -53,14 +58,8 @@ const STATUS_MAP: Record<number, NetStatus> = {
 };
 
 /**
- * NetCtx struct layout (from context.zig):
- * - peer_count: u8 (offset 0)
- * - local_peer_id: u8 (offset 1)
- * - in_session: u8 (offset 2)
- * - status: u8 (offset 3)
- * - match_frame: u32 (offset 4)
- * - session_start_frame: u32 (offset 8)
- * - room_code: [8]u8 (offset 12)
+ * NetCtx struct layout is defined in context.zig.
+ * Field offsets are generated in codegen/offsets.ts.
  *
  * All getters read directly from the engine's memory via DataView.
  * State is managed by the Zig engine, not TypeScript.
@@ -69,7 +68,7 @@ export class NetContext {
   dataView?: DataView;
 
   // Pre-allocated peer objects to avoid GC pressure
-  #peers: PeerInfo[] = Array.from({ length: MAX_PEERS }, () => ({
+  #peers: PeerInfo[] = Array.from({ length: MAX_PLAYERS }, () => ({
     isLocal: false,
     seq: -1,
     ack: -1,
@@ -92,7 +91,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint8(0);
+    return this.dataView!.getUint8(NET_CTX_PEER_COUNT_OFFSET);
   }
 
   /** Local peer ID in the session */
@@ -100,7 +99,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint8(1);
+    return this.dataView!.getUint8(NET_CTX_LOCAL_PEER_ID_OFFSET);
   }
 
   /** Whether we're in an active multiplayer session */
@@ -108,7 +107,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint8(2) !== 0;
+    return this.dataView!.getUint8(NET_CTX_IN_SESSION_OFFSET) !== 0;
   }
 
   /** Current network status */
@@ -116,7 +115,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    const statusByte = this.dataView!.getUint8(3);
+    const statusByte = this.dataView!.getUint8(NET_CTX_STATUS_OFFSET);
     return STATUS_MAP[statusByte] ?? "local";
   }
 
@@ -125,7 +124,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint32(4, true);
+    return this.dataView!.getUint32(NET_CTX_MATCH_FRAME_OFFSET, true);
   }
 
   /**
@@ -136,7 +135,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint32(8, true);
+    return this.dataView!.getUint32(NET_CTX_SESSION_START_FRAME_OFFSET, true);
   }
 
   /** Current room code (empty string if not in a room) */
@@ -144,10 +143,10 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    // Read 8 bytes starting at offset 12, convert to string until null terminator
+    // Read 8 bytes starting at room_code offset, convert to string until null terminator
     const bytes: number[] = [];
     for (let i = 0; i < 8; i++) {
-      const byte = this.dataView!.getUint8(12 + i);
+      const byte = this.dataView!.getUint8(NET_CTX_ROOM_CODE_OFFSET + i);
       if (byte === 0) break;
       bytes.push(byte);
     }
@@ -159,10 +158,10 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       return undefined;
     }
-    // Read 8 bytes starting at offset 20, convert to string until null terminator
+    // Read 8 bytes starting at wants_room_code offset, convert to string until null terminator
     const bytes: number[] = [];
     for (let i = 0; i < 8; i++) {
-      const byte = this.dataView!.getUint8(20 + i);
+      const byte = this.dataView!.getUint8(NET_CTX_WANTS_ROOM_CODE_OFFSET + i);
       if (byte === 0) break;
       bytes.push(byte);
     }
@@ -175,12 +174,12 @@ export class NetContext {
     }
     // Clear first
     for (let i = 0; i < 8; i++) {
-      this.dataView!.setUint8(20 + i, 0);
+      this.dataView!.setUint8(NET_CTX_WANTS_ROOM_CODE_OFFSET + i, 0);
     }
     if (code) {
       // Write up to 7 chars (leave room for null terminator)
       for (let i = 0; i < Math.min(code.length, 7); i++) {
-        this.dataView!.setUint8(20 + i, code.charCodeAt(i));
+        this.dataView!.setUint8(NET_CTX_WANTS_ROOM_CODE_OFFSET + i, code.charCodeAt(i));
       }
     }
   }
@@ -190,14 +189,14 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       return false;
     }
-    return this.dataView!.getUint8(28) !== 0;
+    return this.dataView!.getUint8(NET_CTX_WANTS_DISCONNECT_OFFSET) !== 0;
   }
 
   set wantsDisconnect(value: boolean) {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    this.dataView!.setUint8(28, value ? 1 : 0);
+    this.dataView!.setUint8(NET_CTX_WANTS_DISCONNECT_OFFSET, value ? 1 : 0);
   }
 
   /**
@@ -223,12 +222,12 @@ export class NetContext {
 
     // Calculate local peer ack = min(seq) across connected remotes with data
     let minRemoteSeq = -1;
-    for (let i = 0; i < MAX_PEERS; i++) {
+    for (let i = 0; i < MAX_PLAYERS; i++) {
       if (i === localPeerId) continue;
-      const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
-      if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
+      const peerOffset = NET_CTX_PEERS_OFFSET + i * PEER_CTX_SIZE;
+      if (dv.getUint8(peerOffset + PEER_CTX_CONNECTED_OFFSET) !== 1) continue;
       // seq is now i16 with -1 meaning "no data yet"
-      const seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
+      const seq = dv.getInt16(peerOffset + PEER_CTX_SEQ_OFFSET, true);
       if (seq < 0) continue; // No data from this peer yet
       if (minRemoteSeq === -1 || seq < minRemoteSeq) {
         minRemoteSeq = seq;
@@ -237,9 +236,9 @@ export class NetContext {
 
     // Update pre-allocated peer objects and build result array
     this.#peersResult.length = 0;
-    for (let i = 0; i < MAX_PEERS; i++) {
-      const peerOffset = PEERS_ARRAY_OFFSET + i * PEER_CTX_SIZE;
-      if (dv.getUint8(peerOffset + PEER_CONNECTED_OFFSET) !== 1) continue;
+    for (let i = 0; i < MAX_PLAYERS; i++) {
+      const peerOffset = NET_CTX_PEERS_OFFSET + i * PEER_CTX_SIZE;
+      if (dv.getUint8(peerOffset + PEER_CTX_CONNECTED_OFFSET) !== 1) continue;
 
       const peer = this.#peers[i];
       if (!peer) {
@@ -253,8 +252,8 @@ export class NetContext {
         peer.ack = minRemoteSeq;
       } else {
         // seq and ack are now i16 with -1 meaning "no data yet"
-        peer.seq = dv.getInt16(peerOffset + PEER_SEQ_OFFSET, true);
-        peer.ack = dv.getInt16(peerOffset + PEER_ACK_OFFSET, true);
+        peer.seq = dv.getInt16(peerOffset + PEER_CTX_SEQ_OFFSET, true);
+        peer.ack = dv.getInt16(peerOffset + PEER_CTX_ACK_OFFSET, true);
       }
       this.#peersResult.push(peer);
     }
@@ -266,7 +265,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint32(LAST_ROLLBACK_DEPTH_OFFSET, true);
+    return this.dataView!.getUint32(NET_CTX_LAST_ROLLBACK_DEPTH_OFFSET, true);
   }
 
   /** Total number of rollbacks during this session */
@@ -274,7 +273,7 @@ export class NetContext {
     if (!this.#hasValidBuffer()) {
       throw new Error("NetContext dataView is not valid");
     }
-    return this.dataView!.getUint32(TOTAL_ROLLBACKS_OFFSET, true);
+    return this.dataView!.getUint32(NET_CTX_TOTAL_ROLLBACKS_OFFSET, true);
   }
 
   /** Total frames resimulated during this session */
@@ -283,6 +282,6 @@ export class NetContext {
       throw new Error("NetContext dataView is not valid");
     }
     // Read u64 as BigInt then convert to number (safe for reasonable frame counts)
-    return Number(this.dataView!.getBigUint64(FRAMES_RESIMULATED_OFFSET, true));
+    return Number(this.dataView!.getBigUint64(NET_CTX_FRAMES_RESIMULATED_OFFSET, true));
   }
 }

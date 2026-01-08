@@ -5,6 +5,7 @@ import { FLIPBOOKS } from "./sprites";
 import { AnimationSystem } from "./systems/animation";
 import { CollisionSystem } from "./systems/collision";
 import { InputsSystem } from "./systems/inputs";
+import { MatchmakingSystem } from "./systems/matchmaking";
 import { PhaseSystem } from "./systems/phase";
 import { PhysicsSystem } from "./systems/physics";
 
@@ -113,12 +114,10 @@ game.system(
   }),
 );
 
+game.system("matchmaking", MatchmakingSystem);
 game.system("inputs", InputsSystem);
-
 game.system("physics", PhysicsSystem);
-
 game.system("collision", CollisionSystem);
-
 game.system("animation", AnimationSystem);
 
 // Debug hitbox toggle (H key)
