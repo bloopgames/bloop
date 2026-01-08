@@ -5,7 +5,7 @@ status: in-progress
 type: milestone
 priority: normal
 created_at: 2026-01-05T18:07:56Z
-updated_at: 2026-01-05T18:47:44Z
+updated_at: 2026-01-08T07:42:56Z
 ---
 
 Goal: Start streaming, get initial content up, begin star outreach
@@ -18,10 +18,10 @@ Goal: Start streaming, get initial content up, begin star outreach
 - [ ] Fix known bugs:
   - [x] Tape playback performance (bloop-sgc7)
   - [x] Input buffer replication (bloop-9jk8)
-  - [ ] Handle race conditions for input/packet events (bloop-pdjq)
 - [ ] Hook HMR up to mario glitch shader (bloop-3bmd)
 
 ## Nice to Haves
+- [ ] Handle race conditions for input/packet events (bloop-pdjq)
 - [ ] Snake game documentation (bloop-8hli)
 - [ ] Deterministic random numbers (bloop-ymhy)
 - [ ] Make room codes real (bloop-uw74)
