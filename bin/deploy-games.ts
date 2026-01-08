@@ -70,7 +70,7 @@ async function main() {
   }
 
   console.log("\n=== Deploying to fly.io ===");
-  await $`fly deploy`.cwd(infraDir);
+  await $`flyctl deploy`.cwd(infraDir);
 
   console.log("\n=== Deploy complete ===");
 }
