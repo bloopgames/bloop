@@ -1,5 +1,6 @@
 import { useRef, useCallback } from "preact/hooks";
 import { debugState } from "../state.ts";
+import { LoadTapeDialog } from "./LoadTapeDialog.tsx";
 
 /** Hook that returns handlers for repeat-on-hold behavior with initial debounce */
 function useRepeatOnHold(action: () => void) {
@@ -114,6 +115,10 @@ export function BottomBar() {
 
   const seekDrag = useSeekDrag(handleSeek);
 
+  const handleLoadTapeClick = useCallback(() => {
+    debugState.isLoadDialogOpen.value = true;
+  }, []);
+
   return (
     <div className="bottom-bar">
       <div className="playbar-controls">
@@ -147,6 +152,10 @@ export function BottomBar() {
             Jump forward <kbd>8</kbd>
           </span>
         </button>
+        <button className="playbar-btn load-tape-btn" onClick={handleLoadTapeClick}>
+          Load
+          <span className="tooltip">Load tape</span>
+        </button>
       </div>
       <div className="seek-bar" {...seekDrag}>
         <div
@@ -160,6 +169,7 @@ export function BottomBar() {
           />
         )}
       </div>
+      <LoadTapeDialog />
     </div>
   );
 }

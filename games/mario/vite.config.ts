@@ -8,7 +8,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, "index.html"),
-        tapeLoad: path.resolve(__dirname, "tape-load.html"),
       },
     },
   },

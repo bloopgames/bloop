@@ -445,4 +445,87 @@ export const styles = /*css*/ `
   border-radius: 4px;
   border: 1px inset lavender;
 }
+
+/* Load Tape Dialog */
+.load-tape-dialog {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 0;
+  color: #ccc;
+  font-family: monospace;
+  max-width: 320px;
+  width: 90vw;
+}
+
+.load-tape-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.load-tape-dialog-content {
+  padding: 16px;
+}
+
+.load-tape-dialog h3 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.drop-zone {
+  border: 2px dashed #444;
+  border-radius: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.drop-zone:hover {
+  border-color: #666;
+  background: #222;
+}
+
+.drop-zone.drag-over {
+  border-color: #7b3fa0;
+  background: rgba(123, 63, 160, 0.1);
+}
+
+.drop-zone-text {
+  color: #888;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.replay-last-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  color: #ccc;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-last-btn:hover {
+  background: #444;
+  color: #fff;
+}
+
+.load-tape-btn {
+  margin-left: 4px;
+}
 `;

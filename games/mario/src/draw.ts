@@ -31,7 +31,9 @@ export function draw(g: typeof game, toodle: Toodle) {
 
   toodle.startFrame();
 
-  const root = toodle.Node({ scale: 3 });
+  const root = toodle.Node();
+
+  toodle.camera.zoom = 3;
 
   if (bag.phase !== "playing") {
     // Title screen
@@ -60,7 +62,7 @@ export function draw(g: typeof game, toodle: Toodle) {
           ? "Tap to find opponent"
           : "[Enter/Click] Online  [Space] Local";
 
-    const text = titleScreen.add(
+    titleScreen.add(
       toodle.Text("Roboto", subtitleText, {
         fontSize: 10,
         color: { r: 1, g: 1, b: 1, a: 1 },
@@ -78,13 +80,13 @@ export function draw(g: typeof game, toodle: Toodle) {
     });
 
     // Ground
-    gameScreen.add(
+    const ground = gameScreen.add(
       toodle.shapes.Rect({
-        size: { width: viewport.size!.width, height: 40 },
-        position: { x: 0, y: GROUND_Y - 20 },
+        size: { width: viewport.size!.width, height: 1000 },
         color: GROUND_COLOR,
       }),
     );
+    ground.setBounds({ top: GROUND_Y });
 
     // Block
     gameScreen.add(

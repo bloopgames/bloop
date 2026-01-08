@@ -1,4 +1,4 @@
-import { Bloop } from "@bloopjs/bloop";
+import { Bloop, Util } from "@bloopjs/bloop";
 import * as cfg from "./config";
 import type { Flipbook } from "./flipbook";
 import { FLIPBOOKS } from "./sprites";
@@ -97,12 +97,6 @@ game.system("session-watcher", {
       bag.phase = "title";
       bag.mode = null;
     }
-  },
-});
-
-game.system("screen", {
-  resize({ screen }) {
-    console.log("resize", { width: screen.width, height: screen.height });
   },
 });
 

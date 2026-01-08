@@ -53,6 +53,11 @@ export type DebugState = {
   onStepForward: Signal<(() => void) | null>;
   onJumpForward: Signal<(() => void) | null>;
   onSeek: Signal<((position: number) => void) | null>;
+  // Tape loading
+  onLoadTape: Signal<((bytes: Uint8Array, fileName: string) => void) | null>;
+  onReplayLastTape: Signal<(() => void) | null>;
+  lastTapeName: Signal<string | null>;
+  isLoadDialogOpen: Signal<boolean>;
 };
 
 const layoutMode = signal<LayoutMode>("off");
@@ -83,6 +88,12 @@ const onPlayPause = signal<(() => void) | null>(null);
 const onStepForward = signal<(() => void) | null>(null);
 const onJumpForward = signal<(() => void) | null>(null);
 const onSeek = signal<((position: number) => void) | null>(null);
+
+// Tape loading
+const onLoadTape = signal<((bytes: Uint8Array, fileName: string) => void) | null>(null);
+const onReplayLastTape = signal<(() => void) | null>(null);
+const lastTapeName = signal<string | null>(null);
+const isLoadDialogOpen = signal(false);
 
 export const debugState: DebugState = {
   /** Layout mode: off, letterboxed, or full */
@@ -129,6 +140,12 @@ export const debugState: DebugState = {
   onStepForward,
   onJumpForward,
   onSeek,
+
+  /** Tape loading */
+  onLoadTape,
+  onReplayLastTape,
+  lastTapeName,
+  isLoadDialogOpen,
 };
 
 /** Cycle through layout modes: off -> letterboxed -> full -> off */
@@ -309,4 +326,77 @@ export function wireTapeDragDrop(canvas: HTMLCanvasElement, app: App): void {
     const bytes = new Uint8Array(await file.arrayBuffer());
     app.loadTape(bytes);
   });
+}
+
+// IndexedDB helpers for tape persistence
+const TAPE_DB_NAME = "bloop-debug";
+const TAPE_STORE_NAME = "tapes";
+const TAPE_KEY = "last";
+
+function openTapeDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(TAPE_DB_NAME, 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(TAPE_STORE_NAME);
+    };
+  });
+}
+
+async function saveTapeToStorage(
+  bytes: Uint8Array,
+  fileName: string,
+): Promise<void> {
+  const db = await openTapeDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(TAPE_STORE_NAME, "readwrite");
+    tx.objectStore(TAPE_STORE_NAME).put({ bytes, fileName }, TAPE_KEY);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadTapeFromStorage(): Promise<{
+  bytes: Uint8Array;
+  fileName: string;
+} | null> {
+  try {
+    const db = await openTapeDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(TAPE_STORE_NAME, "readonly");
+      const request = tx.objectStore(TAPE_STORE_NAME).get(TAPE_KEY);
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Check for saved tape and update lastTapeName signal */
+export async function checkForSavedTape(): Promise<void> {
+  const saved = await loadTapeFromStorage();
+  debugState.lastTapeName.value = saved?.fileName ?? null;
+}
+
+/** Wire up tape loading handlers */
+export function wireTapeLoadHandlers(app: App): void {
+  debugState.onLoadTape.value = async (bytes: Uint8Array, fileName: string) => {
+    app.loadTape(bytes);
+    await saveTapeToStorage(bytes, fileName);
+    debugState.lastTapeName.value = fileName;
+    debugState.isLoadDialogOpen.value = false;
+  };
+
+  debugState.onReplayLastTape.value = async () => {
+    const saved = await loadTapeFromStorage();
+    if (saved) {
+      app.loadTape(saved.bytes);
+      debugState.isLoadDialogOpen.value = false;
+    }
+  };
+
+  // Check for saved tape on init
+  checkForSavedTape();
 }

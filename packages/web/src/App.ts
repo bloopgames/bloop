@@ -13,6 +13,7 @@ import {
   triggerHmrFlash,
   wirePlaybarHandlers,
   wireTapeDragDrop,
+  wireTapeLoadHandlers,
 } from "./debugui/state.ts";
 import {
   joinRoom as joinRoomInternal,
@@ -129,9 +130,10 @@ export class App {
     if (this.#debugUi) return this.#debugUi;
     this.#debugUi = new DebugUi(opts);
 
-    // Wire up playbar handlers and drag-drop
+    // Wire up playbar handlers, drag-drop, and tape loading
     wirePlaybarHandlers(this);
     wireTapeDragDrop(this.#debugUi.canvas, this);
+    wireTapeLoadHandlers(this);
 
     return this.#debugUi;
   }

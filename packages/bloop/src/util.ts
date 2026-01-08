@@ -45,6 +45,9 @@ export function logPerSecond(now: number, ...args: any[]) {
 /**
  * Log messages every N milliseconds
  *
+ *
+ * @param now Current time in milliseconds
+ * @param interval Minimum interval between logs in milliseconds
  * @example
  *
  * Util.logEvery(20, "Frame rendered", 12345);
