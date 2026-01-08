@@ -17,7 +17,8 @@
     "ci:zig": "(cd packages/engine && zig build test)",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
     "publish": "bun bin/publish.ts",
-    "deploy-games": "bun bin/deploy-games.ts"
+    "deploy-games": "bun bin/deploy-games.ts",
+    "stream": "python3 youtube_say.py"
   },
   "devDependencies": {
     "@types/bun": "latest",
