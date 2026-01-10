@@ -1,9 +1,11 @@
 import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
 import { start } from "@bloopjs/web";
-import { createChromaticAberrationEffect } from "./chromatic-aberration";
-import { draw } from "./draw";
+import { draw as drawFn } from "./draw";
 import { game } from "./game";
+import { setupGlitchEffect } from "./glitchEffect";
+
+let draw = drawFn;
 
 // boot up the game
 const app = await start({
@@ -13,17 +15,6 @@ const app = await start({
     initiallyVisible: false,
   },
 });
-
-// HMR support
-if (import.meta.hot) {
-  import.meta.hot.accept("./game", async (newModule) => {
-    await app.acceptHmr(newModule?.game);
-  });
-
-  // import.meta.hot.accept("./draw", async (newModule) => {
-  //   draw = newModule?.draw;
-  // });
-}
 
 const canvas = app.canvas;
 if (!canvas) throw new Error("No canvas element found");
@@ -87,14 +78,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-// Debug: Press G to toggle glitch effect on webgpu backend
-if (toodle.backend.type === "webgpu") {
-  const glitchEffect = createChromaticAberrationEffect(toodle);
-  let glitchEnabled = false;
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "g") {
-      glitchEnabled = !glitchEnabled;
-      toodle.postprocess = glitchEnabled ? glitchEffect : null;
-    }
+const doGlitchEffect = setupGlitchEffect(toodle);
+
+// HMR support
+if (import.meta.hot) {
+  import.meta.hot.accept("./game", async (newModule) => {
+    doGlitchEffect();
+    await app.acceptHmr(newModule?.game);
+  });
+
+  import.meta.hot.accept("./draw", async (newModule) => {
+    doGlitchEffect();
+    draw = newModule?.draw;
   });
 }

@@ -1,4 +1,4 @@
-import { Bloop, Util } from "@bloopjs/bloop";
+import { Bloop } from "@bloopjs/bloop";
 import * as cfg from "./config";
 import type { Flipbook } from "./flipbook";
 import { FLIPBOOKS } from "./sprites";

@@ -1,6 +1,68 @@
 import { Backends, Colors, type Toodle } from "@bloopjs/toodle";
 
-export function createChromaticAberrationEffect(toodle: Toodle): Backends.PostProcess {
+export function setupGlitchEffect(toodle: Toodle): () => void {
+  let glitchEffect: Backends.PostProcess | null = null;
+  let glitchTimeout: number = -1;
+  let glitchQueued = false;
+
+  if (toodle.backend.type === "webgpu") {
+    glitchEffect = createChromaticAberrationEffect(toodle);
+  }
+
+  function doGlitchEffect() {
+    if (!glitchEffect) {
+      return console.warn(
+        `No glitch effect available - are we running on webgl2?`,
+      );
+    }
+
+    console.log("doGlitchEffect", performance.now(), {
+      hasFocus: document.hasFocus(),
+    });
+    // Queue effect if page isn't visible or window doesn't have focus (IDE covering browser)
+    if (document.visibilityState === "hidden" || !document.hasFocus()) {
+      console.log("queueing glitch");
+      glitchQueued = true;
+      return;
+    }
+    console.log("doing glitch immediately");
+    if (glitchTimeout > 0) {
+      clearTimeout(glitchTimeout);
+    }
+    toodle.postprocess = glitchEffect;
+    glitchTimeout = setTimeout(() => {
+      toodle.postprocess = null;
+    }, 1000);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    console.log(
+      "visibilityStateChange",
+      document.visibilityState,
+      performance.now(),
+    );
+    if (document.visibilityState === "visible" && glitchQueued) {
+      glitchQueued = false;
+      doGlitchEffect();
+    }
+  });
+
+  // Handle case where another app (like IDE) covers the browser window
+  // visibilitychange doesn't fire for this, but focus does when clicking back
+  window.addEventListener("focus", () => {
+    console.log("window focus", performance.now());
+    if (glitchQueued) {
+      glitchQueued = false;
+      doGlitchEffect();
+    }
+  });
+
+  return doGlitchEffect;
+}
+
+function createChromaticAberrationEffect(
+  toodle: Toodle,
+): Backends.PostProcess {
   if (!(toodle.backend instanceof Backends.WebGPUBackend)) {
     throw new Error("Post-processing requires WebGPU backend");
   }
