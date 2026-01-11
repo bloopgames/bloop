@@ -119,37 +119,47 @@ export function BottomBar() {
     debugState.isLoadDialogOpen.value = true;
   }, []);
 
+  const handleSaveTapeClick = useCallback(() => {
+    debugState.onSaveTape.value?.();
+  }, []);
+
   return (
     <div className="bottom-bar">
       <div className="playbar-controls">
-        <button className="playbar-btn" {...jumpBackRepeat}>
+        <button className="playbar-btn jump-back" {...jumpBackRepeat}>
           {"<<"}
           <span className="tooltip tooltip-left">
             Jump back <kbd>4</kbd>
           </span>
         </button>
-        <button className="playbar-btn" {...stepBackRepeat}>
+        <button className="playbar-btn step-back" {...stepBackRepeat}>
           {"<"}
           <span className="tooltip">
             Step back <kbd>5</kbd>
           </span>
         </button>
-        <button className="playbar-btn" onClick={handlePlayPause}>
+        <button className="playbar-btn play-pause" onClick={handlePlayPause}>
           {isPlaying ? "||" : ">"}
           <span className="tooltip">
             {isPlaying ? "Pause" : "Play"} <kbd>6</kbd>
           </span>
         </button>
-        <button className="playbar-btn" {...stepForwardRepeat}>
+        <button className="playbar-btn step-forward" {...stepForwardRepeat}>
           {">"}
           <span className="tooltip">
             Step forward <kbd>7</kbd>
           </span>
         </button>
-        <button className="playbar-btn" {...jumpForwardRepeat}>
+        <button className="playbar-btn jump-forward" {...jumpForwardRepeat}>
           {">>"}
           <span className="tooltip">
             Jump forward <kbd>8</kbd>
+          </span>
+        </button>
+        <button className="playbar-btn save-tape-btn" onClick={handleSaveTapeClick}>
+          Save
+          <span className="tooltip">
+            Save tape <kbd>Cmd+S</kbd>
           </span>
         </button>
         <button className="playbar-btn load-tape-btn" onClick={handleLoadTapeClick}>

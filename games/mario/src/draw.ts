@@ -74,8 +74,8 @@ export function draw(g: typeof game, toodle: Toodle) {
 
     const viewport = toodle.Node({
       size: {
-        width: toodle.resolution.width,
-        height: toodle.resolution.height,
+        width: toodle.resolution.width / toodle.camera.zoom,
+        height: toodle.resolution.height / toodle.camera.zoom,
       },
     });
 
@@ -123,7 +123,7 @@ export function draw(g: typeof game, toodle: Toodle) {
 
     const p1Score = gameScreen.add(
       toodle.Text("Roboto", `P1: ${bag.p1.score}`, {
-        fontSize: 16,
+        fontSize: 10,
         color: MARIO_COLOR,
       }),
     );
@@ -134,7 +134,7 @@ export function draw(g: typeof game, toodle: Toodle) {
 
     const p2Score = gameScreen.add(
       toodle.Text("Roboto", `P2: ${bag.p2.score}`, {
-        fontSize: 16,
+        fontSize: 10,
         color: LUIGI_COLOR,
       }),
     );

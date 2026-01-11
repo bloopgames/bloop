@@ -53,9 +53,10 @@ export type DebugState = {
   onStepForward: Signal<(() => void) | null>;
   onJumpForward: Signal<(() => void) | null>;
   onSeek: Signal<((position: number) => void) | null>;
-  // Tape loading
+  // Tape loading/saving
   onLoadTape: Signal<((bytes: Uint8Array, fileName: string) => void) | null>;
   onReplayLastTape: Signal<(() => void) | null>;
+  onSaveTape: Signal<(() => void) | null>;
   lastTapeName: Signal<string | null>;
   isLoadDialogOpen: Signal<boolean>;
 };
@@ -89,9 +90,10 @@ const onStepForward = signal<(() => void) | null>(null);
 const onJumpForward = signal<(() => void) | null>(null);
 const onSeek = signal<((position: number) => void) | null>(null);
 
-// Tape loading
+// Tape loading/saving
 const onLoadTape = signal<((bytes: Uint8Array, fileName: string) => void) | null>(null);
 const onReplayLastTape = signal<(() => void) | null>(null);
+const onSaveTape = signal<(() => void) | null>(null);
 const lastTapeName = signal<string | null>(null);
 const isLoadDialogOpen = signal(false);
 
@@ -141,9 +143,10 @@ export const debugState: DebugState = {
   onJumpForward,
   onSeek,
 
-  /** Tape loading */
+  /** Tape loading/saving */
   onLoadTape,
   onReplayLastTape,
+  onSaveTape,
   lastTapeName,
   isLoadDialogOpen,
 };
@@ -395,6 +398,18 @@ export function wireTapeLoadHandlers(app: App): void {
       app.loadTape(saved.bytes);
       debugState.isLoadDialogOpen.value = false;
     }
+  };
+
+  debugState.onSaveTape.value = () => {
+    if (!app.sim.hasHistory) return;
+    const tape = app.sim.saveTape();
+    const blob = new Blob([tape], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tape-${Date.now()}.bloop`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Check for saved tape on init

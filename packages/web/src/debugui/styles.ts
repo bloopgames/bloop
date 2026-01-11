@@ -4,10 +4,26 @@ export const styles = /*css*/ `
   box-sizing: border-box;
 }
 
+/* Mobile-first CSS variables */
+:host {
+  --bar-size: 10vw;
+  --bar-size-h: 10vh;
+  --bar-size-h: 10dvh;
+}
+
+/* Desktop overrides */
+@media (min-width: 769px) {
+  :host {
+    --bar-size: 2vw;
+    --bar-size-h: 2vh;
+  }
+}
+
 /* Layout */
 .fullscreen {
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -24,17 +40,96 @@ export const styles = /*css*/ `
   display: block;
 }
 
+/* Mobile-first: vertical scroll layout */
 .layout {
-  display: grid;
-  grid-template-areas:
-    "game stats"
-    "logs logs";
-  grid-template-columns: calc(50% - 0.5rem) calc(50% - 0.5rem);
-  grid-template-rows: calc(50% - 0.5rem) calc(50% - 0.5rem);
-  gap: 1rem;
+  /* Use fixed position on mobile to escape parent overflow:hidden */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 0;
+  gap: 0;
+  background: #1a1a1a;
+}
+
+.layout .game {
+  /* Use dvh with vh fallback for mobile Safari address bar */
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  flex-shrink: 0;
+  /* Mobile: no border radius, fullscreen game */
+  border-radius: 0;
+}
+
+/* Mobile: stretch canvas to fill game area */
+.layout .game .canvas-container {
   width: 100%;
   height: 100%;
+}
+
+.layout .game .canvas-container canvas {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  display: block;
+}
+
+.layout .stats,
+.layout .logs {
+  width: 100%;
+  min-height: 50vh;
+  min-height: 50dvh;
   padding: 1rem;
+  flex-shrink: 0;
+}
+
+/* Desktop: 2x2 grid layout */
+@media (min-width: 769px) {
+  .layout {
+    position: static;
+    display: grid;
+    grid-template-areas:
+      "game stats"
+      "logs logs";
+    grid-template-columns: calc(50% - 0.5rem) calc(50% - 0.5rem);
+    grid-template-rows: calc(50% - 0.5rem) calc(50% - 0.5rem);
+    gap: 1rem;
+    padding: 1rem;
+    height: 100%;
+    overflow: hidden;
+    -webkit-overflow-scrolling: auto;
+    overscroll-behavior-y: auto;
+  }
+
+  .layout .game {
+    height: auto;
+    flex-shrink: initial;
+    border-radius: 8px;
+  }
+
+  /* Desktop: restore centered canvas with constraints */
+  .layout .game .canvas-container canvas {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .layout .stats,
+  .layout .logs {
+    min-height: auto;
+    padding: 1rem;
+    flex-shrink: initial;
+  }
 }
 
 /* Letterboxed layout - using equal vw/vh percentages keeps game at viewport aspect ratio */
@@ -44,10 +139,12 @@ export const styles = /*css*/ `
     "top-bar top-bar top-bar"
     "left-bar game right-bar"
     "bottom-bar bottom-bar bottom-bar";
-  grid-template-columns: 2vw 1fr 2vw;
-  grid-template-rows: 2vh 1fr 2vh;
+  grid-template-columns: var(--bar-size) 1fr var(--bar-size);
+  grid-template-rows: var(--bar-size-h) 1fr var(--bar-size-h);
   width: 100vw;
+  /* Use dvh with vh fallback for mobile Safari address bar */
   height: 100vh;
+  height: 100dvh;
   background: #1a1a1a;
   overflow: hidden;
   overscroll-behavior: none;
@@ -66,12 +163,23 @@ export const styles = /*css*/ `
 }
 
 .top-bar-side-label {
-  width: 2vw;
+  width: var(--bar-size);
   text-align: center;
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #666;
+}
+
+/* Mobile: larger top bar text */
+@media (max-width: 768px) {
+  .top-bar-side-label {
+    font-size: 12px;
+  }
+
+  .top-bar {
+    font-size: 14px;
+  }
 }
 
 .top-bar-center {
@@ -142,8 +250,17 @@ export const styles = /*css*/ `
   display: flex;
   align-items: center;
   background: #111;
-  padding: 0 8px;
-  gap: 8px;
+  /* Mobile-first: more padding */
+  padding: 0 16px;
+  gap: 12px;
+}
+
+/* Desktop: tighter padding */
+@media (min-width: 769px) {
+  .bottom-bar {
+    padding: 0 8px;
+    gap: 8px;
+  }
 }
 
 .playbar-controls {
@@ -153,16 +270,35 @@ export const styles = /*css*/ `
   flex-shrink: 0;
 }
 
+/* Mobile-first: hide step/jump buttons */
+.playbar-btn.jump-back,
+.playbar-btn.step-back,
+.playbar-btn.step-forward,
+.playbar-btn.jump-forward {
+  display: none;
+}
+
+/* Desktop: show all controls */
+@media (min-width: 769px) {
+  .playbar-btn.jump-back,
+  .playbar-btn.step-back,
+  .playbar-btn.step-forward,
+  .playbar-btn.jump-forward {
+    display: flex;
+  }
+}
+
 .playbar-btn {
-  width: 1.5vh;
-  height: 1.5vh;
-  min-width: 18px;
-  min-height: 18px;
+  /* Mobile-first: larger buttons */
+  width: 4vh;
+  height: 4vh;
+  min-width: 32px;
+  min-height: 32px;
   border: none;
   outline: none;
   background: transparent;
   color: #888;
-  font-size: 10px;
+  font-size: 16px;
   cursor: pointer;
   border-radius: 2px;
   display: flex;
@@ -170,6 +306,17 @@ export const styles = /*css*/ `
   justify-content: center;
   transition: background 0.15s, color 0.15s;
   position: relative;
+}
+
+/* Desktop: smaller buttons */
+@media (min-width: 769px) {
+  .playbar-btn {
+    width: 1.5vh;
+    height: 1.5vh;
+    min-width: 18px;
+    min-height: 18px;
+    font-size: 10px;
+  }
 }
 
 .playbar-btn:hover {
@@ -215,12 +362,20 @@ export const styles = /*css*/ `
 
 .seek-bar {
   flex: 1;
-  height: 16px;
+  /* Mobile-first: larger seek bar */
+  height: 32px;
   background: #222;
   border-radius: 4px;
   position: relative;
   cursor: pointer;
   overflow: hidden;
+}
+
+/* Desktop: smaller seek bar */
+@media (min-width: 769px) {
+  .seek-bar {
+    height: 16px;
+  }
 }
 
 .seek-bar-fill {

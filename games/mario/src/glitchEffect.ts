@@ -16,16 +16,11 @@ export function setupGlitchEffect(toodle: Toodle): () => void {
       );
     }
 
-    console.log("doGlitchEffect", performance.now(), {
-      hasFocus: document.hasFocus(),
-    });
     // Queue effect if page isn't visible or window doesn't have focus (IDE covering browser)
     if (document.visibilityState === "hidden" || !document.hasFocus()) {
-      console.log("queueing glitch");
       glitchQueued = true;
       return;
     }
-    console.log("doing glitch immediately");
     if (glitchTimeout > 0) {
       clearTimeout(glitchTimeout);
     }
@@ -36,11 +31,6 @@ export function setupGlitchEffect(toodle: Toodle): () => void {
   }
 
   document.addEventListener("visibilitychange", () => {
-    console.log(
-      "visibilityStateChange",
-      document.visibilityState,
-      performance.now(),
-    );
     if (document.visibilityState === "visible" && glitchQueued) {
       glitchQueued = false;
       doGlitchEffect();
@@ -50,7 +40,6 @@ export function setupGlitchEffect(toodle: Toodle): () => void {
   // Handle case where another app (like IDE) covers the browser window
   // visibilitychange doesn't fire for this, but focus does when clicking back
   window.addEventListener("focus", () => {
-    console.log("window focus", performance.now());
     if (glitchQueued) {
       glitchQueued = false;
       doGlitchEffect();
@@ -60,9 +49,7 @@ export function setupGlitchEffect(toodle: Toodle): () => void {
   return doGlitchEffect;
 }
 
-function createChromaticAberrationEffect(
-  toodle: Toodle,
-): Backends.PostProcess {
+function createChromaticAberrationEffect(toodle: Toodle): Backends.PostProcess {
   if (!(toodle.backend instanceof Backends.WebGPUBackend)) {
     throw new Error("Post-processing requires WebGPU backend");
   }
