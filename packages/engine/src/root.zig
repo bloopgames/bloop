@@ -316,12 +316,13 @@ pub const Engine = struct {
         const next_confirm = self.input_buffer.calculateNextConfirmFrame(current_match_frame);
         const current_confirmed = self.getConfirmedMatchFrame();
 
-        Log.debug("step: time.frame={} match_frame={} next_confirm={} current_confirmed={} peer_count={}", .{
+        Log.debug("step: time.frame={} match_frame={} next_confirm={} current_confirmed={} peer_count={} session_start={}", .{
             self.sim.time.frame,
             current_match_frame,
             next_confirm,
             current_confirmed,
             self.input_buffer.peer_count,
+            self.sim.net_ctx.session_start_frame,
         });
 
         var ticked_current_frame = false;
@@ -392,20 +393,22 @@ pub const Engine = struct {
         // Tick remaining frames to reach current
         if (!ticked_current_frame) {
             // Determine where game state currently is:
-            // - If we restored: game state is at confirm_frame (we just resim'd up to there)
-            // - If we didn't restore: game state is at current_match_frame - 1 (previous step)
-            const game_state_at: u32 = if (did_restore)
-                confirm_frame
+            // - If we restored: game state is at confirm_frame
+            // - If we didn't restore and current_match_frame > 0: game state is at current_match_frame - 1
+            // - If we didn't restore and current_match_frame == 0: we haven't ticked anything yet (use -1)
+            const game_state_at: i32 = if (did_restore)
+                @intCast(confirm_frame)
             else if (current_match_frame > 0)
-                current_match_frame - 1
+                @intCast(current_match_frame - 1)
             else
-                0;
+                -1; // Sentinel: haven't processed any frames yet
 
             // Tick prediction frames (if any gap between game state and current)
-            var f = game_state_at + 1;
-            while (f <= current_match_frame) : (f += 1) {
-                self.sim.net_ctx.match_frame = f;
-                const is_current = (f == current_match_frame);
+            var f: i32 = game_state_at + 1;
+            const target: i32 = @intCast(current_match_frame);
+            while (f <= target) : (f += 1) {
+                self.sim.net_ctx.match_frame = @intCast(f);
+                const is_current = (f == target);
                 self.sim.tick(!is_current);
             }
         }
@@ -897,6 +900,10 @@ pub const Engine = struct {
         const snapshot = self.vcr.closestSnapshot(frame);
         Log.log("Seeking to frame {} using snapshot at frame {}", .{ frame, snapshot.time.frame });
         self.sim.restore(snapshot, true); // Restore input buffer for seek
+
+        // Clear platform event buffer to avoid duplicate events during seek.
+        // Events will be re-replayed from tape via replayTapeNetEvents() in advance().
+        self.platform_buffer.* = .{};
 
         // Update confirmed_snapshot to match restored state
         // This ensures getConfirmedMatchFrame() returns a consistent value for step()

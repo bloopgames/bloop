@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { type Key, readTapeHeader } from "@bloopjs/engine";
 import { assert, Bloop, mount, unwrap } from "../src/mod";
-import { setupGames, setupSession, startOnlineMatch, stepBoth } from "./helper";
+import {
+  loadTape,
+  setupGames,
+  setupSession,
+  startOnlineMatch,
+  stepBoth,
+} from "./helper";
 
 describe("tapes", () => {
   describe("snapshots", () => {
@@ -968,5 +974,52 @@ describe("tapes", () => {
 
     // If we get here without crashing, the test passes
     expect(replayGame.context.time.frame).toBe(frameAfterStepping + 3);
+  });
+
+  it("regress: doesn't crash when seeking crashquestionmark.bloop tape", async () => {
+    const { sim } = await loadTape("crashquestionmark.bloop", () =>
+      Bloop.create(),
+    );
+    sim.seek(400);
+
+    expect(true).toEqual(true);
+  });
+
+  it("regress: doesn't crash when seeking tape after loadTape", async () => {
+    // This tests a bug where step() didn't tick when current_match_frame=0.
+    // This happens when session_start_frame == time.frame (e.g., right after loadTape).
+    // The old code started the tick loop at f=1 with condition f<=0, which never ran.
+
+    const [sim0, sim1] = await startOnlineMatch(() => Bloop.create(), {
+      startRecording: false,
+    });
+
+    // Start recording immediately after session start
+    sim0.record(1000, 2 * 1024 * 1024);
+
+    // Step a few frames normally
+    for (let i = 0; i < 5; i++) {
+      stepBoth(sim0, sim1);
+    }
+
+    // Save and load tape
+    const tapeBytes = sim0.saveTape();
+
+    const replayGame = Bloop.create();
+    const { sim: replaySim } = await mount(replayGame);
+    replaySim.loadTape(tapeBytes);
+
+    const frameAfterLoad = replaySim.time.frame;
+
+    // Step forward
+    for (let i = 0; i < 3; i++) {
+      replaySim.step();
+    }
+
+    // Seek back - this restores to initial snapshot where current_match_frame=0
+    replaySim.seek(frameAfterLoad);
+
+    // If we get here without crashing, the test passes
+    expect(replayGame.context.time.frame).toBe(frameAfterLoad);
   });
 });
