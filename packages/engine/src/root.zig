@@ -62,6 +62,10 @@ pub const Engine = struct {
 
         net.net_ctx = sim.net_ctx;
 
+        // Take initial confirmed snapshot for unified stepping path
+        // Local mode uses the same rollback infrastructure as sessions
+        const confirmed_snapshot = sim.take_snapshot(0) catch null;
+
         return Engine{
             .sim = sim,
             .allocator = allocator,
@@ -69,6 +73,7 @@ pub const Engine = struct {
             .input_buffer = input_buffer,
             .platform_buffer = platform_buffer,
             .net = net,
+            .confirmed_snapshot = confirmed_snapshot,
         };
     }
 
@@ -276,13 +281,9 @@ pub const Engine = struct {
                 before_frame(self.sim.time.frame);
             }
 
-            // If in a session, handle rollback
-            if (self.sim.net_ctx.in_session != 0) {
-                self.sessionStep();
-            } else {
-                self.sim.net_ctx.match_frame = self.sim.time.frame;
-                self.sim.tick(false);
-            }
+            // Unified stepping path for both local and session modes
+            // Local mode is a degenerate case where peer_count=1 and session_start_frame=0
+            self.step();
 
             // Update match_frame to reflect new time.frame after tick
             // This is the user-facing value: elapsed frames since session start
@@ -298,17 +299,24 @@ pub const Engine = struct {
     // Session management
     // ─────────────────────────────────────────────────────────────
 
-    /// Session-aware step that handles rollback when late inputs arrive
-    fn sessionStep(self: *Engine) void {
-        // The frame we're processing NOW
+    /// Unified stepping logic for local and session modes.
+    /// Both modes use the same confirmation path - local mode is a degenerate case
+    /// where peer_count=1 and all frames are immediately confirmed.
+    fn step(self: *Engine) void {
         const current_match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
+        const current_match_i32: i32 = @intCast(current_match_frame);
 
-        // Calculate how many frames can be confirmed based on received inputs
-        // Both return i32 (-1 = nothing confirmed/no inputs yet)
+        // Advance local peer's confirmed frame before calculating next_confirm.
+        // Local inputs are already in the buffer, so they're confirmed.
+        if (current_match_i32 > self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id]) {
+            self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id] = current_match_i32;
+        }
+
+        // Calculate confirmation boundaries
         const next_confirm = self.input_buffer.calculateNextConfirmFrame(current_match_frame);
         const current_confirmed = self.getConfirmedMatchFrame();
 
-        Log.debug("sessionStep: time.frame={} match_frame={} next_confirm={} current_confirmed={} peer_count={}", .{
+        Log.debug("step: time.frame={} match_frame={} next_confirm={} current_confirmed={} peer_count={}", .{
             self.sim.time.frame,
             current_match_frame,
             next_confirm,
@@ -316,92 +324,90 @@ pub const Engine = struct {
             self.input_buffer.peer_count,
         });
 
-        if (next_confirm > current_confirmed) {
-            // New confirmed frames available - need to rollback and resim
-            // Convert to u32 for use in loops (safe since next_confirm > current_confirmed means next_confirm >= 0)
-            const confirm_frame: u32 = @intCast(next_confirm);
-            const resim_start: u32 = if (current_confirmed < 0) 0 else @intCast(current_confirmed + 1);
+        var ticked_current_frame = false;
+        var did_restore = false;
+        var confirm_frame: u32 = 0;
 
-            const rollback_depth = @as(i32, @intCast(current_match_frame)) - current_confirmed;
+        // Handle confirmations if new frames can be confirmed
+        if (next_confirm > current_confirmed) {
+            confirm_frame = @intCast(next_confirm);
+            const resim_start: u32 = if (current_confirmed < 0) 0 else @intCast(current_confirmed + 1);
+            const gap = next_confirm - current_confirmed;
+
+            const rollback_depth = current_match_i32 - current_confirmed;
             if (rollback_depth > Transport.MAX_ROLLBACK_FRAMES) {
                 @panic("Rollback depth exceeds MAX_ROLLBACK_FRAMES - ring buffer would wrap");
             }
 
-            // 1. Restore to confirmed state
-            // Note: peers array contains live connection tracking (seq/ack) that must NOT roll back.
-            // Network events in PlatformEventBuffer are replayed for topology (peer join/leave),
-            // but seq/ack tracking is updated by packet processing and must be preserved.
-            // The input buffer is also preserved because:
-            // - It contains inputs from packets that just arrived (triggering this rollback)
-            // - Restoring it would wipe out those inputs, breaking resimulation
-            const saved_peers = self.sim.net_ctx.peers;
-            const saved_stats = .{
-                .last_rollback_depth = self.sim.net_ctx.last_rollback_depth,
-                .total_rollbacks = self.sim.net_ctx.total_rollbacks,
-                .frames_resimulated = self.sim.net_ctx.frames_resimulated,
-            };
-            if (self.confirmed_snapshot) |snap| {
-                self.sim.restore(snap, false); // Don't restore input buffer during rollback
+            // Skip restore if confirming exactly one frame (current frame) with no mispredictions.
+            // In local mode, this is always true (we confirm each frame as we process it).
+            const skip_restore = (next_confirm == current_match_i32) and (gap == 1);
+            did_restore = !skip_restore;
+
+            if (did_restore) {
+                // Restore to confirmed state.
+                // Preserve peers array (live connection tracking) and rollback stats.
+                // Don't restore input buffer - it contains inputs from packets that triggered this rollback.
+                const saved_peers = self.sim.net_ctx.peers;
+                const saved_stats = .{
+                    .last_rollback_depth = self.sim.net_ctx.last_rollback_depth,
+                    .total_rollbacks = self.sim.net_ctx.total_rollbacks,
+                    .frames_resimulated = self.sim.net_ctx.frames_resimulated,
+                };
+                if (self.confirmed_snapshot) |snap| {
+                    self.sim.restore(snap, false);
+                }
+                self.sim.net_ctx.peers = saved_peers;
+                self.sim.net_ctx.last_rollback_depth = saved_stats.last_rollback_depth;
+                self.sim.net_ctx.total_rollbacks = saved_stats.total_rollbacks;
+                self.sim.net_ctx.frames_resimulated = saved_stats.frames_resimulated;
+
+                // Clear event buffer - events from snapshot would cause duplicates
+                // since processPlatformEvents will re-forward them during resim.
+                self.sim.events.count = 0;
+
+                self.sim.net_ctx.total_rollbacks += 1;
             }
-            self.sim.net_ctx.peers = saved_peers;
-            self.sim.net_ctx.last_rollback_depth = saved_stats.last_rollback_depth;
-            self.sim.net_ctx.total_rollbacks = saved_stats.total_rollbacks;
-            self.sim.net_ctx.frames_resimulated = saved_stats.frames_resimulated;
+
             self.sim.net_ctx.confirmed_match_frame = next_confirm;
 
-            // Clear event buffer - events from snapshot would cause duplicates
-            // since processPlatformEvents will re-forward them during resim
-            // see netcode.test.ts - doesn't enqueue duplicate "peer:join" events
-            self.sim.events.count = 0;
-
-            // 2. Resim confirmed frames with all peer inputs
-            var frames_resimmed: u32 = 0;
+            // Resim confirmed frames (up to and including confirm_frame)
             var f = resim_start;
             while (f <= confirm_frame) : (f += 1) {
                 self.sim.net_ctx.match_frame = f;
-                const is_current_frame = (f == current_match_frame);
-                self.sim.tick(!is_current_frame);
-                if (!is_current_frame) {
-                    frames_resimmed += 1;
-                }
+                const is_current = (f == current_match_frame);
+                self.sim.tick(!is_current);
+                if (is_current) ticked_current_frame = true;
             }
 
-            // 3. Update confirmed snapshot
+            // Update confirmed snapshot
             if (self.confirmed_snapshot) |old_snap| {
                 old_snap.deinit(self.allocator);
             }
             self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
 
-            // 4. If we haven't reached current_match_frame yet, predict forward
-            if (confirm_frame < current_match_frame) {
-                f = confirm_frame + 1;
-                while (f <= current_match_frame) : (f += 1) {
-                    self.sim.net_ctx.match_frame = f;
-                    const is_current_frame = (f == current_match_frame);
-                    self.sim.tick(!is_current_frame);
-                    if (!is_current_frame) {
-                        frames_resimmed += 1;
-                    }
-                }
-            }
-
-            // Update rollback stats directly in net_ctx
-            if (frames_resimmed > 0) {
-                self.sim.net_ctx.total_rollbacks += 1;
-                self.sim.net_ctx.last_rollback_depth = @intCast(next_confirm - current_confirmed);
-                self.sim.net_ctx.frames_resimulated += frames_resimmed;
-            }
-        } else {
-            // No rollback needed - tick at current_match_frame
-            self.sim.net_ctx.confirmed_match_frame = next_confirm;
-            self.sim.net_ctx.match_frame = current_match_frame;
-            self.sim.tick(false);
+            self.sim.net_ctx.last_rollback_depth = @intCast(gap);
         }
 
-        // Always advance local peer's confirmed frame, even if there's no input.
-        const current_match_i32: i32 = @intCast(current_match_frame);
-        if (current_match_i32 > self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id]) {
-            self.input_buffer.peer_confirmed[self.sim.net_ctx.local_peer_id] = current_match_i32;
+        // Tick remaining frames to reach current
+        if (!ticked_current_frame) {
+            // Determine where game state currently is:
+            // - If we restored: game state is at confirm_frame (we just resim'd up to there)
+            // - If we didn't restore: game state is at current_match_frame - 1 (previous step)
+            const game_state_at: u32 = if (did_restore)
+                confirm_frame
+            else if (current_match_frame > 0)
+                current_match_frame - 1
+            else
+                0;
+
+            // Tick prediction frames (if any gap between game state and current)
+            var f = game_state_at + 1;
+            while (f <= current_match_frame) : (f += 1) {
+                self.sim.net_ctx.match_frame = f;
+                const is_current = (f == current_match_frame);
+                self.sim.tick(!is_current);
+            }
         }
     }
 
@@ -631,6 +637,9 @@ pub const Engine = struct {
         self.sim.net_ctx.in_session = 0;
         self.sim.net_ctx.peer_count = 0;
         self.sim.net_ctx.session_start_frame = 0;
+
+        // Recreate confirmed snapshot for unified stepping path
+        self.confirmed_snapshot = self.sim.take_snapshot(0) catch null;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -663,6 +672,9 @@ pub const Engine = struct {
         self.sim.net_ctx.in_session = 0;
         self.sim.net_ctx.peer_count = 0;
         self.sim.net_ctx.session_start_frame = 0;
+
+        // Recreate confirmed snapshot for unified stepping path
+        self.confirmed_snapshot = self.sim.take_snapshot(0) catch null;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -844,28 +856,27 @@ pub const Engine = struct {
     // Session state accessors
     // ─────────────────────────────────────────────────────────────
 
-    /// Get current match frame (0 if no session)
+    /// Get current match frame (next frame to process).
+    /// In local mode: equals time.frame. In session mode: time.frame - session_start_frame.
     pub fn getMatchFrame(self: *const Engine) u32 {
-        if (self.sim.net_ctx.in_session == 0) return 0;
         return self.sim.time.frame - self.sim.net_ctx.session_start_frame;
     }
 
-    /// Get confirmed frame (-1 if no frames confirmed yet, 0 if no session)
+    /// Get confirmed frame (-1 if no frames confirmed yet).
+    /// In local mode: equals match_frame - 1 (always 1 frame ahead of confirmed).
     pub fn getConfirmedFrame(self: *const Engine) i32 {
-        if (self.sim.net_ctx.in_session == 0) return 0;
         return self.getConfirmedMatchFrame();
     }
 
     /// Get confirmed frame for a specific peer (-1 = no inputs yet)
     pub fn getPeerFrame(self: *const Engine, peer: u8) i32 {
-        if (self.sim.net_ctx.in_session == 0) return 0;
-        if (peer >= IB.MAX_PEERS) return 0;
+        if (peer >= IB.MAX_PEERS) return -1;
         return self.input_buffer.peer_confirmed[peer];
     }
 
-    /// Get rollback depth (match_frame - confirmed_frame)
+    /// Get rollback depth (match_frame - confirmed_frame).
+    /// In local mode: always 1 (single peer, immediate confirmation).
     pub fn getRollbackDepth(self: *const Engine) u32 {
-        if (self.sim.net_ctx.in_session == 0) return 0;
         const match_frame: i32 = @intCast(self.sim.time.frame - self.sim.net_ctx.session_start_frame);
         const confirmed = self.getConfirmedMatchFrame();
         if (confirmed < 0) return @intCast(match_frame + 1); // No confirmed frames yet
@@ -886,6 +897,11 @@ pub const Engine = struct {
         const snapshot = self.vcr.closestSnapshot(frame);
         Log.log("Seeking to frame {} using snapshot at frame {}", .{ frame, snapshot.time.frame });
         self.sim.restore(snapshot, true); // Restore input buffer for seek
+
+        // Update confirmed_snapshot to match restored state
+        // This ensures getConfirmedMatchFrame() returns a consistent value for step()
+        if (self.confirmed_snapshot) |old| old.deinit(self.allocator);
+        self.confirmed_snapshot = self.sim.take_snapshot(self.sim.getUserDataLen()) catch null;
 
         // Remember if we were already replaying (from loadTape)
         const was_replaying = self.vcr.is_replaying;

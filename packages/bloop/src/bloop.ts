@@ -14,7 +14,6 @@ import {
   TIME_CTX_OFFSET,
   TimeContext,
 } from "@bloopjs/engine";
-import { Players } from "./players";
 import type { Context } from "./context";
 import type { Bag } from "./data/bag";
 import type { BloopSchema } from "./data/schema";
@@ -26,6 +25,7 @@ import type {
   MouseWheelEvent,
   ResizeEvent,
 } from "./events";
+import { Players } from "./players";
 import type { EngineHooks } from "./sim";
 import type { System } from "./system";
 
@@ -350,7 +350,6 @@ export class Bloop<GS extends BloopSchema> {
               break;
             }
             case Enums.EventType.NetSessionInit:
-              console.log("[bloop] NetSessionInit event received");
               (this.#context as any).event = {
                 type: "session:start",
               };
