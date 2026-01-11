@@ -347,6 +347,7 @@ pub const Engine = struct {
             self.sim.net_ctx.last_rollback_depth = saved_stats.last_rollback_depth;
             self.sim.net_ctx.total_rollbacks = saved_stats.total_rollbacks;
             self.sim.net_ctx.frames_resimulated = saved_stats.frames_resimulated;
+            self.sim.net_ctx.confirmed_match_frame = next_confirm;
 
             // 2. Resim confirmed frames with all peer inputs
             var frames_resimmed: u32 = 0;
@@ -387,6 +388,7 @@ pub const Engine = struct {
             }
         } else {
             // No rollback needed - tick at current_match_frame
+            self.sim.net_ctx.confirmed_match_frame = next_confirm;
             self.sim.net_ctx.match_frame = current_match_frame;
             self.sim.tick(false);
         }

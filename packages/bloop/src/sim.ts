@@ -450,7 +450,13 @@ export class Sim {
       physicalHeight: number,
       pixelRatio: number,
     ): void => {
-      this.wasm.emit_resize(width, height, physicalWidth, physicalHeight, pixelRatio);
+      this.wasm.emit_resize(
+        width,
+        height,
+        physicalWidth,
+        physicalHeight,
+        pixelRatio,
+      );
     },
     /**
      * Emit a network event (join:ok, peer:join, etc.)

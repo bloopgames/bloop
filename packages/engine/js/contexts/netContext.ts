@@ -1,22 +1,23 @@
 import {
   MAX_PLAYERS,
-  NET_CTX_PEERS_OFFSET,
-  NET_CTX_LAST_ROLLBACK_DEPTH_OFFSET,
-  NET_CTX_TOTAL_ROLLBACKS_OFFSET,
+  NET_CTX_CONFIRMED_MATCH_FRAME_OFFSET,
   NET_CTX_FRAMES_RESIMULATED_OFFSET,
-  NET_CTX_PEER_COUNT_OFFSET,
-  NET_CTX_LOCAL_PEER_ID_OFFSET,
   NET_CTX_IN_SESSION_OFFSET,
-  NET_CTX_STATUS_OFFSET,
+  NET_CTX_LAST_ROLLBACK_DEPTH_OFFSET,
+  NET_CTX_LOCAL_PEER_ID_OFFSET,
   NET_CTX_MATCH_FRAME_OFFSET,
-  NET_CTX_SESSION_START_FRAME_OFFSET,
+  NET_CTX_PEER_COUNT_OFFSET,
+  NET_CTX_PEERS_OFFSET,
   NET_CTX_ROOM_CODE_OFFSET,
-  NET_CTX_WANTS_ROOM_CODE_OFFSET,
+  NET_CTX_SESSION_START_FRAME_OFFSET,
+  NET_CTX_STATUS_OFFSET,
+  NET_CTX_TOTAL_ROLLBACKS_OFFSET,
   NET_CTX_WANTS_DISCONNECT_OFFSET,
-  PEER_CTX_SIZE,
+  NET_CTX_WANTS_ROOM_CODE_OFFSET,
+  PEER_CTX_ACK_OFFSET,
   PEER_CTX_CONNECTED_OFFSET,
   PEER_CTX_SEQ_OFFSET,
-  PEER_CTX_ACK_OFFSET,
+  PEER_CTX_SIZE,
 } from "../codegen/offsets";
 
 /**
@@ -179,7 +180,10 @@ export class NetContext {
     if (code) {
       // Write up to 7 chars (leave room for null terminator)
       for (let i = 0; i < Math.min(code.length, 7); i++) {
-        this.dataView!.setUint8(NET_CTX_WANTS_ROOM_CODE_OFFSET + i, code.charCodeAt(i));
+        this.dataView!.setUint8(
+          NET_CTX_WANTS_ROOM_CODE_OFFSET + i,
+          code.charCodeAt(i),
+        );
       }
     }
   }
@@ -282,6 +286,31 @@ export class NetContext {
       throw new Error("NetContext dataView is not valid");
     }
     // Read u64 as BigInt then convert to number (safe for reasonable frame counts)
-    return Number(this.dataView!.getBigUint64(NET_CTX_FRAMES_RESIMULATED_OFFSET, true));
+    return Number(
+      this.dataView!.getBigUint64(NET_CTX_FRAMES_RESIMULATED_OFFSET, true),
+    );
+  }
+
+  /** Highest match frame with confirmed inputs from all peers (-1 if none) */
+  get confirmedMatchFrame(): number {
+    if (!this.#hasValidBuffer()) {
+      throw new Error("NetContext dataView is not valid");
+    }
+    return this.dataView!.getInt32(NET_CTX_CONFIRMED_MATCH_FRAME_OFFSET, true);
+  }
+
+  /** True if current frame has all peer inputs (deterministic) */
+  get isConfirmFrame(): boolean {
+    // Single player / local play: all frames are confirmed (no remote peers to wait for)
+    if (this.peerCount <= 1) return true;
+
+    const confirmed = this.confirmedMatchFrame;
+    if (confirmed < 0) return false; // Nothing confirmed yet (waiting for peer inputs)
+    return this.matchFrame <= confirmed;
+  }
+
+  /** True if current frame is predicting ahead without all inputs */
+  get isPredictionFrame(): boolean {
+    return !this.isConfirmFrame;
   }
 }

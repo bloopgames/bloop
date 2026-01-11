@@ -46,6 +46,9 @@ pub const NetCtx = extern struct {
     last_rollback_depth: u32 = 0,
     total_rollbacks: u32 = 0,
     frames_resimulated: u64 = 0,
+
+    // Confirmation tracking (offset 144 = 136 + 8)
+    confirmed_match_frame: i32 = -1, // Highest frame with all peer inputs (-1 = none)
 };
 
 pub const MAX_PLAYERS: u8 = 12;
@@ -244,11 +247,13 @@ test "NetCtx rollback stats layout and defaults" {
     try std.testing.expectEqual(@as(u32, 0), net_ctx.last_rollback_depth);
     try std.testing.expectEqual(@as(u32, 0), net_ctx.total_rollbacks);
     try std.testing.expectEqual(@as(u64, 0), net_ctx.frames_resimulated);
+    try std.testing.expectEqual(@as(i32, -1), net_ctx.confirmed_match_frame);
 
     // Verify offsets for TypeScript bindings
     try std.testing.expectEqual(@as(usize, 128), @offsetOf(NetCtx, "last_rollback_depth"));
     try std.testing.expectEqual(@as(usize, 132), @offsetOf(NetCtx, "total_rollbacks"));
     try std.testing.expectEqual(@as(usize, 136), @offsetOf(NetCtx, "frames_resimulated"));
+    try std.testing.expectEqual(@as(usize, 144), @offsetOf(NetCtx, "confirmed_match_frame"));
 }
 
 test "NetCtx rollback stats update" {

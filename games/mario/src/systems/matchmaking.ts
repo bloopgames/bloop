@@ -7,7 +7,6 @@ export const MatchmakingSystem = PhaseSystem("title", {
       bag.mode = "online";
       bag.phase = "waiting";
       net.wantsRoomCode = "mario-demo";
-      console.log("[netcode] setting wantsRoomCode");
     }
   },
 
