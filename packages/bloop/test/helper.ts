@@ -47,3 +47,17 @@ export function stepBoth(sim0: Sim, sim1: Sim) {
   sim0.step();
   sim1.step();
 }
+
+export async function loadTape<S extends BloopSchema>(
+  path: string,
+  maker: GameMaker<S>,
+): Promise<{ sim: Sim; game: Bloop<S> }> {
+  const game = maker();
+  const { sim } = await mount(game);
+  const bytes = await Bun.file(path).bytes();
+  sim.loadTape(bytes);
+  return {
+    sim,
+    game,
+  };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { assert, Bloop, mount, unwrap } from "../src/mod";
-import { startOnlineMatch } from "./helper";
+import { loadTape, startOnlineMatch } from "./helper";
 
 describe("netcode integration", () => {
   it("should route remote peer events to correct player", async () => {
@@ -283,5 +283,37 @@ describe("netcode integration", () => {
     expect(game0.bag.local.ack).toEqual(receiveFrame);
     expect(game0.bag.remote.seq).toEqual(receiveFrame);
     expect(game0.bag.remote.ack).toEqual(matchFrame);
+  });
+
+  it('regress: doesnt enqueue duplicate "peer:join" events', async () => {
+    // Track peer:join events by matchFrame - should see at most 2 per frame (one per peer)
+    const peerJoins: number[] = [];
+
+    const [sim0, sim1] = await startOnlineMatch(() => {
+      const game = Bloop.create({});
+      game.system("track-peer-joins", {
+        netcode({ event }) {
+          if (event.type === "peer:join") {
+            peerJoins.push(event.data.peerId);
+          }
+        },
+      });
+
+      return game;
+    });
+
+    // Step once more so local peer's confirmed frame is tracked via sessionStep
+    sim0.step();
+    sim1.step();
+
+    peerJoins.length = 0;
+    const packet = unwrap(sim1.getOutboundPacket(0));
+    sim0.emit.packet(packet);
+    // trigger rollback
+    sim0.step();
+
+    // Each peer:join should fire exactly once during confirm frames
+    // If we see 4 events instead of 2, the bug is present (events are duplicated from snapshot)
+    expect(peerJoins.length).toEqual(2);
   });
 });

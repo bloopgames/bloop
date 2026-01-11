@@ -161,6 +161,20 @@ function someHelperFunction() { ... }
 
 * Test-drive outside-in: First write integration tests in `packages/bloop/test` that cover the user-facing apis. Then write unit tests in zig for internal modules as needed to fulfill the integration tests.
 
+## TDD
+
+Sometimes, I will ask you to plan out a fix using TDD. When we are doing TDD, make sure that you follow these steps exactly:
+
+1. **RED phase**: Write the failing test FIRST. Then STOP and run it. Show me the failure output. Do not proceed until I confirm.
+
+2. **GREEN phase**: Only after test failure is confirmed, write the minimal code to make it pass. Run the test again.
+
+3. **REFACTOR phase**: Only after green, consider refactoring.
+
+Never write implementation code and test code in the same response. Wait for confirmation between phases.
+
+If you find yourself wanting to write the fix while writing the test, STOP. Commit the test first, run it, show the failure.
+
 ## Crash Loud and Early
 
 This codebase follows "crash-first" design. Invalid states should trigger immediate panics, not silent no-ops.
@@ -179,3 +193,4 @@ Treat "impossible" conditions as bugs that must crash, not edge cases to handle 
 
 Think of unexpected conditions as bugs in the caller, not runtime variations to handle.
 Crashing is the correct behavior—it surfaces bugs immediately and makes it easier to trace unexpected behavior rather than letting them propagate.
+

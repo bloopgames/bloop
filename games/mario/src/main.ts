@@ -56,15 +56,13 @@ requestAnimationFrame(function frame() {
 });
 
 game.system("recording-watcher", {
-  netcode({ event, time }) {
-    console.log("[netcode]", event.type, event);
+  netcode({ event, time, net }) {
     if (event.type === "session:start") {
       console.log(
         "[netcode]",
         "session started, recording at frame",
         time.frame,
       );
-
       app.sim.record(100_000);
     }
   },

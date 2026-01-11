@@ -349,6 +349,11 @@ pub const Engine = struct {
             self.sim.net_ctx.frames_resimulated = saved_stats.frames_resimulated;
             self.sim.net_ctx.confirmed_match_frame = next_confirm;
 
+            // Clear event buffer - events from snapshot would cause duplicates
+            // since processPlatformEvents will re-forward them during resim
+            // see netcode.test.ts - doesn't enqueue duplicate "peer:join" events
+            self.sim.events.count = 0;
+
             // 2. Resim confirmed frames with all peer inputs
             var frames_resimmed: u32 = 0;
             var f = resim_start;
