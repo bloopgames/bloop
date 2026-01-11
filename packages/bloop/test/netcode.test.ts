@@ -286,7 +286,7 @@ describe("netcode integration", () => {
   });
 
   it('regress: doesnt enqueue duplicate "peer:join" events', async () => {
-    // Track peer:join events by matchFrame - should see at most 2 per frame (one per peer)
+    // Track peer:join events - events should fire during prediction, not during confirmation resim
     const peerJoins: number[] = [];
 
     const [sim0, sim1] = await startOnlineMatch(() => {
@@ -302,18 +302,19 @@ describe("netcode integration", () => {
       return game;
     });
 
-    // Step once more so local peer's confirmed frame is tracked via sessionStep
+    // Step once more so local peer's confirmed frame is tracked
     sim0.step();
     sim1.step();
 
     peerJoins.length = 0;
     const packet = unwrap(sim1.getOutboundPacket(0));
     sim0.emit.packet(packet);
-    // trigger rollback
+    // trigger rollback/confirmation
     sim0.step();
 
-    // Each peer:join should fire exactly once during confirm frames
-    // If we see 4 events instead of 2, the bug is present (events are duplicated from snapshot)
-    expect(peerJoins.length).toEqual(2);
+    // During confirmation resim, frames are ticked silently (is_resimulating=true)
+    // so callbacks don't run - events already fired during original prediction.
+    // This prevents duplicate events and side effects.
+    expect(peerJoins.length).toEqual(0);
   });
 });

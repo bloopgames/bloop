@@ -285,7 +285,14 @@ pub export fn take_snapshot(user_data_len: u32) wasmPointer {
 
 pub export fn restore(snapshot_ptr: wasmPointer) void {
     const snap: *Tapes.Snapshot = @ptrFromInt(snapshot_ptr);
-    engine.?.sim.restore(snap, true); // Restore full state including input buffer
+    const eng = &(engine.?);
+    eng.sim.restore(snap, true); // Restore full state including input buffer
+
+    // TODO: this is unnecessary. for a rollback game the confirmed snapshot should already be the snapshot we're restoring
+    // Update confirmed_snapshot to match restored state.
+    // This prevents step() from rolling back to a stale snapshot.
+    if (eng.confirmed_snapshot) |old| old.deinit(eng.allocator);
+    eng.confirmed_snapshot = eng.sim.take_snapshot(eng.sim.getUserDataLen()) catch null;
 }
 
 pub export fn seek(frame: u32) void {
