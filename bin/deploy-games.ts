@@ -7,6 +7,7 @@ const rootDir = path.join(__dirname, "..");
 const infraDir = path.join(rootDir, "infra");
 const packagesDir = path.join(rootDir, "packages");
 const gamesDir = path.join(rootDir, "games");
+const docsDir = path.join(rootDir, "docs");
 
 // Games to deploy (folder names under games/)
 const games = ["buzzer", "mario"];
@@ -58,11 +59,23 @@ async function main() {
     await cp(gameDist, infraGameDist, { recursive: true });
   }
 
+  console.log("\n=== Building docs ===");
+  await $`bun run build`.cwd(docsDir);
+
+  // Copy docs build to infra dist
+  const docsBuild = path.join(docsDir, "build");
+  const infraDocsDist = path.join(infraDistDir, "docs");
+  await rm(infraDocsDist, { recursive: true, force: true });
+  console.log(`Copying ${docsBuild} to ${infraDocsDist}...`);
+  await cp(docsBuild, infraDocsDist, { recursive: true });
+
   console.log("\n=== Build complete ===");
   console.log("Games will be available at:");
   for (const game of games) {
     console.log(`  /nu11/${game}/`);
   }
+  console.log("Docs will be available at:");
+  console.log("  /docs/");
 
   if (isDryRun) {
     console.log("\n--dry-run specified, skipping deploy");

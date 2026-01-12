@@ -2,7 +2,7 @@
 
 **Rewind game sessions and edit code live.**
 
-[Why Bloop?](./why.md)
+[Why Bloop?](./docs/why.md)
 
 [insert gif here]
 

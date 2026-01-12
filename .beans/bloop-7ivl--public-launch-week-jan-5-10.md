@@ -13,12 +13,12 @@ Goal: Start streaming, get initial content up, begin star outreach
 ## Must Haves
 - [x] Design and document the user-facing netcode API (bloop-3jp0)
 - [ ] Put up a v0 documentation website (bloop-08em)
-- [ ] Fix mario demo on mobile (bloop-74va)
+- [x] Fix mario demo on mobile (bloop-74va)
 - [x] Do first stream (bloop-m2mk)
 - [x] Fix known bugs:
   - [x] Tape playback performance (bloop-sgc7)
   - [x] Input buffer replication (bloop-9jk8)
-- [ ] Hook HMR up to mario glitch shader (bloop-3bmd)
+- [x] Hook HMR up to mario glitch shader (bloop-3bmd)
 
 ## Nice to Haves
 - [ ] Handle race conditions for input/packet events (bloop-pdjq)
