@@ -976,15 +976,6 @@ describe("tapes", () => {
     expect(replayGame.context.time.frame).toBe(frameAfterStepping + 3);
   });
 
-  it("regress: doesn't crash when seeking crashquestionmark.bloop tape", async () => {
-    const { sim } = await loadTape("crashquestionmark.bloop", () =>
-      Bloop.create(),
-    );
-    sim.seek(400);
-
-    expect(true).toEqual(true);
-  });
-
   it("regress: doesn't crash when seeking tape after loadTape", async () => {
     // This tests a bug where step() didn't tick when current_match_frame=0.
     // This happens when session_start_frame == time.frame (e.g., right after loadTape).

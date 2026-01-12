@@ -270,6 +270,73 @@ export const styles = /*css*/ `
   flex-shrink: 0;
 }
 
+/* Recording indicator - mobile: just the dot */
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  margin-right: 4px;
+}
+
+.recording-indicator .recording-label {
+  display: none;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  background: #ff4444;
+  border-radius: 50%;
+  animation: recording-pulse 1s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Replay indicator - mobile: hidden */
+.replay-indicator {
+  display: none;
+}
+
+/* Desktop: full indicators with text */
+@media (min-width: 769px) {
+  .recording-indicator {
+    gap: 4px;
+    padding: 2px 6px;
+    background: rgba(255, 0, 0, 0.2);
+    border: 1px solid #ff4444;
+    border-radius: 3px;
+  }
+
+  .recording-indicator .recording-label {
+    display: inline;
+    color: #ff4444;
+    font-size: 10px;
+    font-weight: bold;
+    font-family: monospace;
+  }
+
+  .recording-dot {
+    width: 8px;
+    height: 8px;
+  }
+
+  .replay-indicator {
+    display: flex;
+    align-items: center;
+    padding: 2px 6px;
+    background: rgba(100, 100, 255, 0.2);
+    border: 1px solid #6666ff;
+    border-radius: 3px;
+    color: #6666ff;
+    font-size: 10px;
+    font-weight: bold;
+    font-family: monospace;
+    margin-right: 4px;
+  }
+}
+
 /* Mobile-first: hide step/jump buttons */
 .playbar-btn.jump-back,
 .playbar-btn.step-back,
@@ -308,14 +375,33 @@ export const styles = /*css*/ `
   position: relative;
 }
 
-/* Desktop: smaller buttons */
+/* Desktop: sized to match indicators */
 @media (min-width: 769px) {
   .playbar-btn {
-    width: 1.5vh;
-    height: 1.5vh;
-    min-width: 18px;
-    min-height: 18px;
-    font-size: 10px;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  /* Save/Load buttons need room for icon + text */
+  .playbar-btn.save-tape-btn,
+  .playbar-btn.load-tape-btn {
+    width: auto;
+    padding: 0 6px;
+    gap: 4px;
+  }
+}
+
+/* Mobile-first: hide button text labels, show only icons */
+.btn-label {
+  display: none;
+}
+
+/* Desktop: show button text labels */
+@media (min-width: 769px) {
+  .btn-label {
+    display: inline;
   }
 }
 

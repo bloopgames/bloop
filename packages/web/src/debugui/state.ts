@@ -42,6 +42,8 @@ export type DebugState = {
   hmrFlash: Signal<boolean>;
   // Tape playback state
   isPlaying: Signal<boolean>;
+  isRecording: Signal<boolean>; // whether sim is currently recording
+  isReplaying: Signal<boolean>; // whether sim is replaying a tape
   tapeUtilization: Signal<number>; // 0-1, how full the tape buffer is
   playheadPosition: Signal<number>; // 0-1, current position in tape
   tapeStartFrame: Signal<number>; // first frame in tape
@@ -77,6 +79,8 @@ const hmrFlash = signal(false);
 
 // Tape playback state
 const isPlaying = signal(true);
+const isRecording = signal(false);
+const isReplaying = signal(false);
 const tapeUtilization = signal(0);
 const playheadPosition = signal(0);
 const tapeStartFrame = signal(0);
@@ -130,6 +134,8 @@ export const debugState: DebugState = {
 
   /** Tape playback state */
   isPlaying,
+  isRecording,
+  isReplaying,
   tapeUtilization,
   playheadPosition,
   tapeStartFrame,
@@ -267,6 +273,8 @@ export function resetState(): void {
   debugState.hmrFlash.value = false;
   // Tape state
   debugState.isPlaying.value = true;
+  debugState.isRecording.value = false;
+  debugState.isReplaying.value = false;
   debugState.tapeUtilization.value = 0;
   debugState.playheadPosition.value = 0;
   debugState.tapeStartFrame.value = 0;

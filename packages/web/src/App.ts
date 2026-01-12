@@ -379,6 +379,8 @@ export class App {
 
       // Update tape playback state
       debugState.isPlaying.value = !this.sim.isPaused;
+      debugState.isRecording.value = this.sim.isRecording;
+      debugState.isReplaying.value = this.sim.isReplaying;
       if (this.sim.hasHistory && debugState.tapeFrameCount.value > 0) {
         const currentFrame = this.sim.time.frame;
         const startFrame = debugState.tapeStartFrame.value;

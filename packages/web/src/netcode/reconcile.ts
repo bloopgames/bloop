@@ -19,6 +19,9 @@ const actual = {
 export async function reconcile(app: App, signal: AbortSignal): Promise<void> {
   // Process packets and send our state each frame
   app.beforeFrame.subscribe((_frame) => {
+    // Skip network processing during tape replay
+    if (app.sim.isReplaying) return;
+
     if (!app.game.context.net.isInSession) {
       return;
     }
@@ -37,6 +40,12 @@ export async function reconcile(app: App, signal: AbortSignal): Promise<void> {
   };
 
   while (!signal.aborted) {
+    // Skip room join checks during tape replay
+    if (app.sim.isReplaying) {
+      await sleep(150);
+      continue;
+    }
+
     const { net } = app.game.context;
     if (net.wantsRoomCode && actual.roomCode !== net.wantsRoomCode) {
       console.log("[netcode] wants a room code", {
