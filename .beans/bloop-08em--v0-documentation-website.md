@@ -1,11 +1,11 @@
 ---
 # bloop-08em
 title: v0 documentation website
-status: in-progress
+status: completed
 type: task
 priority: high
 created_at: 2026-01-05T18:44:33Z
-updated_at: 2026-01-12T21:39:16Z
+updated_at: 2026-01-12T22:08:07Z
 parent: bloop-7ivl
 ---
 

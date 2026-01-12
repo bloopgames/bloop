@@ -4,7 +4,8 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "games/*"
+    "games/*",
+    "docs"
   ],
   "scripts": {
     "dev": "bun run --filter '*' dev",

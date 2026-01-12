@@ -12,7 +12,7 @@ Goal: Start streaming, get initial content up, begin star outreach
 
 ## Must Haves
 - [x] Design and document the user-facing netcode API (bloop-3jp0)
-- [ ] Put up a v0 documentation website (bloop-08em)
+- [x] Put up a v0 documentation website (bloop-08em)
 - [x] Fix mario demo on mobile (bloop-74va)
 - [x] Do first stream (bloop-m2mk)
 - [x] Fix known bugs:
