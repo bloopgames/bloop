@@ -162,6 +162,23 @@ Under the hood, bloop will:
 
 * perform rollback and resimulation using your game systems
 
+## Contributing
+
+To get started developing bloop locally:
+
+
+**Mac/Linux**
+
+```bash
+./bin/setup
+```
+
+**Windows (Powershell)**
+
+```powershell
+.\bin\setup.ps1
+```
+
 ## Built with Bloop
 
 https://trybloop.gg has examples of game demos I've built with bloop, you can play them live in the browser or check out their [source code](./games/).
