@@ -285,6 +285,15 @@ pub const Engine = struct {
             // Local mode is a degenerate case where peer_count=1 and session_start_frame=0
             self.step();
 
+            // Auto-exit replay mode when we've advanced past the tape's end
+            // This allows live inputs to be accepted after tape playback completes
+            if (self.vcr.is_replaying and self.vcr.hasTape()) {
+                const tape_end_frame = self.vcr.tape.?.end_frame();
+                if (self.sim.time.frame >= tape_end_frame) {
+                    self.vcr.exitReplayMode();
+                }
+            }
+
             // Update match_frame to reflect new time.frame after tick
             // This is the user-facing value: elapsed frames since session start
             self.sim.net_ctx.match_frame = self.sim.time.frame - self.sim.net_ctx.session_start_frame;
