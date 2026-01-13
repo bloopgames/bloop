@@ -1,7 +1,7 @@
 import "./style.css";
 import { Toodle } from "@bloopjs/toodle";
 import { start } from "@bloopjs/web";
-import { draw as drawFn } from "./draw";
+import { draw as drawFn, loadAssets } from "./draw";
 import { game } from "./game";
 
 // 1. Set up simulation
@@ -14,6 +14,8 @@ let draw = drawFn;
 const canvas = document.querySelector("canvas");
 if (!canvas) throw new Error("Canvas element not found");
 const toodle = await Toodle.attach(canvas);
+await loadAssets(app.game, toodle);
+
 requestAnimationFrame(function frame() {
   draw(app.game, toodle);
   requestAnimationFrame(frame);

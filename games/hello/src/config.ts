@@ -1,1 +1,1 @@
-export const moveSpeed = 5;
+export const moveSpeed = 10;
