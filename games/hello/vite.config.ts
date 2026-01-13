@@ -6,8 +6,14 @@ export default defineConfig({
   plugins: [bloopWasmDevPlugin()],
 });
 
+/**
+ * Vite plugin for local monorepo development with bloop packages.
+ * Handles:
+ * - Serving WASM from packages/engine
+ * - JSX config for Preact (used by @bloopjs/web debug UI)
+ * - Excluding workspace packages from optimization
+ */
 function bloopWasmDevPlugin(): Plugin {
-  // adjust path to wherever engine builds the wasm
   const wasmPath = path.resolve(
     __dirname,
     "../../packages/engine/wasm/bloop.wasm",
@@ -22,18 +28,24 @@ function bloopWasmDevPlugin(): Plugin {
             "/bloop-wasm/bloop.wasm",
           ),
         },
+        esbuild: {
+          jsxImportSource: "preact",
+          jsx: "automatic",
+        },
+        optimizeDeps: {
+          exclude: ["@bloopjs/engine", "@bloopjs/bloop", "@bloopjs/web"],
+        },
       };
     },
     configureServer(server) {
       server.middlewares.use(
         "/bloop-wasm/bloop.wasm",
-        async (req, res, next) => {
+        async (_req, res, _next) => {
           try {
             const data = await fs.readFile(wasmPath);
             res.setHeader("Content-Type", "application/wasm");
             res.end(data);
           } catch (err) {
-            // so you can see useful errors if the path is wrong
             console.error("[bloop-wasm-dev] failed to read wasm", err);
             res.statusCode = 404;
             res.end("wasm not found");

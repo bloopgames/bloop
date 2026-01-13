@@ -221,6 +221,15 @@ export class App {
       window.addEventListener("resize", emitResize);
     }
 
+    // Convert viewport coordinates to canvas-relative coordinates
+    const toCanvasCoords = (clientX: number, clientY: number) => {
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: clientX - rect.left, y: clientY - rect.top };
+      }
+      return { x: clientX, y: clientY };
+    };
+
     // Detect devicePixelRatio changes (monitor switch, browser zoom)
     const updatePixelRatioListener = () => {
       const mediaQuery = window.matchMedia(
@@ -249,8 +258,10 @@ export class App {
     window.addEventListener("keyup", handleKeyup);
 
     const handleMousemove = (event: MouseEvent) => {
-      if (shouldEmitInputs())
-        this.sim.emit.mousemove(event.clientX, event.clientY);
+      if (shouldEmitInputs()) {
+        const { x, y } = toCanvasCoords(event.clientX, event.clientY);
+        this.sim.emit.mousemove(x, y);
+      }
     };
     window.addEventListener("mousemove", handleMousemove);
 
@@ -277,7 +288,8 @@ export class App {
       if (!shouldEmitInputs()) return;
       const touch = event.touches[0];
       if (touch) {
-        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+        const { x, y } = toCanvasCoords(touch.clientX, touch.clientY);
+        this.sim.emit.mousemove(x, y);
         this.sim.emit.mousedown("Left");
       }
     };
@@ -292,7 +304,8 @@ export class App {
       if (!shouldEmitInputs()) return;
       const touch = event.touches[0];
       if (touch) {
-        this.sim.emit.mousemove(touch.clientX, touch.clientY);
+        const { x, y } = toCanvasCoords(touch.clientX, touch.clientY);
+        this.sim.emit.mousemove(x, y);
       }
     };
     window.addEventListener("touchmove", handleTouchmove);

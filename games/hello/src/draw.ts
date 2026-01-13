@@ -30,9 +30,8 @@ export function draw(g: typeof game, toodle: Toodle) {
     }),
   );
   toodle.draw(
-    toodle.Text("default", "Move with WASD").setBounds({
-      right: toodle.resolution.width - 10,
-      bottom: toodle.resolution.height + 10,
+    toodle.Text("default", "Move with WASD\nPress ESC for debug view", {
+      color: Colors.web.black,
     }),
   );
   toodle.endFrame();

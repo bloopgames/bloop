@@ -1,6 +1,6 @@
-import { type ComponentChild, render } from "preact";
+import { type ComponentChild, h, render } from "preact";
 import { Root } from "./components/Root.tsx";
-import { type DebugState, cycleLayout, debugState } from "./state.ts";
+import { cycleLayout, type DebugState, debugState } from "./state.ts";
 import { styles } from "./styles.ts";
 
 export type DebugUiOptions = {
@@ -69,7 +69,7 @@ export class DebugUi {
 
   #render(): void {
     render(
-      Root({ canvas: this.#canvas, hotkey: this.#hotkey }) as ComponentChild,
+      Root({ canvas: this.#canvas, hotkey: this.#hotkey }),
       this.#mountPoint,
     );
   }

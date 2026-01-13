@@ -7,11 +7,12 @@ import { game } from "./game";
 // 1. Set up simulation
 const app = await start({
   game,
+  debugUi: true,
 });
 
 // 2. Set up rendering
 let draw = drawFn;
-const canvas = document.querySelector("canvas");
+const canvas = app.canvas;
 if (!canvas) throw new Error("Canvas element not found");
 const toodle = await Toodle.attach(canvas);
 await loadAssets(app.game, toodle);
