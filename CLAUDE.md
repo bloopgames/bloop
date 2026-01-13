@@ -39,8 +39,8 @@ bun test packages/bloop/test/bloop.test.ts
 # Run a specific game dev server
 cd games/buzzer && bun run dev
 
-# Deploy all games to trybloop.gg
-bun run deploy-games
+# Deploy website (games + docs) to trybloop.gg
+bun run website
 ```
 
 ## Monorepo Structure
