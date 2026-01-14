@@ -37,6 +37,51 @@ export async function waitForFrames(page: Page, count: number): Promise<void> {
 }
 
 /**
+ * Wait for sim to reach exactly the specified frame and pause.
+ * This is deterministic - the sim will always be at exactly this frame when the promise resolves.
+ * Throws an error if already past the target frame (indicates test logic error).
+ */
+export async function waitForFrame(page: Page, frame: number): Promise<void> {
+  await page.evaluate((targetFrame) => {
+    const app = (window as any).__BLOOP_APP__;
+    if (!app) throw new Error("__BLOOP_APP__ not found");
+
+    const currentFrame = app.sim.time.frame;
+
+    // If already at target and paused, we're done
+    if (currentFrame === targetFrame && app.sim.isPaused) {
+      return;
+    }
+
+    // If past target, that's a test logic error
+    if (currentFrame > targetFrame) {
+      throw new Error(
+        `Already past target frame ${targetFrame}, currently at frame ${currentFrame}. ` +
+          `Test should request frames in ascending order.`,
+      );
+    }
+
+    // Set target frame - App.ts will auto-pause when reached
+    (window as any).__BLOOP_TARGET_FRAME = targetFrame;
+
+    // Unpause if paused so we can advance to target
+    if (app.sim.isPaused) {
+      app.sim.unpause();
+    }
+  }, frame);
+
+  // Wait for sim to reach target frame and pause
+  await page.waitForFunction(
+    (targetFrame) => {
+      const app = (window as any).__BLOOP_APP__;
+      return app.sim.time.frame >= targetFrame && app.sim.isPaused;
+    },
+    frame,
+    { timeout: 10000 },
+  );
+}
+
+/**
  * Save the current tape
  */
 export async function saveTape(page: Page): Promise<Uint8Array> {

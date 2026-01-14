@@ -72,6 +72,15 @@ export async function start(opts: StartOptions): Promise<App> {
     new URLSearchParams(window.location.search).has("e2e")
   ) {
     (window as any).__BLOOP_APP__ = app;
+
+    // Auto-pause when reaching target frame (for deterministic screenshots)
+    app.afterFrame.subscribe((frame) => {
+      const target = (window as any).__BLOOP_TARGET_FRAME;
+      if (target !== undefined && frame >= target) {
+        app.sim.pause();
+        delete (window as any).__BLOOP_TARGET_FRAME;
+      }
+    });
   }
 
   return app;
