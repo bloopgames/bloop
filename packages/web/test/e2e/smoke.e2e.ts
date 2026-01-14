@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import {
   advanceFrames,
   FileModifier,
+  keyDown,
+  keyUp,
   loadTape,
   saveTape,
   waitForApp,
@@ -12,9 +14,6 @@ const CONFIG_PATH = "games/hello/src/config.ts";
 
 // Allow small pixel differences due to antialiasing (3% threshold)
 const SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.03 };
-
-// HMR test has higher threshold since timing varies
-const HMR_SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.10 };
 
 test("game loads and responds to input", async ({ page }) => {
   await page.goto("/?e2e");
@@ -33,15 +32,15 @@ test("game loads and responds to input", async ({ page }) => {
   await expect(page).toHaveScreenshot("02-mouse-moved.png", SCREENSHOT_OPTIONS);
 
   // Press 'd' to move player right
-  await page.keyboard.down("d");
+  await keyDown(page, "d");
   await advanceFrames(page, 10);
-  await page.keyboard.up("d");
+  await keyUp(page, "d");
   await expect(page).toHaveScreenshot("03-moved-right.png", SCREENSHOT_OPTIONS);
 
   // Press 'w' to move player up
-  await page.keyboard.down("w");
+  await keyDown(page, "w");
   await advanceFrames(page, 10);
-  await page.keyboard.up("w");
+  await keyUp(page, "w");
   await expect(page).toHaveScreenshot("04-moved-up.png", SCREENSHOT_OPTIONS);
 });
 
@@ -53,9 +52,9 @@ test("HMR preserves state and input handling", async ({ page }) => {
     await waitForApp(page); // App is now paused
 
     // Move player to a known position
-    await page.keyboard.down("d");
+    await keyDown(page, "d");
     await advanceFrames(page, 10);
-    await page.keyboard.up("d");
+    await keyUp(page, "d");
 
     // Capture pre-HMR state
     await advanceFrames(page, 2);
@@ -83,31 +82,35 @@ test("HMR preserves state and input handling", async ({ page }) => {
     });
 
     await hmrPromise;
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(100); // Let HMR complete
 
     // Verify page did NOT reload
     expect(pageReloaded).toBe(false);
 
-    // Circle should be larger but in same position (HMR preserved state)
-    // Sim is paused after HMR, just take screenshot directly
-    await expect(page).toHaveScreenshot(
-      "06-post-hmr-larger.png",
-      HMR_SCREENSHOT_OPTIONS,
-    );
+    // Pause sim immediately for deterministic screenshot
+    await page.evaluate(() => (window as any).__BLOOP_APP__.sim.pause());
 
-    // Verify mouse input still works after HMR
+    // Move mouse off-screen so cursor rect doesn't appear
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();
     if (!box) throw new Error("Canvas not found");
+    await page.mouse.move(0, 0);
 
-    // Unpause, move mouse, wait for a few frames, then pause for screenshot
-    await page.evaluate(() => (window as any).__BLOOP_APP__.sim.unpause());
+    // Advance one frame to update mouse position in bag, then wait for render
+    await advanceFrames(page, 1);
+
+    // Circle should be larger but in same position (HMR preserved state)
+    await expect(page).toHaveScreenshot(
+      "06-post-hmr-larger.png",
+      SCREENSHOT_OPTIONS,
+    );
+
+    // Verify mouse input still works after HMR - move mouse and advance frames
     await page.mouse.move(box.x + 300, box.y + 300);
-    await waitForFrames(page, 3);
-    await page.evaluate(() => (window as any).__BLOOP_APP__.sim.pause());
+    await advanceFrames(page, 3);
     await expect(page).toHaveScreenshot(
       "07-mouse-after-hmr.png",
-      HMR_SCREENSHOT_OPTIONS,
+      SCREENSHOT_OPTIONS,
     );
   } finally {
     await fileModifier.restoreAll();
@@ -120,13 +123,13 @@ test("tape save and replay", async ({ page }) => {
   await waitForApp(page); // App is now paused
 
   // Move player around to create interesting tape
-  await page.keyboard.down("d");
+  await keyDown(page, "d");
   await advanceFrames(page, 15);
-  await page.keyboard.up("d");
+  await keyUp(page, "d");
 
-  await page.keyboard.down("w");
+  await keyDown(page, "w");
   await advanceFrames(page, 15);
-  await page.keyboard.up("w");
+  await keyUp(page, "w");
 
   // Capture final position
   await expect(page).toHaveScreenshot(

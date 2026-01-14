@@ -15,7 +15,7 @@
     "ci:tsc": "bun run --filter '*' ci:tsc",
     "ci:zig": "(cd packages/engine && zig build test)",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
-    "test:e2e": "(cd packages/web && bun run test:e2e)",
+    "ci:e2e": "(cd packages/web && bun run test:e2e)",
     "dev:engine": "bun run --filter './packages/engine' dev",
     "dev:mario": "bun run build:wasm && bun run --filter './games/mario' dev",
     "publish": "bun bin/publish.ts",

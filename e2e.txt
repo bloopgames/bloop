@@ -1,0 +1,102 @@
+# E2E Test Debugging Summary
+
+## Current State
+- Tests 1 and 3 pass consistently ("game loads and responds to input", "tape save and replay")
+- Test 2 ("HMR preserves state and input handling") fails intermittently on screenshot 06-post-hmr-larger.png
+- The failure is ~6% pixel difference, mostly due to circle position varying between runs
+
+## What We've Tried
+
+### 1. Render timing (40ms delay after seek/advance)
+- Added `await page.waitForTimeout(40)` after seek/advance operations
+- Ensures RAF render loop catches up before screenshots
+- This fixed black canvas issues but not position variance
+
+### 2. Deterministic frame targeting
+- Created `advanceFrames(page, count)` helper that:
+  - Sets `window.__BLOOP_TARGET_FRAME = currentFrame + count`
+  - Unpauses sim
+  - Waits for sim to pause (App.ts auto-pauses at target via afterFrame listener)
+- This works for tests 1 and 3
+
+### 3. Keyboard event synchronization
+- Created `keyDown(page, key)` and `keyUp(page, key)` helpers
+- Added `await page.evaluate(() => {})` after keyboard events to force event loop processing
+- Theory: Playwright's keyboard.down() dispatches event but doesn't guarantee page JS has processed it
+- Didn't fully fix the issue
+
+### 4. HMR-specific attempts
+- Tried seeking to known frame after HMR (failed - "Not recording, can't seek")
+- Tried pausing immediately after HMR
+- Tried moving mouse to (0,0) to eliminate cursor rect variance
+- None fully solved the position variance
+
+## The Core Issue
+
+The circle's x position varies between runs in the post-HMR screenshot. Both screenshots show:
+- Scale 5 (HMR worked - circle is larger)
+- Different frame numbers (24 vs 25)
+- Different circle x positions
+
+The position SHOULD be identical because:
+1. Pre-HMR: 'd' held for 10 frames, then released, then 2 more frames = frame 13
+2. After HMR: no keys held, position shouldn't change
+
+## Hypotheses Not Yet Tested
+
+1. **HMR state cloning issue**: When `acceptHmr()` clones state, maybe input state or position isn't perfectly preserved?
+
+2. **Input buffer frame association**: When keyboard event arrives while paused at frame N, it's stored at InputBuffer[N]. If frame N is already processed, does the input get lost or deferred?
+
+3. **The sim continues running during HMR wait**: After HMR triggers, we wait 100ms. The sim might still be running, adding extra frames of... something?
+
+4. **Keyboard event still not fully synchronized**: Even with evaluate() after keyboard events, there might be another async layer
+
+## Key Files
+
+- `packages/web/test/e2e/smoke.e2e.ts` - The test file
+- `packages/web/test/e2e/helpers.ts` - Test helpers (waitForApp, advanceFrames, keyDown, keyUp)
+- `packages/web/src/App.ts` - Browser runtime, has afterFrame listener for auto-pause
+- `packages/engine/src/root.zig` - Engine's appendInputEvent, seek, step functions
+- `packages/engine/src/sim.zig` - Sim's tick function that processes inputs from InputBuffer
+
+## How to Debug Manually
+
+```bash
+# Run with headed browser (already configured)
+cd packages/web
+bun run test:e2e
+
+# Run specific test
+bun run test:e2e -- -g "HMR"
+
+# Run with Playwright UI for debugging
+bun run test:e2e:ui
+```
+
+Watch the Chrome window during the HMR test:
+1. App loads, seeks to frame 1, pauses
+2. 'd' pressed, advances 10 frames (circle should move right)
+3. 'd' released, advances 2 frames
+4. Pre-HMR screenshot taken at frame 13
+5. config.ts modified (scale 2 -> 5)
+6. HMR console message appears
+7. Wait 100ms
+8. Pause sim, move mouse to (0,0), advance 1 frame
+9. Post-HMR screenshot - THIS IS WHERE VARIANCE OCCURS
+
+## Input Event Flow (for reference)
+
+1. `page.keyboard.down("d")` -> Browser dispatches keydown event
+2. App.ts `handleKeydown` -> `sim.emit.keydown()`
+3. `emit.keydown()` -> `wasm.emit_keydown()`
+4. Engine `emit_keydown()` -> `appendInputEvent()` stores at InputBuffer[time.frame]
+5. During tick: `input_buffer.get(peer, match_frame)` reads events
+6. Events processed, key state updated
+7. Game systems read `inputs.keys.d.held` and update position
+
+## Related Bean
+
+`bloop-4jip` - Input events should not be queued while sim is paused
+- Currently `shouldEmitInputs()` only checks `isReplaying`, not `isPaused`
+- This might be related but unclear if it's the root cause

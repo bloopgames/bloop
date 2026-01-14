@@ -7,15 +7,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Wait for the bloop app to initialize, then pause immediately.
- * This ensures deterministic frame numbers for subsequent waitForFrame calls.
+ * Press a key and ensure the event is processed before returning.
+ * This avoids race conditions between Playwright event dispatch and page JS execution.
+ */
+export async function keyDown(page: Page, key: string): Promise<void> {
+  await page.keyboard.down(key);
+  await page.evaluate(() => {}); // Force event loop to process pending events
+}
+
+/**
+ * Release a key and ensure the event is processed before returning.
+ */
+export async function keyUp(page: Page, key: string): Promise<void> {
+  await page.keyboard.up(key);
+  await page.evaluate(() => {}); // Force event loop to process pending events
+}
+
+/**
+ * Wait for the bloop app to initialize, then seek to frame 1 and pause.
+ * Frame 1 ensures the first render has completed.
+ * This ensures all tests start from a known deterministic state.
  */
 export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
   await page.waitForFunction(
     () => {
       const app = (window as any).__BLOOP_APP__;
-      if (app && app.sim && app.game && app.sim.time.frame >= 0) {
-        // Pause immediately to prevent frames from advancing
+      if (app && app.sim && app.game && app.sim.time.frame >= 1) {
+        // Seek to frame 1 and pause for deterministic starting point
+        app.sim.seek(1);
         app.sim.pause();
         return true;
       }
@@ -23,6 +42,9 @@ export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
     },
     { timeout },
   );
+
+  // Wait for render RAF loop to catch up after seek
+  await page.waitForTimeout(40);
 }
 
 /**
@@ -70,6 +92,9 @@ export async function advanceFrames(page: Page, count: number): Promise<void> {
     },
     { timeout: 10000 },
   );
+
+  // Wait for render RAF loop to catch up
+  await page.waitForTimeout(40);
 }
 
 /**

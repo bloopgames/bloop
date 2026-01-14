@@ -44,7 +44,7 @@ jobs:
         run: bunx playwright install chromium
         working-directory: packages/web
       - name: Run Playwright e2e tests
-        run: bun run test:e2e
+        run: bun run ci:e2e
         working-directory: packages/web
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

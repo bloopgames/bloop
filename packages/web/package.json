@@ -26,6 +26,7 @@
     "ci:jsr": "bunx jsr publish --dry-run --allow-dirty",
     "ci:tsc": "tsc --noEmit",
     "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:e2e:update": "playwright test --update-snapshots"
   },
   "devDependencies": {
