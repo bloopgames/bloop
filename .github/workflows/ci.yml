@@ -33,8 +33,18 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build WASM
         run: bun run build:wasm
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
+      - name: Install Playwright system deps
+        run: bunx playwright install-deps chromium
+        working-directory: packages/web
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: bunx playwright install chromium
         working-directory: packages/web
       - name: Run Playwright e2e tests
         run: bun run ci:e2e
