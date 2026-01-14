@@ -1,10 +1,11 @@
 ---
 # bloop-wfwt
 title: Add Playwright e2e tests for HMR
-status: todo
+status: completed
 type: feature
+priority: normal
 created_at: 2026-01-13T19:27:15Z
-updated_at: 2026-01-13T19:27:15Z
+updated_at: 2026-01-13T23:34:48Z
 ---
 
 Add Playwright end-to-end tests to verify HMR behavior in the browser.

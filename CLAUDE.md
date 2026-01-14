@@ -137,6 +137,32 @@ it("test name", async () => {
 });
 ```
 
+## Playwright E2E Tests
+
+Location: `packages/web/test/e2e/`
+
+Playwright tests are **smoke tests only**. They verify the critical browser integration paths work end-to-end.
+
+**Principles:**
+- Use sparingly - they're slow (~5-10s per test)
+- One test that checks multiple things > multiple tests with similar setup
+- Assert on screenshots, not internal JS state
+- Only access `window.__BLOOP_APP__` when visual assertions aren't practical
+- Target: entire suite runs in under 20s on CI
+
+**Running tests:**
+```bash
+cd packages/web
+bun run test:e2e          # headless
+bun run test:e2e:ui       # interactive UI
+bun run test:e2e:headed   # visible browser
+```
+
+**Updating screenshots:**
+```bash
+bun run test:e2e -- --update-snapshots
+```
+
 ## Development Notes
 
 * This is a pre-release library, so breaking changes for api ergonomics are encouraged. Do not worry about backwards compatibility until we hit semver 0.1.0

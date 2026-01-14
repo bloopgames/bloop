@@ -1,5 +1,5 @@
 import { Bloop } from "@bloopjs/bloop";
-import { moveSpeed } from "./config";
+import { moveSpeed, scale } from "./config";
 
 export const game = Bloop.create({
   bag: {
@@ -23,6 +23,6 @@ game.system("move", {
     bag.mouse.x = inputs.mouse.x;
     bag.mouse.y = inputs.mouse.y;
 
-    bag.scale = 2;
+    bag.scale = scale;
   },
 });

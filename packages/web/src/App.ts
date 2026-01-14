@@ -66,6 +66,14 @@ export async function start(opts: StartOptions): Promise<App> {
     debugOpts,
   );
 
+  // Expose app for e2e testing when ?e2e query param is present
+  if (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("e2e")
+  ) {
+    (window as any).__BLOOP_APP__ = app;
+  }
+
   return app;
 }
 
