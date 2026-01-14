@@ -7,13 +7,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Wait for the bloop app to initialize and be accessible
+ * Wait for the bloop app to initialize, then pause immediately.
+ * This ensures deterministic frame numbers for subsequent waitForFrame calls.
  */
 export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
   await page.waitForFunction(
     () => {
       const app = (window as any).__BLOOP_APP__;
-      return app && app.sim && app.game && app.sim.time.frame >= 0;
+      if (app && app.sim && app.game && app.sim.time.frame >= 0) {
+        // Pause immediately to prevent frames from advancing
+        app.sim.pause();
+        return true;
+      }
+      return false;
     },
     { timeout },
   );
@@ -37,29 +43,15 @@ export async function waitForFrames(page: Page, count: number): Promise<void> {
 }
 
 /**
- * Wait for sim to reach exactly the specified frame and pause.
- * This is deterministic - the sim will always be at exactly this frame when the promise resolves.
- * Throws an error if already past the target frame (indicates test logic error).
+ * Advance the sim by the specified number of frames from current position and pause.
+ * This is deterministic - always advances exactly N frames.
  */
-export async function waitForFrame(page: Page, frame: number): Promise<void> {
-  await page.evaluate((targetFrame) => {
+export async function advanceFrames(page: Page, count: number): Promise<void> {
+  await page.evaluate((frameCount) => {
     const app = (window as any).__BLOOP_APP__;
     if (!app) throw new Error("__BLOOP_APP__ not found");
 
-    const currentFrame = app.sim.time.frame;
-
-    // If already at target and paused, we're done
-    if (currentFrame === targetFrame && app.sim.isPaused) {
-      return;
-    }
-
-    // If past target, that's a test logic error
-    if (currentFrame > targetFrame) {
-      throw new Error(
-        `Already past target frame ${targetFrame}, currently at frame ${currentFrame}. ` +
-          `Test should request frames in ascending order.`,
-      );
-    }
+    const targetFrame = app.sim.time.frame + frameCount;
 
     // Set target frame - App.ts will auto-pause when reached
     (window as any).__BLOOP_TARGET_FRAME = targetFrame;
@@ -68,15 +60,14 @@ export async function waitForFrame(page: Page, frame: number): Promise<void> {
     if (app.sim.isPaused) {
       app.sim.unpause();
     }
-  }, frame);
+  }, count);
 
-  // Wait for sim to reach target frame and pause
+  // Wait for sim to pause (afterFrame handler will pause at target)
   await page.waitForFunction(
-    (targetFrame) => {
+    () => {
       const app = (window as any).__BLOOP_APP__;
-      return app.sim.time.frame >= targetFrame && app.sim.isPaused;
+      return app.sim.isPaused;
     },
-    frame,
     { timeout: 10000 },
   );
 }

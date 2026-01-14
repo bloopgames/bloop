@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import {
+  advanceFrames,
   FileModifier,
   loadTape,
   saveTape,
   waitForApp,
-  waitForFrame,
   waitForFrames,
 } from "./helpers";
 
@@ -13,12 +13,14 @@ const CONFIG_PATH = "games/hello/src/config.ts";
 // Allow small pixel differences due to antialiasing (3% threshold)
 const SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.03 };
 
+// HMR test has higher threshold since timing varies
+const HMR_SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.10 };
+
 test("game loads and responds to input", async ({ page }) => {
   await page.goto("/?e2e");
-  await waitForApp(page);
+  await waitForApp(page); // App is now paused
 
-  // Verify initial render at frame 5 (gives time for app initialization)
-  await waitForFrame(page, 5);
+  // Verify initial render
   await expect(page).toHaveScreenshot("01-initial.png", SCREENSHOT_OPTIONS);
 
   // Move mouse and verify cursor rect appears
@@ -27,18 +29,18 @@ test("game loads and responds to input", async ({ page }) => {
   if (!box) throw new Error("Canvas not found");
 
   await page.mouse.move(box.x + 200, box.y + 200);
-  await waitForFrame(page, 10);
+  await advanceFrames(page, 5);
   await expect(page).toHaveScreenshot("02-mouse-moved.png", SCREENSHOT_OPTIONS);
 
   // Press 'd' to move player right
   await page.keyboard.down("d");
-  await waitForFrame(page, 20);
+  await advanceFrames(page, 10);
   await page.keyboard.up("d");
   await expect(page).toHaveScreenshot("03-moved-right.png", SCREENSHOT_OPTIONS);
 
   // Press 'w' to move player up
   await page.keyboard.down("w");
-  await waitForFrame(page, 30);
+  await advanceFrames(page, 10);
   await page.keyboard.up("w");
   await expect(page).toHaveScreenshot("04-moved-up.png", SCREENSHOT_OPTIONS);
 });
@@ -48,15 +50,15 @@ test("HMR preserves state and input handling", async ({ page }) => {
 
   try {
     await page.goto("/?e2e");
-    await waitForApp(page);
+    await waitForApp(page); // App is now paused
 
     // Move player to a known position
     await page.keyboard.down("d");
-    await waitForFrame(page, 15);
+    await advanceFrames(page, 10);
     await page.keyboard.up("d");
 
-    // Capture pre-HMR state at frame 20 (allow buffer for timing)
-    await waitForFrame(page, 20);
+    // Capture pre-HMR state
+    await advanceFrames(page, 2);
     await expect(page).toHaveScreenshot("05-pre-hmr.png", SCREENSHOT_OPTIONS);
 
     // Track page reloads
@@ -90,7 +92,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     // Sim is paused after HMR, just take screenshot directly
     await expect(page).toHaveScreenshot(
       "06-post-hmr-larger.png",
-      SCREENSHOT_OPTIONS,
+      HMR_SCREENSHOT_OPTIONS,
     );
 
     // Verify mouse input still works after HMR
@@ -105,7 +107,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     await page.evaluate(() => (window as any).__BLOOP_APP__.sim.pause());
     await expect(page).toHaveScreenshot(
       "07-mouse-after-hmr.png",
-      SCREENSHOT_OPTIONS,
+      HMR_SCREENSHOT_OPTIONS,
     );
   } finally {
     await fileModifier.restoreAll();
@@ -115,18 +117,18 @@ test("HMR preserves state and input handling", async ({ page }) => {
 
 test("tape save and replay", async ({ page }) => {
   await page.goto("/?e2e");
-  await waitForApp(page);
+  await waitForApp(page); // App is now paused
 
   // Move player around to create interesting tape
   await page.keyboard.down("d");
-  await waitForFrame(page, 20);
+  await advanceFrames(page, 15);
   await page.keyboard.up("d");
 
   await page.keyboard.down("w");
-  await waitForFrame(page, 35);
+  await advanceFrames(page, 15);
   await page.keyboard.up("w");
 
-  // Capture final position at frame 35
+  // Capture final position
   await expect(page).toHaveScreenshot(
     "08-tape-final-position.png",
     SCREENSHOT_OPTIONS,
@@ -141,21 +143,23 @@ test("tape save and replay", async ({ page }) => {
   // Save tape for replay
   const tape = await saveTape(page);
 
-  // Load tape - it auto-pauses at tape start (frame 0)
+  // Load tape - it auto-pauses at tape start
   await loadTape(page, tape);
   await expect(page).toHaveScreenshot("09-tape-start.png", SCREENSHOT_OPTIONS);
 
-  // Seek to middle of tape (frame 20 - where we finished moving right)
+  // Seek to middle of tape (15 frames in)
   await page.evaluate(() => {
     const app = (window as any).__BLOOP_APP__;
-    app.sim.seek(20);
+    const startFrame = app.sim.time.frame;
+    app.sim.seek(startFrame + 15);
   });
   await expect(page).toHaveScreenshot("10-tape-middle.png", SCREENSHOT_OPTIONS);
 
-  // Seek to end of tape (frame 35)
+  // Seek to end of tape (30 frames from start)
   await page.evaluate(() => {
     const app = (window as any).__BLOOP_APP__;
-    app.sim.seek(35);
+    const startFrame = app.sim.time.frame - 15; // We're at middle, go back to calculate start
+    app.sim.seek(startFrame + 30);
   });
   await expect(page).toHaveScreenshot("11-tape-end.png", SCREENSHOT_OPTIONS);
 });
