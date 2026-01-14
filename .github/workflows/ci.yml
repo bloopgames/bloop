@@ -20,7 +20,7 @@ jobs:
           bun run ci
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - name: Setup bun
@@ -37,17 +37,15 @@ jobs:
         id: playwright-cache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
+          path: ~/Library/Caches/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
-      - name: Install Playwright system deps
-        run: bunx playwright install-deps chromium
-        working-directory: packages/web
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: bunx playwright install chromium
         working-directory: packages/web
       - name: Run Playwright e2e tests
-        run: bun run ci:e2e
+        run: bun run test:e2e
+        working-directory: packages/web
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: failure()
