@@ -1,7 +1,7 @@
 ---
 # bloop-6yjl
 title: GIF Capture
-status: todo
+status: in-progress
 type: task
 priority: high
 created_at: 2025-12-16T22:55:25Z
@@ -13,7 +13,7 @@ Record and polish the GIF for README and soft launch sharing.
 
 ## Checklist
 
-- [ ] Record GIF sequence (multiple takes)
-- [ ] Encode with gifski
-- [ ] Update README with GIF
+- [x] Record GIF sequence (multiple takes)
+- [x] Encode with gifski
+- [x] Update README with GIF
 - [ ] Share to Void discord for feedback

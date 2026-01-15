@@ -165,10 +165,11 @@ export class Sim {
    * @param source
    */
   cloneSession(source: Sim): void {
-    if (source.isRecording) {
+    if (source.hasHistory) {
       this.loadTape(source.saveTape());
     }
     this.restore(source.snapshot());
+    this.#isPaused = source.isPaused;
   }
 
   /**

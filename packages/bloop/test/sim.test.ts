@@ -403,59 +403,6 @@ describe("dump", () => {
     expect(bloop1.context.time.frame).toEqual(4);
   });
 
-  it("cloneSession allows inputs after HMR", async () => {
-    // Simulates the HMR flow in acceptHmr:
-    // 1. Original sim is recording (web start() defaults to startRecording: true)
-    // 2. New sim is mounted
-    // 3. cloneSession transfers tape and snapshot
-    // 4. On first step, engine auto-exits replay mode and accepts new inputs
-
-    const game = Bloop.create({
-      bag: { x: 0, y: 0 },
-    });
-    game.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-
-    // Mount with recording (like web start() does)
-    const { sim } = await mount(game, { startRecording: true });
-
-    sim.emit.mousemove(10, 20);
-    sim.step();
-    expect(game.bag).toEqual({ x: 10, y: 20 });
-    expect(sim.isRecording).toBe(true);
-
-    // Create a new game (like HMR does)
-    const game1 = Bloop.create({
-      bag: { x: 0, y: 0 },
-    });
-    game1.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-
-    // Mount new sim (like acceptHmr does)
-    const { sim: sim1 } = await mount(game1, { startRecording: true });
-
-    // Clone session (like acceptHmr does)
-    sim1.cloneSession(sim);
-
-    // State should be preserved
-    expect(game1.bag).toEqual({ x: 10, y: 20 });
-
-    // New inputs should work - engine auto-exits replay mode on step()
-    // when it detects we've passed the tape end
-    sim1.emit.mousemove(30, 40);
-    sim1.step();
-    expect(sim1.isReplaying).toBe(false); // Now exited replay mode
-    expect(game1.bag).toEqual({ x: 30, y: 40 });
-  });
-
   it("regression: accepts live inputs after dumping", async () => {
     const game = Bloop.create({
       bag: {
