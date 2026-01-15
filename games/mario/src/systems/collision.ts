@@ -1,4 +1,5 @@
 import * as cfg from "../config";
+import type { game, Player } from "../game";
 import { PhaseSystem } from "./phase";
 
 export const CollisionSystem = PhaseSystem("playing", {
@@ -27,15 +28,24 @@ export const CollisionSystem = PhaseSystem("playing", {
 
       if (hitX && hitY && bag.coin.visible === false) {
         // Bonk! Stop upward movement
-        p.vy = 0;
-        p.y = blockBottom - cfg.PLAYER_HEIGHT;
-
-        p.score += 1;
-
-        bag.coin.hitTime = time.time;
-        bag.coin.visible = true;
-        bag.coin.winner = p === bag.p1 ? 1 : 2;
+        triggerCoin(bag, p, time, blockBottom);
       }
     }
   },
 });
+
+function triggerCoin(
+  bag: typeof game.bag,
+  p: Player,
+  time: typeof game.context.time,
+  blockBottom: number,
+) {
+  p.vy = 0;
+  p.y = blockBottom - cfg.PLAYER_HEIGHT;
+
+  p.score += 1;
+
+  bag.coin.hitTime = time.time;
+  bag.coin.visible = true;
+  bag.coin.winner = p === bag.p1 ? 1 : 2;
+}
