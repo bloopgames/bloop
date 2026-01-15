@@ -61,3 +61,17 @@ export async function loadTape<S extends BloopSchema>(
     game,
   };
 }
+
+/**
+ * Simulate HMR by creating a new game/sim and cloning session from source.
+ * This mirrors what acceptHmr does in packages/web/src/App.ts.
+ */
+export async function doHmr<S extends BloopSchema>(
+  maker: GameMaker<S>,
+  source: Sim,
+): Promise<{ sim: Sim; game: Bloop<S> }> {
+  const game = maker();
+  const { sim } = await mount(game, { startRecording: true });
+  sim.cloneSession(source);
+  return { sim, game };
+}

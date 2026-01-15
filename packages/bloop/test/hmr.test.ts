@@ -1,35 +1,39 @@
 import { describe, expect, it } from "bun:test";
 import { Bloop } from "../src/bloop";
 import { mount } from "../src/mount";
+import { doHmr } from "./helper";
+
+const makeTrackingGame = () => {
+  const game = Bloop.create({ bag: { x: 0, y: 0 } });
+  game.system("track", {
+    update({ bag, inputs }) {
+      bag.x = inputs.mouse.x;
+      bag.y = inputs.mouse.y;
+    },
+  });
+  return game;
+};
+
+const makePhaseGame = () => {
+  const game = Bloop.create({ bag: { phase: "title" as string } });
+  game.system("progression", {
+    update({ bag, inputs }) {
+      if (bag.phase === "title" && inputs.keys.space.down) {
+        bag.phase = "playing";
+      }
+    },
+  });
+  return game;
+};
 
 describe("HMR (cloneSession)", () => {
   it("transfers tape and accepts new inputs after HMR", async () => {
-    // Recording mode: cloneSession should transfer tape, and new inputs should work
-    const game = Bloop.create({ bag: { x: 0, y: 0 } });
-    game.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-
-    const { sim } = await mount(game, { startRecording: true });
+    const { sim } = await mount(makeTrackingGame(), { startRecording: true });
     sim.emit.mousemove(10, 20);
     sim.step();
-    expect(game.bag).toEqual({ x: 10, y: 20 });
 
-    // HMR: mount new sim and clone session
-    const newGame = Bloop.create({ bag: { x: 0, y: 0 } });
-    newGame.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-    const { sim: newSim } = await mount(newGame, { startRecording: true });
-    newSim.cloneSession(sim);
+    const { sim: newSim, game: newGame } = await doHmr(makeTrackingGame, sim);
 
-    // State preserved, new inputs work
     expect(newGame.bag).toEqual({ x: 10, y: 20 });
     newSim.emit.mousemove(30, 40);
     newSim.step();
@@ -38,47 +42,20 @@ describe("HMR (cloneSession)", () => {
   });
 
   it("preserves paused state after HMR", async () => {
-    const game = Bloop.create({ bag: { x: 0, y: 0 } });
-    game.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-
-    const { sim } = await mount(game, { startRecording: true });
+    const { sim } = await mount(makeTrackingGame(), { startRecording: true });
     sim.emit.mousemove(10, 20);
     sim.step();
     sim.pause();
-    expect(sim.isPaused).toBe(true);
 
-    // HMR: mount new sim and clone session
-    const newGame = Bloop.create({ bag: { x: 0, y: 0 } });
-    newGame.system("track", {
-      update({ bag, inputs }) {
-        bag.x = inputs.mouse.x;
-        bag.y = inputs.mouse.y;
-      },
-    });
-    const { sim: newSim } = await mount(newGame, { startRecording: true });
-    newSim.cloneSession(sim);
+    const { sim: newSim, game: newGame } = await doHmr(makeTrackingGame, sim);
 
-    // Paused state should be preserved
     expect(newGame.bag).toEqual({ x: 10, y: 20 });
     expect(newSim.isPaused).toBe(true);
   });
 
   it("transfers tape in replay mode (loaded tape file)", async () => {
     // Create and save a tape with a state transition
-    const game = Bloop.create({ bag: { phase: "title" as string } });
-    game.system("progression", {
-      update({ bag, inputs }) {
-        if (bag.phase === "title" && inputs.keys.space.down) {
-          bag.phase = "playing";
-        }
-      },
-    });
-
+    const game = makePhaseGame();
     const { sim } = await mount(game, { startRecording: true });
     for (let i = 0; i < 10; i++) sim.step();
     sim.emit.keydown("Space");
@@ -86,19 +63,11 @@ describe("HMR (cloneSession)", () => {
     expect(game.bag.phase).toBe("playing");
     sim.emit.keyup("Space");
     for (let i = 0; i < 20; i++) sim.step();
-
     const tape = sim.saveTape();
     sim.unmount();
 
     // Load tape in replay mode (simulates drag-drop in UI)
-    const replayGame = Bloop.create({ bag: { phase: "title" as string } });
-    replayGame.system("progression", {
-      update({ bag, inputs }) {
-        if (bag.phase === "title" && inputs.keys.space.down) {
-          bag.phase = "playing";
-        }
-      },
-    });
+    const replayGame = makePhaseGame();
     const { sim: replaySim } = await mount(replayGame, { startRecording: false });
     replaySim.loadTape(tape);
     replaySim.seek(25);
@@ -108,18 +77,8 @@ describe("HMR (cloneSession)", () => {
     replaySim.pause();
 
     // HMR while in replay mode
-    const hmrGame = Bloop.create({ bag: { phase: "title" as string } });
-    hmrGame.system("progression", {
-      update({ bag, inputs }) {
-        if (bag.phase === "title" && inputs.keys.space.down) {
-          bag.phase = "playing";
-        }
-      },
-    });
-    const { sim: hmrSim } = await mount(hmrGame, { startRecording: true });
-    hmrSim.cloneSession(replaySim);
+    const { sim: hmrSim, game: hmrGame } = await doHmr(makePhaseGame, replaySim);
 
-    // State preserved, seek should use transferred tape
     expect(hmrGame.bag.phase).toBe("playing");
     expect(hmrSim.time.frame).toBe(25);
 
