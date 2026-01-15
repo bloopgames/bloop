@@ -509,6 +509,97 @@ describe("dump", () => {
     expect(sim1.isPaused).toBe(true);
   });
 
+  it("cloneSession preserves game state when stepping forward after HMR (replay mode)", async () => {
+    // Reproduces EXACT bug scenario:
+    // 1. User loads a tape file (enters REPLAY mode, not recording)
+    // 2. User seeks to a point where phase="playing"
+    // 3. HMR triggers
+    // 4. User steps forward with comma key
+    // 5. BUG: phase resets to "title" because tape wasn't transferred
+
+    // First, create a tape by recording
+    const game = Bloop.create({
+      bag: { phase: "title" as string },
+    });
+    game.system("progression", {
+      update({ bag, inputs }) {
+        if (bag.phase === "title" && inputs.keys.space.down) {
+          bag.phase = "playing";
+        }
+      },
+    });
+
+    const { sim } = await mount(game, { startRecording: true });
+
+    // Record some frames in title, then transition to playing
+    for (let i = 0; i < 10; i++) sim.step();
+    expect(game.bag.phase).toBe("title");
+
+    sim.emit.keydown("Space");
+    sim.step();
+    expect(game.bag.phase).toBe("playing");
+    sim.emit.keyup("Space");
+
+    for (let i = 0; i < 20; i++) sim.step();
+    expect(game.bag.phase).toBe("playing");
+
+    // Save the tape
+    const tape = sim.saveTape();
+    sim.unmount();
+
+    // Now simulate loading the tape file (like drag-drop in UI)
+    const game2 = Bloop.create({
+      bag: { phase: "title" as string },
+    });
+    game2.system("progression", {
+      update({ bag, inputs }) {
+        if (bag.phase === "title" && inputs.keys.space.down) {
+          bag.phase = "playing";
+        }
+      },
+    });
+
+    // Mount WITHOUT recording (user is just loading a tape to replay)
+    const { sim: sim2 } = await mount(game2, { startRecording: false });
+
+    // Load the tape (this is what App.loadTape does)
+    sim2.loadTape(tape);
+
+    // Seek to a frame where phase="playing" (past the space press)
+    sim2.seek(25);
+    expect(game2.bag.phase).toBe("playing");
+    expect(sim2.time.frame).toBe(25);
+    expect(sim2.isReplaying).toBe(true);
+    expect(sim2.isRecording).toBe(false); // NOT recording!
+
+    sim2.pause();
+
+    // HMR: create new game and clone session
+    const game3 = Bloop.create({
+      bag: { phase: "title" as string },
+    });
+    game3.system("progression", {
+      update({ bag, inputs }) {
+        if (bag.phase === "title" && inputs.keys.space.down) {
+          bag.phase = "playing";
+        }
+      },
+    });
+
+    const { sim: sim3 } = await mount(game3, { startRecording: true });
+    sim3.cloneSession(sim2);
+
+    // State should be preserved immediately after cloneSession
+    expect(game3.bag.phase).toBe("playing");
+    expect(sim3.time.frame).toBe(25);
+
+    // BUG: cloneSession didn't transfer tape because isRecording was false!
+    // When we seek forward, there's no tape data to resimulate from
+    sim3.seek(sim3.time.frame + 1);
+    expect(game3.bag.phase).toBe("playing"); // Should stay playing
+    expect(sim3.time.frame).toBe(26);
+  });
+
   it("regression: accepts live inputs after dumping", async () => {
     const game = Bloop.create({
       bag: {
