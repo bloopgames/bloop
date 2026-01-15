@@ -169,6 +169,7 @@ export class Sim {
       this.loadTape(source.saveTape());
     }
     this.restore(source.snapshot());
+    this.#isPaused = source.isPaused;
   }
 
   /**
