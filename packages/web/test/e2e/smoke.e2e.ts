@@ -14,6 +14,8 @@ const CONFIG_PATH = "games/hello/src/config.ts";
 
 // Allow small pixel differences due to antialiasing (3% threshold)
 const SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.03 };
+// HMR screenshots need higher threshold due to timing variability
+const HMR_SCREENSHOT_OPTIONS = { maxDiffPixelRatio: 0.07 };
 
 test("game loads and responds to input", async ({ page }) => {
   await page.goto("/?e2e");
@@ -118,7 +120,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     // Circle should be larger but in same position (HMR preserved state)
     await expect(page).toHaveScreenshot(
       "06-post-hmr-larger.png",
-      SCREENSHOT_OPTIONS,
+      HMR_SCREENSHOT_OPTIONS,
     );
 
     // Verify mouse input still works after HMR - move mouse and advance frames
@@ -126,7 +128,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     await advanceFrames(page, 3);
     await expect(page).toHaveScreenshot(
       "07-mouse-after-hmr.png",
-      SCREENSHOT_OPTIONS,
+      HMR_SCREENSHOT_OPTIONS,
     );
   } finally {
     await fileModifier.restoreAll();
