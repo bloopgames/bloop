@@ -279,24 +279,21 @@ pub const Engine = struct {
 
             // ─────────────────────────────────────────────────────────────
             // Advantage balancing: stall if we're too far ahead of peers
-            // Skip during replay mode - stalls emerge from recorded packets
+            // During replay, peer.seq is updated by replayTapePackets() above,
+            // so stalls emerge naturally from the replayed packet timing.
             // ─────────────────────────────────────────────────────────────
-            if (!self.vcr.is_replaying) {
-                // Recalculate stall budget from current advantage
-                const advantage = self.calculateAdvantage();
-                if (advantage >= 1) {
-                    // Cap at 255 (u8 max)
-                    net.stall_budget = @intCast(@min(advantage, 255));
-                }
+            const advantage = self.calculateAdvantage();
+            if (advantage >= 1) {
+                // Cap at 255 (u8 max)
+                net.stall_budget = @intCast(@min(advantage, 255));
+            }
 
-                // Check if we should stall this frame
-                if (self.shouldStall()) {
-                    // Consume accumulator time but DON'T step
-                    // Frame number stays the same - events will be processed next tick
-                    self.accumulator -= hz;
-                    net.total_stalls += 1;
-                    continue;
-                }
+            if (self.shouldStall()) {
+                // Consume accumulator time but DON'T step
+                // Frame number stays the same - events will be processed next tick
+                self.accumulator -= hz;
+                net.total_stalls += 1;
+                continue;
             }
 
             // Notify host before each simulation step
