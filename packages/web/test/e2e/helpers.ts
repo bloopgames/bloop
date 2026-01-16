@@ -32,7 +32,9 @@ export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
   await page.waitForFunction(
     () => {
       const app = (window as any).__BLOOP_APP__;
-      if (app && app.sim && app.game && app.sim.time.frame >= 1) {
+      const ready = (window as any).__BLOOP_READY__;
+      // Wait for app AND assets to be ready
+      if (app && app.sim && app.game && app.sim.time.frame >= 1 && ready) {
         // Seek to frame 1 and pause for deterministic starting point
         app.sim.seek(1);
         app.sim.pause();
