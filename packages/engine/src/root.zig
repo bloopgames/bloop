@@ -266,6 +266,7 @@ pub const Engine = struct {
     /// If in a session, handles rollback/resimulation when late inputs arrive
     pub fn advance(self: *Engine, ms: u32) u32 {
         self.accumulator += ms;
+        const net = self.sim.net_ctx;
 
         var step_count: u32 = 0;
         while (self.accumulator >= hz) {
@@ -274,6 +275,28 @@ pub const Engine = struct {
                 self.replayTapeNetEvents();
                 self.replayTapePackets();
                 self.replayTapeInputs();
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // Advantage balancing: stall if we're too far ahead of peers
+            // Skip during replay mode - stalls emerge from recorded packets
+            // ─────────────────────────────────────────────────────────────
+            if (!self.vcr.is_replaying) {
+                // Recalculate stall budget from current advantage
+                const advantage = self.calculateAdvantage();
+                if (advantage >= 1) {
+                    // Cap at 255 (u8 max)
+                    net.stall_budget = @intCast(@min(advantage, 255));
+                }
+
+                // Check if we should stall this frame
+                if (self.shouldStall()) {
+                    // Consume accumulator time but DON'T step
+                    // Frame number stays the same - events will be processed next tick
+                    self.accumulator -= hz;
+                    net.total_stalls += 1;
+                    continue;
+                }
             }
 
             // Notify host before each simulation step
@@ -896,6 +919,67 @@ pub const Engine = struct {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Advantage Balancing
+    // ─────────────────────────────────────────────────────────────
+
+    /// Calculate frame advantage against connected peers.
+    /// Returns the maximum number of frames we are ahead of any connected peer.
+    /// Positive = we're ahead, should stall. Zero = balanced or not in session.
+    fn calculateAdvantage(self: *const Engine) i32 {
+        // Only calculate advantage in active sessions
+        if (self.sim.net_ctx.in_session == 0) return 0;
+
+        var max_advantage: i32 = 0;
+        const local_frame: i32 = @intCast(self.getMatchFrame());
+        const local_peer_id = self.sim.net_ctx.local_peer_id;
+
+        for (0..Ctx.MAX_PLAYERS) |i| {
+            // Skip self
+            if (i == local_peer_id) continue;
+
+            const peer = &self.sim.net_ctx.peers[i];
+            // Skip disconnected peers
+            if (peer.connected == 0) continue;
+
+            // peer.seq = their latest frame we've received (-1 if none)
+            // advantage = how many frames ahead we are
+            if (peer.seq >= 0) {
+                const advantage = local_frame - @as(i32, peer.seq);
+                if (advantage > max_advantage) {
+                    max_advantage = advantage;
+                }
+            }
+        }
+        return max_advantage;
+    }
+
+    /// Check if we should stall this frame based on stall budget.
+    /// Uses distributed stalling algorithm from INVERSUS:
+    /// - Higher budget = more frequent stalls
+    /// - Stalls are spread out to avoid jarring gameplay
+    fn shouldStall(self: *Engine) bool {
+        const net = self.sim.net_ctx;
+        if (net.stall_budget == 0) return false;
+
+        // Determine stall frequency based on budget (distribute stalls over time)
+        const period: u8 = switch (net.stall_budget) {
+            1, 2 => 10, // 1 stall per 10 frames
+            3, 4 => 5, // 1 stall per 5 frames
+            5, 6 => 3, // 1 stall per 3 frames
+            7, 8 => 2, // 1 stall per 2 frames
+            else => 1, // stall every frame (catching up)
+        };
+
+        net.stall_counter += 1;
+        if (net.stall_counter >= period) {
+            net.stall_counter = 0;
+            net.stall_budget -= 1;
+            return true;
+        }
+        return false;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Seek
     // ─────────────────────────────────────────────────────────────
 
@@ -1287,6 +1371,154 @@ test "Engine emit_mousemove adds event to InputBuffer" {
     try std.testing.expectEqual(.MouseMove, events[0].kind);
     try std.testing.expectEqual(100.5, events[0].payload.mouse_move.x);
     try std.testing.expectEqual(200.5, events[0].payload.mouse_move.y);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Advantage Balancing Tests
+// ─────────────────────────────────────────────────────────────
+
+test "calculateAdvantage returns 0 when not in session" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Not in session - should return 0
+    try std.testing.expectEqual(@as(i32, 0), engine.calculateAdvantage());
+}
+
+test "calculateAdvantage returns correct advantage based on peer.seq" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Set up session via events
+    engine.emit_net_peer_assign_local_id(0);
+    engine.emit_net_peer_join(0);
+    engine.emit_net_peer_join(1);
+    engine.emit_net_session_init();
+    _ = engine.advance(hz); // Process events
+
+    // Advance to frame 10
+    _ = engine.advance(hz * 9);
+    try std.testing.expectEqual(@as(u32, 10), engine.sim.time.frame);
+    const match_frame = engine.getMatchFrame();
+    try std.testing.expectEqual(@as(u32, 10), match_frame); // session started at frame 0
+
+    // peer[1].seq = -1 initially (no packets received)
+    // With no packets from peer 1, we can't calculate meaningful advantage
+    // since we don't know their frame yet
+    try std.testing.expectEqual(@as(i16, -1), engine.sim.net_ctx.peers[1].seq);
+
+    // Simulate receiving a packet from peer 1 at frame 5
+    engine.sim.net_ctx.peers[1].seq = 5;
+
+    // Our match_frame = 10, peer's seq = 5
+    // Advantage = 10 - 5 = 5
+    try std.testing.expectEqual(@as(i32, 5), engine.calculateAdvantage());
+
+    // Peer catches up to frame 9
+    engine.sim.net_ctx.peers[1].seq = 9;
+    // Advantage = 10 - 9 = 1
+    try std.testing.expectEqual(@as(i32, 1), engine.calculateAdvantage());
+
+    // Peer ahead of us (negative advantage capped at 0)
+    engine.sim.net_ctx.peers[1].seq = 11;
+    // Advantage = 10 - 11 = -1, but we only track positive advantage
+    try std.testing.expectEqual(@as(i32, 0), engine.calculateAdvantage());
+}
+
+test "shouldStall returns false when budget is 0" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Budget is 0 by default
+    try std.testing.expectEqual(@as(u8, 0), engine.sim.net_ctx.stall_budget);
+    try std.testing.expectEqual(false, engine.shouldStall());
+}
+
+test "shouldStall distributes stalls based on budget" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Budget = 2 means we stall every 10 frames
+    engine.sim.net_ctx.stall_budget = 2;
+
+    // First 9 calls should not stall (counter goes 1-9)
+    var stall_count: u32 = 0;
+    for (0..10) |_| {
+        if (engine.shouldStall()) stall_count += 1;
+    }
+    // Should have stalled once at counter=10
+    try std.testing.expectEqual(@as(u32, 1), stall_count);
+    // Budget should be decremented to 1
+    try std.testing.expectEqual(@as(u8, 1), engine.sim.net_ctx.stall_budget);
+
+    // Counter resets after stall, next stall at counter=10
+    stall_count = 0;
+    for (0..10) |_| {
+        if (engine.shouldStall()) stall_count += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 1), stall_count);
+    // Budget should be 0 now
+    try std.testing.expectEqual(@as(u8, 0), engine.sim.net_ctx.stall_budget);
+
+    // With budget=0, shouldStall always returns false
+    try std.testing.expectEqual(false, engine.shouldStall());
+}
+
+test "shouldStall with high budget stalls more frequently" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Budget = 9+ means stall every frame
+    engine.sim.net_ctx.stall_budget = 10;
+
+    // Each call should stall and decrement budget
+    try std.testing.expectEqual(true, engine.shouldStall());
+    try std.testing.expectEqual(@as(u8, 9), engine.sim.net_ctx.stall_budget);
+
+    try std.testing.expectEqual(true, engine.shouldStall());
+    try std.testing.expectEqual(@as(u8, 8), engine.sim.net_ctx.stall_budget);
+
+    // Budget = 7-8 means stall every 2 frames
+    engine.sim.net_ctx.stall_counter = 0;
+    try std.testing.expectEqual(false, engine.shouldStall()); // counter=1
+    try std.testing.expectEqual(true, engine.shouldStall()); // counter=2, stall!
+    try std.testing.expectEqual(@as(u8, 7), engine.sim.net_ctx.stall_budget); // 8 -> 7 after stall
+}
+
+test "advance stalls when advantage is high" {
+    var engine = try Engine.init(std.testing.allocator, 0);
+    engine.wireListeners();
+    defer engine.deinit();
+
+    // Set up session
+    engine.emit_net_peer_assign_local_id(0);
+    engine.emit_net_peer_join(0);
+    engine.emit_net_peer_join(1);
+    engine.emit_net_session_init();
+    _ = engine.advance(hz); // Process events, now at frame 1
+
+    // Advance to frame 20
+    _ = engine.advance(hz * 19);
+    const match_frame_before = engine.getMatchFrame();
+
+    // Simulate peer 1 being 10 frames behind (high advantage)
+    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame_before - 10);
+
+    // Reset stall stats
+    engine.sim.net_ctx.total_stalls = 0;
+
+    // Try to advance - should stall at least once due to high advantage
+    const frames_stepped = engine.advance(hz * 5);
+
+    // With budget=10, we stall every frame (period=1)
+    // So we should have fewer frames stepped than expected
+    try std.testing.expect(frames_stepped < 5);
+    try std.testing.expect(engine.sim.net_ctx.total_stalls > 0);
 }
 
 // ─────────────────────────────────────────────────────────────
