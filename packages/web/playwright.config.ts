@@ -21,7 +21,15 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        headless: false, // WebGL requires headed mode
+        headless: true,
+        launchOptions: {
+          args: [
+            "--use-gl=angle",
+            "--use-angle=metal", // macOS specific
+            "--ignore-gpu-blocklist",
+            "--enable-gpu-rasterization",
+          ],
+        },
       },
     },
   ],

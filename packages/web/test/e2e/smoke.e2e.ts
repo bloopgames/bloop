@@ -56,8 +56,11 @@ test("HMR preserves state and input handling", async ({ page }) => {
     await advanceFrames(page, 10);
     await keyUp(page, "d");
 
-    // Capture pre-HMR state
+    // Capture pre-HMR state and record frame number
     await advanceFrames(page, 2);
+    const preHmrFrame = await page.evaluate(
+      () => (window as any).__BLOOP_APP__.sim.time.frame,
+    );
     await expect(page).toHaveScreenshot("05-pre-hmr.png", SCREENSHOT_OPTIONS);
 
     // Track page reloads
@@ -66,11 +69,16 @@ test("HMR preserves state and input handling", async ({ page }) => {
       pageReloaded = true;
     });
 
-    // Wait for HMR message
-    const hmrPromise = page.waitForEvent("console", {
-      predicate: (msg) =>
-        msg.text().includes("[vite]") && msg.text().includes("hot updated"),
-      timeout: 10000,
+    // Wait for HMR completion via onHmr event (more reliable than console message)
+    const hmrCompletePromise = page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        const unsubscribe = (window as any).__BLOOP_APP__.onHmr.subscribe(
+          () => {
+            unsubscribe();
+            resolve();
+          },
+        );
+      });
     });
 
     // Change scale from 2 to 5
@@ -81,22 +89,30 @@ test("HMR preserves state and input handling", async ({ page }) => {
       );
     });
 
-    await hmrPromise;
-    await page.waitForTimeout(100); // Let HMR complete
+    // Wait for HMR to fully complete
+    await hmrCompletePromise;
 
     // Verify page did NOT reload
     expect(pageReloaded).toBe(false);
 
-    // Pause sim immediately for deterministic screenshot
-    await page.evaluate(() => (window as any).__BLOOP_APP__.sim.pause());
-
-    // Move mouse off-screen so cursor rect doesn't appear
+    // Get canvas bounds
     const canvas = page.locator("canvas");
     const box = await canvas.boundingBox();
     if (!box) throw new Error("Canvas not found");
-    await page.mouse.move(0, 0);
 
-    // Advance one frame to update mouse position in bag, then wait for render
+    // Seek to pre-HMR frame + 1 and set mouse position directly for deterministic state
+    await page.evaluate(
+      ({ targetFrame, mouseX, mouseY }) => {
+        const app = (window as any).__BLOOP_APP__;
+        app.sim.seek(targetFrame);
+        app.sim.pause();
+        // Directly emit mouse event to ensure it's captured
+        app.sim.emit.mousemove(mouseX, mouseY);
+      },
+      { targetFrame: preHmrFrame, mouseX: 50, mouseY: box.height - 50 },
+    );
+
+    // Advance one frame to process the mouse event
     await advanceFrames(page, 1);
 
     // Circle should be larger but in same position (HMR preserved state)
