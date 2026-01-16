@@ -21,13 +21,13 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // CI: headed mode (macos-latest has display)
-        // Local: headless with GPU flags for Metal backend
-        headless: !process.env.CI,
+        // Always headless with software rendering for consistency
+        headless: true,
         launchOptions: {
           args: [
             "--use-gl=angle",
-            "--use-angle=metal",
+            // Use SwiftShader for reliable software rendering on all platforms
+            "--use-angle=swiftshader",
             "--ignore-gpu-blocklist",
             "--enable-gpu-rasterization",
           ],
