@@ -957,21 +957,20 @@ pub const Engine = struct {
     fn shouldStallForAdvantage(self: *Engine) bool {
         const net = self.sim.net_ctx;
 
-        // Increment counter every frame
-        net.stall_counter += 1;
-
-        // Only consider stalling once per 60 frames (once per second at 60fps)
-        if (net.stall_counter < 60) return false;
-
-        // Check if we have significant advantage
+        // If not at an advantage, don't stall
         const advantage = self.calculateAdvantage();
         if (advantage < 1) {
             return false;
         }
 
-        // Stall this frame and reset counter
-        net.stall_counter = 0;
-        return true;
+        // If at an advantage, stall at most once a second
+        net.stall_counter += 1;
+        if (net.stall_counter >= 60) {
+            net.stall_counter = 0;
+            return true;
+        }
+
+        return false;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1471,7 +1470,7 @@ test "shouldStallForAdvantage only stalls once per 60 frames" {
     try std.testing.expectEqual(@as(u32, 0), stall_count);
 }
 
-test "shouldStallForAdvantage requires advantage >= 3" {
+test "shouldStallForAdvantage requires advantage >= 1" {
     var engine = try Engine.init(std.testing.allocator, 0);
     engine.wireListeners();
     defer engine.deinit();
@@ -1490,13 +1489,13 @@ test "shouldStallForAdvantage requires advantage >= 3" {
     // Set counter to 60 (would stall if advantage sufficient)
     engine.sim.net_ctx.stall_counter = 59;
 
-    // Peer only 2 frames behind (advantage = 2, below threshold)
-    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame - 2);
+    // Peer on same frame - below threshold
+    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame);
     try std.testing.expectEqual(false, engine.shouldStallForAdvantage());
 
-    // Peer 3 frames behind (advantage = 3, at threshold)
+    // Peer 1 frame behind - at threshold
     engine.sim.net_ctx.stall_counter = 59;
-    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame - 3);
+    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame - 1);
     try std.testing.expectEqual(true, engine.shouldStallForAdvantage());
 }
 
