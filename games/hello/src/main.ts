@@ -22,9 +22,6 @@ requestAnimationFrame(function frame() {
   requestAnimationFrame(frame);
 });
 
-// Signal that app is fully ready (including assets)
-(window as any).__BLOOP_READY__ = true;
-
 // 3. Set up Hot Module Replacement (HMR)
 import.meta.hot?.accept("./game", async (newModule) => {
   await app.acceptHmr(newModule?.game);

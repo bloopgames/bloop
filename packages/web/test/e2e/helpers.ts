@@ -29,23 +29,26 @@ export async function keyUp(page: Page, key: string): Promise<void> {
  * This ensures all tests start from a known deterministic state.
  */
 export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
+  // Wait for app infrastructure (no __BLOOP_READY__ check)
   await page.waitForFunction(
     () => {
       const app = (window as any).__BLOOP_APP__;
-      const ready = (window as any).__BLOOP_READY__;
-      // Wait for app AND assets to be ready
-      if (app && app.sim && app.game && app.sim.time.frame >= 1 && ready) {
-        // Seek to frame 1 and pause for deterministic starting point
-        app.sim.seek(1);
-        app.sim.pause();
-        return true;
-      }
-      return false;
+      return app && app.sim && app.game && app.sim.time.frame >= 1 && app.canvas;
     },
     { timeout },
   );
 
-  // Wait for render RAF loop to catch up after seek
+  // Wait for assets to load - fixed timeout is simple and reliable
+  await page.waitForTimeout(200);
+
+  // Seek and pause for deterministic starting point
+  await page.evaluate(() => {
+    const app = (window as any).__BLOOP_APP__;
+    app.sim.seek(1);
+    app.sim.pause();
+  });
+
+  // Final settle time for render RAF loop
   await page.waitForTimeout(40);
 }
 
