@@ -21,15 +21,14 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // Always headless with software rendering for consistency
-        headless: true,
         launchOptions: {
           args: [
+            "--headless=new",
             "--use-gl=angle",
-            // Use SwiftShader for reliable software rendering on all platforms
             "--use-angle=swiftshader",
+            "--enable-unsafe-webgpu",
+            "--enable-features=Vulkan",
             "--ignore-gpu-blocklist",
-            "--enable-gpu-rasterization",
           ],
         },
       },
