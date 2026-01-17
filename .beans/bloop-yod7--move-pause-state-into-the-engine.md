@@ -1,11 +1,11 @@
 ---
 # bloop-yod7
 title: Move pause state into the engine
-status: draft
+status: scrapped
 type: task
 priority: normal
 created_at: 2026-01-15T18:51:07Z
-updated_at: 2026-01-15T18:51:21Z
+updated_at: 2026-01-17T15:26:38Z
 blocking:
     - bloop-7pvq
 ---

@@ -1,10 +1,11 @@
 ---
 # bloop-7pvq
 title: Support multiple pause levels for selective system execution
-status: draft
+status: scrapped
 type: feature
+priority: normal
 created_at: 2026-01-15T18:51:17Z
-updated_at: 2026-01-15T18:51:17Z
+updated_at: 2026-01-17T15:26:38Z
 ---
 
 ## Summary

@@ -3,8 +3,9 @@
 title: Input events should not be queued while sim is paused
 status: todo
 type: bug
+priority: high
 created_at: 2026-01-14T22:21:48Z
-updated_at: 2026-01-14T22:21:48Z
+updated_at: 2026-01-17T15:23:27Z
 ---
 
 Currently, when the sim is paused, input events (keyboard, mouse) are still emitted via `sim.emit.keydown()` etc. and queued in the WASM engine's event buffer.
