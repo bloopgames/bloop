@@ -8,18 +8,18 @@
     "docs"
   ],
   "scripts": {
-    "dev": "bun run --filter '*' dev",
-    "dev:engine": "bun run --filter './packages/engine' dev",
-    "dev:mario": "bun run build:wasm && bun run --filter './games/mario' dev",
-    "ci": "bun run ci:tsc && bun run build:wasm && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
     "build:wasm": "(cd packages/engine && bun run build:wasm)",
+    "dev": "bun run --filter '*' dev",
+    "ci": "bun run ci:tsc && bun run build:wasm && bun test && bun run ci:zig && bun run ci:jsr && bun run ci:build",
     "ci:build": "bun run --filter './packages/*' build",
     "ci:tsc": "bun run --filter '*' ci:tsc",
     "ci:zig": "(cd packages/engine && zig build test)",
     "ci:jsr": "(cd packages/engine && bun run ci:jsr) && (cd packages/bloop && bun run ci:jsr) && (cd packages/web && bun run ci:jsr)",
+    "ci:e2e": "(cd packages/web && bun run test:e2e)",
+    "dev:engine": "bun run --filter './packages/engine' dev",
+    "dev:mario": "bun run build:wasm && bun run --filter './games/mario' dev",
     "publish": "bun bin/publish.ts",
-    "website": "bun bin/website.ts",
-    "stream": "python3 youtube_say.py"
+    "website": "bun bin/website.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

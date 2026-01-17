@@ -41,3 +41,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .zig-cache
 
 packages/engine/wasm/bloop.wasm
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

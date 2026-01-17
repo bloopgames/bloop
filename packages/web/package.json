@@ -24,9 +24,13 @@
   "scripts": {
     "build": "bun build src/mod.ts --outdir=dist --sourcemap=linked --jsx-import-source=preact --jsx-runtime=automatic && bunx tsc -p publish/tsconfig.publish.json",
     "ci:jsr": "bunx jsr publish --dry-run --allow-dirty",
-    "ci:tsc": "tsc --noEmit"
+    "ci:tsc": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {

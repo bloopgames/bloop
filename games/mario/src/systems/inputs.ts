@@ -20,7 +20,8 @@ export const InputsSystem = PhaseSystem("playing", {
       p1.facingDir = 1;
     }
     // P1 Jump
-    const wantsJump = players.get(0).keys.w.down || players.get(0).mouse.left.down;
+    const wantsJump =
+      players.get(0).keys.w.down || players.get(0).mouse.left.down;
     if (wantsJump && p1.grounded) {
       p1.vy = cfg.JUMP_VELOCITY;
       p1.grounded = false;
@@ -39,7 +40,10 @@ export const InputsSystem = PhaseSystem("playing", {
       p2.facingDir = 1;
     }
     // P2 Jump
-    if ((players.get(1).keys.w.down || players.get(1).mouse.left.down) && p2.grounded) {
+    if (
+      (players.get(1).keys.w.down || players.get(1).mouse.left.down) &&
+      p2.grounded
+    ) {
       p2.vy = cfg.JUMP_VELOCITY;
       p2.grounded = false;
     }
