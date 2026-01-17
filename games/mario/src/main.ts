@@ -63,7 +63,9 @@ game.system("recording-watcher", {
         "session started, recording at frame",
         time.frame,
       );
-      // app.sim.record(100_000);
+      if (!app.sim.isRecording && !app.sim.isReplaying) {
+        app.sim.record(100_000);
+      }
     }
   },
 });

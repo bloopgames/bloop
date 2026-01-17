@@ -49,6 +49,12 @@ pub const NetCtx = extern struct {
 
     // Confirmation tracking (offset 144 = 136 + 8)
     confirmed_match_frame: i32 = -1, // Highest frame with all peer inputs (-1 = none)
+
+    // Advantage balancing (offset 148)
+    stall_budget: u8 = 0, // Frames we need to stall to let peers catch up
+    stall_counter: u8 = 0, // Counter for distributed stalling algorithm
+    _stall_pad: [2]u8 = .{ 0, 0 }, // Padding for u32 alignment
+    total_stalls: u32 = 0, // Stats: total frames stalled (for debugging)
 };
 
 pub const MAX_PLAYERS: u8 = 12;
@@ -254,6 +260,23 @@ test "NetCtx rollback stats layout and defaults" {
     try std.testing.expectEqual(@as(usize, 132), @offsetOf(NetCtx, "total_rollbacks"));
     try std.testing.expectEqual(@as(usize, 136), @offsetOf(NetCtx, "frames_resimulated"));
     try std.testing.expectEqual(@as(usize, 144), @offsetOf(NetCtx, "confirmed_match_frame"));
+}
+
+test "NetCtx advantage balancing layout and defaults" {
+    var net_ctx = NetCtx{
+        .peer_count = 0,
+        .match_frame = 0,
+    };
+
+    // Default values should be 0
+    try std.testing.expectEqual(@as(u8, 0), net_ctx.stall_budget);
+    try std.testing.expectEqual(@as(u8, 0), net_ctx.stall_counter);
+    try std.testing.expectEqual(@as(u32, 0), net_ctx.total_stalls);
+
+    // Verify offsets for TypeScript bindings
+    try std.testing.expectEqual(@as(usize, 148), @offsetOf(NetCtx, "stall_budget"));
+    try std.testing.expectEqual(@as(usize, 149), @offsetOf(NetCtx, "stall_counter"));
+    try std.testing.expectEqual(@as(usize, 152), @offsetOf(NetCtx, "total_stalls"));
 }
 
 test "NetCtx rollback stats update" {

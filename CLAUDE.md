@@ -111,6 +111,10 @@ RED → GREEN → REFACTOR. Never write implementation and test in same response
 2. **GREEN**: Minimal code to pass. Run test.
 3. **REFACTOR**: Only after green.
 
+## Tape Repro
+
+When given a tape that reproduces an issue, try running `bin/inspect-tape.ts` to see metadata. You can also load the tape using `loadTape` from the test helpers.
+
 ## Surface Surprises During Plan Execution
 
 When executing with Accept Edits on, if you deviate from the plan (API changes, missing dependencies, type mismatches, unexpected structures), document in summary:
