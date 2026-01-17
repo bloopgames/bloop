@@ -267,4 +267,29 @@ describe("inputs", () => {
       up: false,
     });
   });
+
+  it("does not process input events emitted while paused", async () => {
+    const bloop = Bloop.create({
+      bag: { keyPressed: false },
+    });
+
+    bloop.system("input tracker", {
+      keydown({ bag }) {
+        bag.keyPressed = true;
+      },
+    });
+
+    const { sim } = await mount(bloop);
+    sim.step();
+    expect(bloop.bag.keyPressed).toBe(false);
+
+    // Emit keydown while paused - should be discarded
+    sim.pause();
+    sim.emit.keydown("Space");
+    sim.unpause();
+    sim.step();
+
+    // Key should NOT have been processed
+    expect(bloop.bag.keyPressed).toBe(false);
+  });
 });

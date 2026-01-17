@@ -15,7 +15,7 @@ import {
   TimeContext,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
-import type { Bag } from "./data/bag";
+import type { Bag, Widen } from "./data/bag";
 import type { BloopSchema } from "./data/schema";
 import type {
   BloopEvent,
@@ -65,7 +65,10 @@ export class Bloop<GS extends BloopSchema> {
     // const IM extends InputMap,
     // >(opts: GameOpts<S, RS, B, IM> = {}) {
   >(opts: BloopOpts<B> = {}): Bloop<MakeGS<B>> {
-    return new Bloop<MakeGS<B>>(opts, "dontCallMeDirectly");
+    return new Bloop<MakeGS<B>>(
+      opts as BloopOpts<Widen<B>>,
+      "dontCallMeDirectly",
+    );
   }
 
   /**
@@ -391,4 +394,4 @@ function attachEvent<E extends BloopEvent, GS extends BloopSchema>(
   return context as Context<GS> & { event: E };
 }
 
-type MakeGS<B extends Bag> = BloopSchema<B>;
+type MakeGS<B extends Bag> = BloopSchema<Widen<B>>;
