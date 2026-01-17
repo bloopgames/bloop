@@ -25,6 +25,8 @@ pub const Engine = struct {
     sim: *Sim,
     /// Frame timing accumulator
     accumulator: u32 = 0,
+    /// Consecutive stalls without stepping (for bug detection)
+    consecutive_stalls: u8 = 0,
     /// Allocator for engine resources
     allocator: std.mem.Allocator,
 
@@ -281,20 +283,20 @@ pub const Engine = struct {
             // Advantage balancing: stall if we're too far ahead of peers
             // During replay, peer.seq is updated by replayTapePackets() above,
             // so stalls emerge naturally from the replayed packet timing.
+            //
+            // We use a gentle "tap the brakes" approach: stall at most once
+            // per second (60 frames) to avoid interfering with gameplay.
             // ─────────────────────────────────────────────────────────────
-            const advantage = self.calculateAdvantage();
-            if (advantage >= 1) {
-                // Cap at 255 (u8 max)
-                net.stall_budget = @intCast(@min(advantage, 255));
-            }
-
-            if (self.shouldStall()) {
-                // Consume accumulator time but DON'T step
-                // Frame number stays the same - events will be processed next tick
+            if (self.shouldStallForAdvantage()) {
                 self.accumulator -= hz;
                 net.total_stalls += 1;
+                self.consecutive_stalls += 1;
+                if (self.consecutive_stalls > 5) {
+                    @panic("Stalled 5+ consecutive frames - advantage balancing bug");
+                }
                 continue;
             }
+            self.consecutive_stalls = 0;
 
             // Notify host before each simulation step
             if (self.sim.callbacks.before_frame) |before_frame| {
@@ -950,30 +952,26 @@ pub const Engine = struct {
         return max_advantage;
     }
 
-    /// Check if we should stall this frame based on stall budget.
-    /// Uses distributed stalling algorithm from INVERSUS:
-    /// - Higher budget = more frequent stalls
-    /// - Stalls are spread out to avoid jarring gameplay
-    fn shouldStall(self: *Engine) bool {
+    /// Check if we should stall this frame due to frame advantage.
+    /// Stall at most once per second (60 frames) to avoid disrupting gameplay
+    fn shouldStallForAdvantage(self: *Engine) bool {
         const net = self.sim.net_ctx;
-        if (net.stall_budget == 0) return false;
 
-        // Determine stall frequency based on budget (distribute stalls over time)
-        const period: u8 = switch (net.stall_budget) {
-            1, 2 => 10, // 1 stall per 10 frames
-            3, 4 => 5, // 1 stall per 5 frames
-            5, 6 => 3, // 1 stall per 3 frames
-            7, 8 => 2, // 1 stall per 2 frames
-            else => 1, // stall every frame (catching up)
-        };
-
+        // Increment counter every frame
         net.stall_counter += 1;
-        if (net.stall_counter >= period) {
-            net.stall_counter = 0;
-            net.stall_budget -= 1;
-            return true;
+
+        // Only consider stalling once per 60 frames (once per second at 60fps)
+        if (net.stall_counter < 60) return false;
+
+        // Check if we have significant advantage
+        const advantage = self.calculateAdvantage();
+        if (advantage < 1) {
+            return false;
         }
-        return false;
+
+        // Stall this frame and reset counter
+        net.stall_counter = 0;
+        return true;
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1424,70 +1422,56 @@ test "calculateAdvantage returns correct advantage based on peer.seq" {
     try std.testing.expectEqual(@as(i32, 0), engine.calculateAdvantage());
 }
 
-test "shouldStall returns false when budget is 0" {
+test "shouldStallForAdvantage returns false when not in session" {
     var engine = try Engine.init(std.testing.allocator, 0);
     engine.wireListeners();
     defer engine.deinit();
 
-    // Budget is 0 by default
-    try std.testing.expectEqual(@as(u8, 0), engine.sim.net_ctx.stall_budget);
-    try std.testing.expectEqual(false, engine.shouldStall());
+    // Not in session - should never stall
+    engine.sim.net_ctx.stall_counter = 60; // Would trigger if in session with advantage
+    try std.testing.expectEqual(false, engine.shouldStallForAdvantage());
 }
 
-test "shouldStall distributes stalls based on budget" {
+test "shouldStallForAdvantage only stalls once per 60 frames" {
     var engine = try Engine.init(std.testing.allocator, 0);
     engine.wireListeners();
     defer engine.deinit();
 
-    // Budget = 2 means we stall every 10 frames
-    engine.sim.net_ctx.stall_budget = 2;
+    // Set up session with advantage
+    engine.emit_net_peer_assign_local_id(0);
+    engine.emit_net_peer_join(0);
+    engine.emit_net_peer_join(1);
+    engine.emit_net_session_init();
+    _ = engine.advance(hz); // Process events
 
-    // First 9 calls should not stall (counter goes 1-9)
-    var stall_count: u32 = 0;
-    for (0..10) |_| {
-        if (engine.shouldStall()) stall_count += 1;
-    }
-    // Should have stalled once at counter=10
-    try std.testing.expectEqual(@as(u32, 1), stall_count);
-    // Budget should be decremented to 1
-    try std.testing.expectEqual(@as(u8, 1), engine.sim.net_ctx.stall_budget);
+    // Advance to build up some frames
+    _ = engine.advance(hz * 10);
 
-    // Counter resets after stall, next stall at counter=10
-    stall_count = 0;
-    for (0..10) |_| {
-        if (engine.shouldStall()) stall_count += 1;
-    }
-    try std.testing.expectEqual(@as(u32, 1), stall_count);
-    // Budget should be 0 now
-    try std.testing.expectEqual(@as(u8, 0), engine.sim.net_ctx.stall_budget);
+    // Simulate peer 1 being 5 frames behind (advantage = 5, >= 3 threshold)
+    engine.sim.net_ctx.peers[1].seq = @intCast(engine.getMatchFrame() - 5);
 
-    // With budget=0, shouldStall always returns false
-    try std.testing.expectEqual(false, engine.shouldStall());
-}
-
-test "shouldStall with high budget stalls more frequently" {
-    var engine = try Engine.init(std.testing.allocator, 0);
-    engine.wireListeners();
-    defer engine.deinit();
-
-    // Budget = 9+ means stall every frame
-    engine.sim.net_ctx.stall_budget = 10;
-
-    // Each call should stall and decrement budget
-    try std.testing.expectEqual(true, engine.shouldStall());
-    try std.testing.expectEqual(@as(u8, 9), engine.sim.net_ctx.stall_budget);
-
-    try std.testing.expectEqual(true, engine.shouldStall());
-    try std.testing.expectEqual(@as(u8, 8), engine.sim.net_ctx.stall_budget);
-
-    // Budget = 7-8 means stall every 2 frames
+    // Reset counter
     engine.sim.net_ctx.stall_counter = 0;
-    try std.testing.expectEqual(false, engine.shouldStall()); // counter=1
-    try std.testing.expectEqual(true, engine.shouldStall()); // counter=2, stall!
-    try std.testing.expectEqual(@as(u8, 7), engine.sim.net_ctx.stall_budget); // 8 -> 7 after stall
+
+    // First 59 calls should not stall
+    var stall_count: u32 = 0;
+    for (0..59) |_| {
+        if (engine.shouldStallForAdvantage()) stall_count += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 0), stall_count);
+
+    // 60th call should stall (counter reaches 60)
+    try std.testing.expectEqual(true, engine.shouldStallForAdvantage());
+
+    // Counter should reset, next 59 calls should not stall
+    stall_count = 0;
+    for (0..59) |_| {
+        if (engine.shouldStallForAdvantage()) stall_count += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 0), stall_count);
 }
 
-test "advance stalls when advantage is high" {
+test "shouldStallForAdvantage requires advantage >= 3" {
     var engine = try Engine.init(std.testing.allocator, 0);
     engine.wireListeners();
     defer engine.deinit();
@@ -1497,25 +1481,23 @@ test "advance stalls when advantage is high" {
     engine.emit_net_peer_join(0);
     engine.emit_net_peer_join(1);
     engine.emit_net_session_init();
-    _ = engine.advance(hz); // Process events, now at frame 1
+    _ = engine.advance(hz); // Process events
 
-    // Advance to frame 20
-    _ = engine.advance(hz * 19);
-    const match_frame_before = engine.getMatchFrame();
+    // Advance to build up some frames
+    _ = engine.advance(hz * 10);
+    const match_frame = engine.getMatchFrame();
 
-    // Simulate peer 1 being 10 frames behind (high advantage)
-    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame_before - 10);
+    // Set counter to 60 (would stall if advantage sufficient)
+    engine.sim.net_ctx.stall_counter = 59;
 
-    // Reset stall stats
-    engine.sim.net_ctx.total_stalls = 0;
+    // Peer only 2 frames behind (advantage = 2, below threshold)
+    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame - 2);
+    try std.testing.expectEqual(false, engine.shouldStallForAdvantage());
 
-    // Try to advance - should stall at least once due to high advantage
-    const frames_stepped = engine.advance(hz * 5);
-
-    // With budget=10, we stall every frame (period=1)
-    // So we should have fewer frames stepped than expected
-    try std.testing.expect(frames_stepped < 5);
-    try std.testing.expect(engine.sim.net_ctx.total_stalls > 0);
+    // Peer 3 frames behind (advantage = 3, at threshold)
+    engine.sim.net_ctx.stall_counter = 59;
+    engine.sim.net_ctx.peers[1].seq = @intCast(match_frame - 3);
+    try std.testing.expectEqual(true, engine.shouldStallForAdvantage());
 }
 
 // ─────────────────────────────────────────────────────────────
