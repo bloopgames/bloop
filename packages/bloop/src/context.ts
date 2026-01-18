@@ -2,6 +2,7 @@ import type {
   EnginePointer,
   InputContext,
   NetContext,
+  RandContext,
   ScreenContext,
   TimeContext,
 } from "@bloopjs/engine";
@@ -39,4 +40,6 @@ export type Context<
   net: NetContext;
   /** Screen/viewport dimensions and pixel ratio */
   screen: ScreenContext;
+  /** Deterministic random number generator */
+  rand: RandContext;
 };

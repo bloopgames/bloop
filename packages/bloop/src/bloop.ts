@@ -9,6 +9,8 @@ import {
   NET_CTX_OFFSET,
   NetContext,
   type NetEvent,
+  RAND_CTX_OFFSET,
+  RandContext,
   SCREEN_CTX_OFFSET,
   ScreenContext,
   TIME_CTX_OFFSET,
@@ -54,6 +56,7 @@ export class Bloop<GS extends BloopSchema> {
   #systems: System<GS>[] = [];
   #context: Context<GS>;
   #engineBuffer: ArrayBuffer = new ArrayBuffer(0);
+  #randSeeded = false;
 
   /**
    * Bloop.create() is the way to create a new bloop instance.
@@ -84,6 +87,7 @@ export class Bloop<GS extends BloopSchema> {
     const inputs = new InputContext();
     const net = new NetContext();
     const screen = new ScreenContext();
+    const rand = new RandContext();
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
@@ -92,6 +96,7 @@ export class Bloop<GS extends BloopSchema> {
       rawPointer: -1,
       net,
       screen,
+      rand,
     };
   }
 
@@ -211,6 +216,23 @@ export class Bloop<GS extends BloopSchema> {
           this.#engineBuffer,
           screenCtxPtr,
         );
+      }
+
+      const randCtxPtr = dv.getUint32(RAND_CTX_OFFSET, true);
+      if (
+        this.#context.rand.dataView?.buffer !== this.#engineBuffer ||
+        this.#context.rand.dataView?.byteOffset !== randCtxPtr
+      ) {
+        this.#context.rand.dataView = new DataView(
+          this.#engineBuffer,
+          randCtxPtr,
+        );
+      }
+
+      // Seed the PRNG with Date.now() on first context setup
+      if (!this.#randSeeded) {
+        this.#context.rand.seed(Date.now() & 0xffffffff);
+        this.#randSeeded = true;
       }
     },
 

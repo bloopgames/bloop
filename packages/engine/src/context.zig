@@ -68,6 +68,12 @@ pub const ScreenCtx = extern struct {
     pixel_ratio: f32 = 1.0, // devicePixelRatio
 };
 
+/// Random number generator context
+/// The seed state is exposed to TypeScript which runs mulberry32 algorithm
+pub const RandCtx = extern struct {
+    seed: u32 = 1, // Default seed (TS will override with Date.now() on mount)
+};
+
 pub const KeyCtx = extern struct {
     /// Each byte represents last 8 frames of input
     key_states: [256]u8,

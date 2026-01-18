@@ -104,8 +104,9 @@ pub const VCR = struct {
         // Validate snapshot version
         // v2: added room_code to NetCtx
         // v3: added input_buffer_len for network session tape recording
-        if (snapshot.version < 2 or snapshot.version > 3) {
-            Log.log("Snapshot version mismatch: expected 2 or 3, got {d}", .{snapshot.version});
+        // v4: added rand_ctx for deterministic PRNG
+        if (snapshot.version < 2 or snapshot.version > 4) {
+            Log.log("Snapshot version mismatch: expected 2-4, got {d}", .{snapshot.version});
             return error.UnsupportedVersion;
         }
 
