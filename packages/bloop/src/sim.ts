@@ -276,6 +276,13 @@ export class Sim {
   }
 
   /**
+   * Stop recording the simulation
+   */
+  stopRecording() {
+    this.wasm.stop_recording();
+  }
+
+  /**
    * Get a recording of the current tape to linear memory
    */
   saveTape(): Uint8Array<ArrayBuffer> {

@@ -7,7 +7,6 @@ export function LoadTapeDialog() {
   const [isDragOver, setIsDragOver] = useState(false);
 
   const isOpen = debugState.isLoadDialogOpen.value;
-  const lastTapeName = debugState.lastTapeName.value;
 
   // Sync dialog open/close with signal
   useEffect(() => {
@@ -77,36 +76,63 @@ export function LoadTapeDialog() {
     debugState.onReplayLastTape.value?.();
   }, []);
 
+  const handleReplayLastSaved = useCallback(() => {
+    debugState.onReplayLastSaved.value?.();
+  }, []);
+
+  // Close dialog when clicking on backdrop
+  const handleDialogClick = useCallback(
+    (e: { target: EventTarget | null; currentTarget: EventTarget | null }) => {
+      // If click target is the dialog itself (backdrop), close it
+      if (e.target === e.currentTarget) {
+        debugState.isLoadDialogOpen.value = false;
+      }
+    },
+    [],
+  );
+
   return (
-    <dialog ref={dialogRef} className="load-tape-dialog" onClose={handleClose}>
-      <div className="load-tape-dialog-content">
-        <h3>Load Tape</h3>
-        <div
-          className={`drop-zone ${isDragOver ? "drag-over" : ""}`}
-          onClick={handleDropZoneClick}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <span className="drop-zone-text">
-            Drop .bloop file here
-            <br />
-            or click to browse
-          </span>
+    <dialog
+      ref={dialogRef}
+      className="load-tape-dialog"
+      onClose={handleClose}
+      onClick={handleDialogClick}
+    >
+      {isOpen && (
+        <div className="load-tape-dialog-content">
+          <h3>Load Tape</h3>
+          <div
+            className={`drop-zone ${isDragOver ? "drag-over" : ""}`}
+            onClick={handleDropZoneClick}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <span className="drop-zone-text">
+              Drop .bloop file here
+              <br />
+              or click to browse
+            </span>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".bloop"
+            className="hidden-file-input"
+            onChange={handleFileInputChange}
+          />
+          {debugState.lastSavedTapeName.value && (
+            <button className="replay-last-btn" onClick={handleReplayLastSaved}>
+              Replay last saved tape
+            </button>
+          )}
+          {debugState.lastTapeName.value && (
+            <button className="replay-last-btn" onClick={handleReplayLast}>
+              Replay last loaded: {debugState.lastTapeName.value}
+            </button>
+          )}
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".bloop"
-          className="hidden-file-input"
-          onChange={handleFileInputChange}
-        />
-        {lastTapeName && (
-          <button className="replay-last-btn" onClick={handleReplayLast}>
-            Replay last: {lastTapeName}
-          </button>
-        )}
-      </div>
+      )}
     </dialog>
   );
 }

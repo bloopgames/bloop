@@ -1,3 +1,4 @@
+import { useCallback } from "preact/hooks";
 import { debugState } from "../state.ts";
 
 type TopBarProps = {
@@ -11,8 +12,17 @@ export function TopBar({ leftLabel, rightLabel }: TopBarProps) {
   const rtt = debugState.netStatus.value.rtt;
   const isOnline = debugState.netStatus.value.peers.length > 0;
 
+  const stopPropagation = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+  }, []);
+
   return (
-    <div className="top-bar">
+    <div
+      className="top-bar"
+      onMouseDown={stopPropagation}
+      onMouseUp={stopPropagation}
+      onClick={stopPropagation}
+    >
       <span className="top-bar-side-label">{leftLabel}</span>
       <div className="top-bar-center">
         <div className="top-bar-item">

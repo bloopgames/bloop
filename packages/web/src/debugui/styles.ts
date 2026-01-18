@@ -160,6 +160,7 @@ export const styles = /*css*/ `
   font-family: monospace;
   font-size: 12px;
   padding: 0;
+  user-select: none;
 }
 
 .top-bar-side-label {
@@ -213,6 +214,7 @@ export const styles = /*css*/ `
   justify-content: flex-end;
   background: #111;
   padding: 4px 0;
+  user-select: none;
 }
 
 .right-bar {
@@ -223,6 +225,7 @@ export const styles = /*css*/ `
   justify-content: flex-end;
   background: #111;
   padding: 4px 0;
+  user-select: none;
 }
 
 .vertical-bar {
@@ -231,7 +234,6 @@ export const styles = /*css*/ `
   background: #333;
   border-radius: 2px;
   position: relative;
-  overflow: hidden;
 }
 
 .vertical-bar-fill {
@@ -244,6 +246,37 @@ export const styles = /*css*/ `
   transition: height 0.1s ease-out;
 }
 
+.vertical-bar-popover {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #222;
+  color: #ccc;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: monospace;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.vertical-bar-popover.left {
+  left: calc(100% + 8px);
+}
+
+.vertical-bar-popover.right {
+  right: calc(100% + 8px);
+}
+
+.vertical-bar:hover .vertical-bar-popover {
+  opacity: 1;
+  visibility: visible;
+}
+
 
 .bottom-bar {
   grid-area: bottom-bar;
@@ -253,6 +286,7 @@ export const styles = /*css*/ `
   /* Mobile-first: more padding */
   padding: 0 16px;
   gap: 12px;
+  user-select: none;
 }
 
 /* Desktop: tighter padding */
@@ -270,28 +304,33 @@ export const styles = /*css*/ `
   flex-shrink: 0;
 }
 
-/* Recording indicator - mobile: just the dot */
-.recording-indicator {
-  display: flex;
-  align-items: center;
-  margin-right: 4px;
+/* Record button */
+.record-btn {
+  color: #666;
 }
 
-.recording-indicator .recording-label {
-  display: none;
+.record-btn.recording {
+  color: #ff4444;
 }
 
-.recording-dot {
-  width: 10px;
-  height: 10px;
-  background: #ff4444;
-  border-radius: 50%;
+.record-btn.recording svg {
   animation: recording-pulse 1s ease-in-out infinite;
 }
 
 @keyframes recording-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* Desktop: show REC label when recording */
+@media (min-width: 769px) {
+  .record-btn.recording {
+    width: auto;
+    padding: 0 6px;
+    gap: 4px;
+    background: rgba(255, 68, 68, 0.15);
+    border-radius: 3px;
+  }
 }
 
 /* Replay indicator - mobile: hidden */
@@ -455,6 +494,7 @@ export const styles = /*css*/ `
   position: relative;
   cursor: pointer;
   overflow: hidden;
+  user-select: none;
 }
 
 /* Desktop: smaller seek bar */

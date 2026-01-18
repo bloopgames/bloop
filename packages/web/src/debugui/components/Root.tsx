@@ -61,10 +61,10 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   const snapshotSize = debugState.snapshotSize.value;
   const hmrFlash = debugState.hmrFlash.value;
 
-  // Left bar: frame advantage (online) or frame time % (offline)
+  // Left bar: frame advantage (online) or frame time (offline)
   const leftValue = isOnline ? Math.abs(advantage) : frameTime;
   const leftMax = isOnline ? 10 : 16.67; // 10 frames advantage or 16.67ms budget
-  const leftLabel = isOnline ? "ADV" : "MS";
+  const leftLabel = isOnline ? "adv" : "time";
   const leftColor = isOnline
     ? advantage >= 0
       ? "#4a9eff"
@@ -72,12 +72,20 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
     : frameTime > 16.67
       ? "#ff4a4a"
       : "#4aff4a";
+  const leftDisplayValue = isOnline
+    ? `${advantage >= 0 ? "+" : ""}${advantage} frames`
+    : `${frameTime.toFixed(1)}ms`;
 
   // Right bar: rollback depth (online) or snapshot size (offline)
   // For now, we don't have rollback depth exposed, so use a placeholder
   const rightValue = isOnline ? 0 : snapshotSize;
-  const rightMax = isOnline ? 10 : 10000; // 10k frames rollback or 10KB
-  const rightLabel = isOnline ? "RB" : "KB";
+  const rightMax = isOnline ? 10 : 10000; // 10 frames rollback or 10KB
+  const rightLabel = isOnline ? "rb" : "size";
+  const rightDisplayValue = isOnline
+    ? "0 frames"
+    : snapshotSize >= 1000
+      ? `${(snapshotSize / 1000).toFixed(1)}kb`
+      : `${snapshotSize}b`;
 
   const gameClassName = hmrFlash ? "letterboxed-game hmr-flash" : "letterboxed-game";
 
@@ -89,6 +97,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
         max={leftMax}
         side="left"
         color={leftColor}
+        displayValue={leftDisplayValue}
       />
       <div className={gameClassName}>
         <GameCanvas canvas={canvas} />
@@ -97,6 +106,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
         value={rightValue}
         max={rightMax}
         side="right"
+        displayValue={rightDisplayValue}
       />
       <BottomBar />
     </main>

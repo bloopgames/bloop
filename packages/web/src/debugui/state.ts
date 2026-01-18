@@ -58,9 +58,13 @@ export type DebugState = {
   // Tape loading/saving
   onLoadTape: Signal<((bytes: Uint8Array, fileName: string) => void) | null>;
   onReplayLastTape: Signal<(() => void) | null>;
+  onReplayLastSaved: Signal<(() => void) | null>;
   onSaveTape: Signal<(() => void) | null>;
   lastTapeName: Signal<string | null>;
+  lastSavedTapeName: Signal<string | null>;
   isLoadDialogOpen: Signal<boolean>;
+  // Recording toggle
+  onToggleRecording: Signal<(() => void) | null>;
 };
 
 const layoutMode = signal<LayoutMode>("off");
@@ -97,9 +101,14 @@ const onSeek = signal<((position: number) => void) | null>(null);
 // Tape loading/saving
 const onLoadTape = signal<((bytes: Uint8Array, fileName: string) => void) | null>(null);
 const onReplayLastTape = signal<(() => void) | null>(null);
+const onReplayLastSaved = signal<(() => void) | null>(null);
 const onSaveTape = signal<(() => void) | null>(null);
 const lastTapeName = signal<string | null>(null);
+const lastSavedTapeName = signal<string | null>(null);
 const isLoadDialogOpen = signal(false);
+
+// Recording toggle
+const onToggleRecording = signal<(() => void) | null>(null);
 
 export const debugState: DebugState = {
   /** Layout mode: off, letterboxed, or full */
@@ -152,9 +161,14 @@ export const debugState: DebugState = {
   /** Tape loading/saving */
   onLoadTape,
   onReplayLastTape,
+  onReplayLastSaved,
   onSaveTape,
   lastTapeName,
+  lastSavedTapeName,
   isLoadDialogOpen,
+
+  /** Recording toggle */
+  onToggleRecording,
 };
 
 /** Cycle through layout modes: off -> letterboxed -> full -> off */
@@ -314,10 +328,18 @@ export function wirePlaybarHandlers(app: App): void {
   };
   debugState.onSeek.value = (ratio: number) => {
     if (app.sim.hasHistory) {
+      app.sim.pause();
       const startFrame = debugState.tapeStartFrame.value;
       const frameCount = debugState.tapeFrameCount.value;
       const targetFrame = startFrame + Math.floor(ratio * frameCount);
       app.sim.seek(targetFrame);
+    }
+  };
+  debugState.onToggleRecording.value = () => {
+    if (app.sim.isRecording) {
+      app.sim.stopRecording();
+    } else {
+      app.sim.record();
     }
   };
 }
@@ -342,7 +364,8 @@ export function wireTapeDragDrop(canvas: HTMLCanvasElement, app: App): void {
 // IndexedDB helpers for tape persistence
 const TAPE_DB_NAME = "bloop-debug";
 const TAPE_STORE_NAME = "tapes";
-const TAPE_KEY = "last";
+const TAPE_KEY_LOADED = "last-loaded";
+const TAPE_KEY_SAVED = "last-saved";
 
 function openTapeDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -358,17 +381,18 @@ function openTapeDB(): Promise<IDBDatabase> {
 async function saveTapeToStorage(
   bytes: Uint8Array,
   fileName: string,
+  key: string = TAPE_KEY_LOADED,
 ): Promise<void> {
   const db = await openTapeDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TAPE_STORE_NAME, "readwrite");
-    tx.objectStore(TAPE_STORE_NAME).put({ bytes, fileName }, TAPE_KEY);
+    tx.objectStore(TAPE_STORE_NAME).put({ bytes, fileName }, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
 }
 
-async function loadTapeFromStorage(): Promise<{
+async function loadTapeFromStorage(key: string = TAPE_KEY_LOADED): Promise<{
   bytes: Uint8Array;
   fileName: string;
 } | null> {
@@ -376,7 +400,7 @@ async function loadTapeFromStorage(): Promise<{
     const db = await openTapeDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(TAPE_STORE_NAME, "readonly");
-      const request = tx.objectStore(TAPE_STORE_NAME).get(TAPE_KEY);
+      const request = tx.objectStore(TAPE_STORE_NAME).get(key);
       request.onsuccess = () => resolve(request.result ?? null);
       request.onerror = () => reject(request.error);
     });
@@ -385,37 +409,54 @@ async function loadTapeFromStorage(): Promise<{
   }
 }
 
-/** Check for saved tape and update lastTapeName signal */
+/** Check for saved tapes and update signals */
 export async function checkForSavedTape(): Promise<void> {
-  const saved = await loadTapeFromStorage();
-  debugState.lastTapeName.value = saved?.fileName ?? null;
+  const [loaded, saved] = await Promise.all([
+    loadTapeFromStorage(TAPE_KEY_LOADED),
+    loadTapeFromStorage(TAPE_KEY_SAVED),
+  ]);
+  debugState.lastTapeName.value = loaded?.fileName ?? null;
+  debugState.lastSavedTapeName.value = saved?.fileName ?? null;
 }
 
 /** Wire up tape loading handlers */
 export function wireTapeLoadHandlers(app: App): void {
   debugState.onLoadTape.value = async (bytes: Uint8Array, fileName: string) => {
     app.loadTape(bytes);
-    await saveTapeToStorage(bytes, fileName);
+    await saveTapeToStorage(bytes, fileName, TAPE_KEY_LOADED);
     debugState.lastTapeName.value = fileName;
     debugState.isLoadDialogOpen.value = false;
   };
 
   debugState.onReplayLastTape.value = async () => {
-    const saved = await loadTapeFromStorage();
+    const saved = await loadTapeFromStorage(TAPE_KEY_LOADED);
     if (saved) {
       app.loadTape(saved.bytes);
       debugState.isLoadDialogOpen.value = false;
     }
   };
 
-  debugState.onSaveTape.value = () => {
+  debugState.onReplayLastSaved.value = async () => {
+    const saved = await loadTapeFromStorage(TAPE_KEY_SAVED);
+    if (saved) {
+      app.loadTape(saved.bytes);
+      debugState.isLoadDialogOpen.value = false;
+    }
+  };
+
+  debugState.onSaveTape.value = async () => {
     if (!app.sim.hasHistory) return;
     const tape = app.sim.saveTape();
+    const fileName = `tape-${Date.now()}.bloop`;
+    // Persist to IndexedDB for later replay
+    await saveTapeToStorage(tape, fileName, TAPE_KEY_SAVED);
+    debugState.lastSavedTapeName.value = fileName;
+    // Download
     const blob = new Blob([tape], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `tape-${Date.now()}.bloop`;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -6,6 +6,11 @@ import { LoadTapeDialog } from "./LoadTapeDialog.tsx";
 const iconProps = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "currentColor" };
 
 const Icons = {
+  record: (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  ),
   jumpBack: (
     <svg {...iconProps}>
       <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
@@ -171,15 +176,32 @@ export function BottomBar() {
     debugState.onSaveTape.value?.();
   }, []);
 
+  const handleToggleRecording = useCallback(() => {
+    debugState.onToggleRecording.value?.();
+  }, []);
+
+  const stopPropagation = useCallback((e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+  }, []);
+
   return (
-    <div className="bottom-bar">
+    <div
+      className="bottom-bar"
+      onMouseDown={stopPropagation}
+      onMouseUp={stopPropagation}
+      onClick={stopPropagation}
+    >
       <div className="playbar-controls">
-        {isRecording && (
-          <span className="recording-indicator" title="Recording">
-            <span className="recording-dot" />
-            <span className="recording-label">REC</span>
+        <button
+          className={`playbar-btn record-btn ${isRecording ? "recording" : ""}`}
+          onClick={handleToggleRecording}
+        >
+          {Icons.record}
+          {isRecording && <span className="btn-label">REC</span>}
+          <span className="tooltip tooltip-left">
+            {isRecording ? "Stop recording" : "Start recording"}
           </span>
-        )}
+        </button>
         {isReplaying && (
           <span className="replay-indicator" title="Replaying tape">
             REPLAY
