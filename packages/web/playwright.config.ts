@@ -24,10 +24,11 @@ export default defineConfig({
         launchOptions: {
           args: [
             "--headless=new",
+            "--enable-gpu",
             "--use-gl=angle",
-            "--use-angle=swiftshader",
+            "--use-angle=metal",
             "--enable-unsafe-webgpu",
-            "--enable-features=Vulkan",
+            "--enable-features=Vulkan,UseSkiaRenderer",
             "--ignore-gpu-blocklist",
           ],
         },

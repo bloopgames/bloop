@@ -118,7 +118,10 @@ function GameCanvas({ canvas }: { canvas: HTMLCanvasElement }) {
 
   useEffect(() => {
     const container = containerRef.current;
-    if (container && !container.contains(canvas)) {
+    // Only append if the canvas isn't already attached elsewhere in the document.
+    // External canvases (e.g., for E2E testing) should stay in light DOM to avoid
+    // WebGPU issues with Shadow DOM in headless Chrome.
+    if (container && !container.contains(canvas) && !canvas.parentElement) {
       container.appendChild(canvas);
     }
 

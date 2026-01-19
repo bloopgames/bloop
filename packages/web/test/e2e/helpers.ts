@@ -1,7 +1,7 @@
-import { type Page } from "@playwright/test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Page } from "@playwright/test";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,13 +33,15 @@ export async function waitForApp(page: Page, timeout = 10000): Promise<void> {
   await page.waitForFunction(
     () => {
       const app = (window as any).__BLOOP_APP__;
-      return app && app.sim && app.game && app.sim.time.frame >= 1 && app.canvas;
+      return (
+        app && app.sim && app.game && app.sim.time.frame >= 1 && app.canvas
+      );
     },
     { timeout },
   );
 
   // Wait for assets to load - fixed timeout is simple and reliable
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(2000);
 
   // Seek and pause for deterministic starting point
   await page.evaluate(() => {

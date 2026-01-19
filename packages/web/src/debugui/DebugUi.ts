@@ -10,6 +10,8 @@ export type DebugUiOptions = {
   initiallyVisible?: boolean;
   /** Container element to mount to (default: document.body) */
   container?: HTMLElement;
+  /** External canvas element to use (for E2E testing with WebGPU in headless mode) */
+  canvas?: HTMLCanvasElement;
 };
 
 export class DebugUi {
@@ -49,8 +51,8 @@ export class DebugUi {
     // Initialize state
     debugState.layoutMode.value = initiallyVisible ? "letterboxed" : "off";
 
-    // Create canvas element (game renders here)
-    this.#canvas = document.createElement("canvas");
+    // Use provided canvas or create a new one (game renders here)
+    this.#canvas = options.canvas ?? document.createElement("canvas");
 
     // Render Preact app
     this.#render();
