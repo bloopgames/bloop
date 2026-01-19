@@ -74,6 +74,7 @@ pub fn main() !void {
         try writeStructOffsets(&writer, Context.PeerCtx, "PEER_CTX");
         try writeStructOffsets(&writer, Context.NetCtx, "NET_CTX");
         try writeStructOffsets(&writer, Context.ScreenCtx, "SCREEN_CTX");
+        try writeStructOffsets(&writer, Context.RandCtx, "RAND_CTX");
         try writeStructOffsets(&writer, Context.MouseCtx, "MOUSE_CTX");
         try writeStructOffsets(&writer, Context.KeyCtx, "KEY_CTX");
         try writeStructOffsets(&writer, Context.PlayerInputs, "PLAYER_INPUTS");

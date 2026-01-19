@@ -5,20 +5,20 @@
 **Goal:** Start streaming, get initial content up, begin star outreach
 
 ### Must Haves
-- [ ] Design and document the user-facing netcode API
-- [ ] Put up a v0 documentation website
-- [ ] Fix mario demo on mobile
-- [ ] Do first stream
-- [ ] Fix known bugs (tape playback perf, input buffer replication)
+- [x] Design and document the user-facing netcode API
+- [x] Put up a v0 documentation website
+- [x] Fix mario demo on mobile
+- [x] Do first stream
+- [x] Fix known bugs (tape playback perf, input buffer replication)
 
 ### Nice to Haves
 - [ ] Snake game documentation (before/after)
 - [ ] Make room codes real
 
 ### Marketing
-- [ ] Initial GIF of development in README
+- [x] Initial GIF of development in README
 - [ ] Initial video in README
-- [ ] Reach out to people Thursday for GitHub stars
+- [x] Reach out to people Thursday for GitHub stars
 
 ---
 

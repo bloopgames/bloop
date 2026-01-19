@@ -119,10 +119,12 @@ pub const Snapshot = extern struct {
     net_len: u32,
     events_len: u32,
     input_buffer_len: u32, // v3: length of input buffer snapshot data (0 for v2 compatibility)
+    rand_len: u32, // v4: length of rand context
     time: Ctx.TimeCtx,
     inputs: Ctx.InputCtx,
     net: Ctx.NetCtx,
     events: EventBuffer,
+    rand: Ctx.RandCtx,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -134,16 +136,18 @@ pub const Snapshot = extern struct {
         const bytes = try alloc.alignedAlloc(u8, alignment, @sizeOf(Snapshot) + total_variable_len);
 
         const snapshot: *Snapshot = @ptrCast(bytes.ptr);
-        snapshot.*.version = 3;
+        snapshot.*.version = 4;
         snapshot.*.time_len = @sizeOf(Ctx.TimeCtx);
         snapshot.*.input_len = @sizeOf(Ctx.InputCtx);
         snapshot.*.events_len = @sizeOf(EventBuffer);
         snapshot.*.net_len = @sizeOf(Ctx.NetCtx);
+        snapshot.*.rand_len = @sizeOf(Ctx.RandCtx);
         snapshot.*.user_data_len = user_data_len;
         snapshot.*.input_buffer_len = input_buffer_len;
         snapshot.*.engine_data_len = @sizeOf(Snapshot);
         snapshot.*.time = Ctx.TimeCtx{ .frame = 0, .dt_ms = 0, .total_ms = 0 };
         snapshot.*.net = Ctx.NetCtx{ .peer_count = 0, .match_frame = 0, .session_start_frame = 0 };
+        snapshot.*.rand = Ctx.RandCtx{};
 
         return snapshot;
     }
@@ -197,6 +201,17 @@ pub const Snapshot = extern struct {
 
         std.mem.writeInt(u32, out[net_len_offset .. net_len_offset + 4], size, .little);
         @memcpy(out[net_offset .. net_offset + size], std.mem.asBytes(net_ctx));
+    }
+
+    pub fn write_rand(self: *Snapshot, rand_ptr: EnginePointer) void {
+        const out: [*]u8 = @ptrCast(self);
+        const rand_ctx: *const Ctx.RandCtx = @ptrFromInt(rand_ptr);
+        const rand_len_offset = @offsetOf(Snapshot, "rand_len");
+        const rand_offset = @offsetOf(Snapshot, "rand");
+        const size = @sizeOf(Ctx.RandCtx);
+
+        std.mem.writeInt(u32, out[rand_len_offset .. rand_len_offset + 4], size, .little);
+        @memcpy(out[rand_offset .. rand_offset + size], std.mem.asBytes(rand_ctx));
     }
 
     pub fn user_data(self: *Snapshot) []u8 {
@@ -546,7 +561,7 @@ pub const Tape = struct {
 test "snapshot headers with no user data" {
     const snapshot = try Snapshot.init(std.testing.allocator, 0, 0);
     defer snapshot.deinit(std.testing.allocator);
-    try std.testing.expectEqual(3, snapshot.version);
+    try std.testing.expectEqual(4, snapshot.version);
     try std.testing.expectEqual(@sizeOf(Ctx.TimeCtx), snapshot.time_len);
     try std.testing.expectEqual(@sizeOf(Ctx.InputCtx), snapshot.input_len);
     try std.testing.expectEqual(@sizeOf(EventBuffer), snapshot.events_len);

@@ -10,6 +10,7 @@ const InputCtx = Ctx.InputCtx;
 const NetCtx = Ctx.NetCtx;
 const NetStatus = Ctx.NetStatus;
 const ScreenCtx = Ctx.ScreenCtx;
+const RandCtx = Ctx.RandCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const EventType = Events.EventType;
@@ -55,6 +56,8 @@ pub const Sim = struct {
     net_ctx: *NetCtx,
     /// Screen/viewport context for rendering dimensions
     screen_ctx: *ScreenCtx,
+    /// Random number generator context (seed stored here, algorithm runs in TS)
+    rand_ctx: *RandCtx,
 
     // ─────────────────────────────────────────────────────────────
     // Tick Listeners (for Engine coordination)
@@ -92,6 +95,10 @@ pub const Sim = struct {
         const screen_ctx = try allocator.create(ScreenCtx);
         screen_ctx.* = .{};
 
+        // Allocate RandCtx (TS will seed with Date.now() on first use)
+        const rand_ctx = try allocator.create(RandCtx);
+        rand_ctx.* = .{};
+
         return Sim{
             .time = time,
             .inputs = inputs,
@@ -99,6 +106,7 @@ pub const Sim = struct {
             .input_buffer = input_buffer,
             .net_ctx = net_ctx,
             .screen_ctx = screen_ctx,
+            .rand_ctx = rand_ctx,
             .allocator = allocator,
             .ctx_ptr = ctx_ptr,
         };
@@ -111,6 +119,7 @@ pub const Sim = struct {
         self.allocator.destroy(self.events);
         self.allocator.destroy(self.net_ctx);
         self.allocator.destroy(self.screen_ctx);
+        self.allocator.destroy(self.rand_ctx);
     }
 
     /// Get current user data length from callback (or 0 if no callback set)
@@ -213,6 +222,7 @@ pub const Sim = struct {
         snap.write_inputs(@intFromPtr(self.inputs));
         snap.write_events(@intFromPtr(self.events));
         snap.write_net(@intFromPtr(self.net_ctx));
+        snap.write_rand(@intFromPtr(self.rand_ctx));
 
         if (snap.user_data_len > 0) {
             if (self.callbacks.user_serialize) |serialize| {
@@ -239,6 +249,7 @@ pub const Sim = struct {
         @memcpy(std.mem.asBytes(self.inputs), std.mem.asBytes(&snapshot.inputs));
         @memcpy(std.mem.asBytes(self.events), std.mem.asBytes(&snapshot.events));
         @memcpy(std.mem.asBytes(self.net_ctx), std.mem.asBytes(&snapshot.net));
+        @memcpy(std.mem.asBytes(self.rand_ctx), std.mem.asBytes(&snapshot.rand));
 
         if (snapshot.user_data_len > 0) {
             if (self.callbacks.user_deserialize) |deserialize| {
