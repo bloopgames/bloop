@@ -20,14 +20,15 @@ export default defineConfig({
     {
       name: "chromium",
       use: {
+        // headless: false,
         ...devices["Desktop Chrome"],
         launchOptions: {
           args: [
             "--headless=new",
+            "--enable-gpu",
             "--use-gl=angle",
-            "--use-angle=swiftshader",
+            "--use-angle=metal",
             "--enable-unsafe-webgpu",
-            "--enable-features=Vulkan",
             "--ignore-gpu-blocklist",
           ],
         },

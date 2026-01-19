@@ -3,8 +3,9 @@
 title: Audit silent failures in engine
 status: todo
 type: task
+priority: low
 created_at: 2025-12-17T23:15:42Z
-updated_at: 2025-12-17T23:15:42Z
+updated_at: 2026-01-19T17:07:32Z
 ---
 
 Audit the engine codebase for silent failure patterns that should crash during development:
