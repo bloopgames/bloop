@@ -91,7 +91,7 @@ it("test name", async () => {
 
 ### E2E Testing
 
-Smoke tests only—slow (~5-10s each). One test checking multiple things > multiple similar tests. Assert on screenshots, not internal JS state. Use `window.__BLOOP_APP__` only when visual assertions aren't practical. Target: suite < 20s on CI.
+Smoke tests only—slow (~5-10s each). One test checking multiple things > multiple similar tests. Assert on screenshots, not internal JS state. Use `window.__BLOOP_APP__` only when visual assertions aren't practical. Target: suite < 20s. Run these locally before committing (CI disabled).
 
 Run: `bun run ci:e2e`
 

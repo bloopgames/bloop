@@ -69,25 +69,50 @@ export async function waitForFrames(page: Page, count: number): Promise<void> {
   );
 }
 
+type AdvanceInputs = {
+  keys?: string[];
+  mouse?: { x: number; y: number };
+};
+
 /**
  * Advance the sim by the specified number of frames from current position and pause.
  * This is deterministic - always advances exactly N frames.
+ *
+ * Optionally emit inputs immediately after unpause (before any frames process).
+ * This is needed because inputs are dropped while the sim is paused.
  */
-export async function advanceFrames(page: Page, count: number): Promise<void> {
-  await page.evaluate((frameCount) => {
-    const app = (window as any).__BLOOP_APP__;
-    if (!app) throw new Error("__BLOOP_APP__ not found");
+export async function advanceFrames(
+  page: Page,
+  count: number,
+  inputs?: AdvanceInputs,
+): Promise<void> {
+  await page.evaluate(
+    ({ frameCount, inputs }) => {
+      const app = (window as any).__BLOOP_APP__;
+      if (!app) throw new Error("__BLOOP_APP__ not found");
 
-    const targetFrame = app.sim.time.frame + frameCount;
+      const targetFrame = app.sim.time.frame + frameCount;
 
-    // Set target frame - App.ts will auto-pause when reached
-    (window as any).__BLOOP_TARGET_FRAME = targetFrame;
+      // Set target frame - App.ts will auto-pause when reached
+      (window as any).__BLOOP_TARGET_FRAME = targetFrame;
 
-    // Unpause if paused so we can advance to target
-    if (app.sim.isPaused) {
-      app.sim.unpause();
-    }
-  }, count);
+      // Unpause if paused so we can advance to target
+      if (app.sim.isPaused) {
+        app.sim.unpause();
+      }
+
+      // Emit inputs immediately after unpause, before any frames process
+      if (inputs?.mouse) {
+        app.sim.emit.mousemove(inputs.mouse.x, inputs.mouse.y);
+      }
+      if (inputs?.keys) {
+        for (const key of inputs.keys) {
+          app.sim.emit.keydown(key);
+        }
+      }
+    },
+    { frameCount: count, inputs },
+  );
 
   // Wait for sim to pause (afterFrame handler will pause at target)
   await page.waitForFunction(

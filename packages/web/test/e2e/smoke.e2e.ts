@@ -2,12 +2,9 @@ import { expect, test } from "@playwright/test";
 import {
   advanceFrames,
   FileModifier,
-  keyDown,
-  keyUp,
   loadTape,
   saveTape,
   waitForApp,
-  waitForFrames,
 } from "./helpers";
 
 const CONFIG_PATH = "games/hello/src/config.ts";
@@ -25,24 +22,16 @@ test("game loads and responds to input", async ({ page }) => {
   await expect(page).toHaveScreenshot("01-initial.png", SCREENSHOT_OPTIONS);
 
   // Move mouse and verify cursor rect appears
-  const canvas = page.locator("canvas");
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("Canvas not found");
-
-  await page.mouse.move(box.x + 200, box.y + 200);
-  await advanceFrames(page, 5);
+  // Pass inputs to advanceFrames since inputs are dropped while paused
+  await advanceFrames(page, 5, { mouse: { x: 200, y: 200 } });
   await expect(page).toHaveScreenshot("02-mouse-moved.png", SCREENSHOT_OPTIONS);
 
   // Press 'd' to move player right
-  await keyDown(page, "d");
-  await advanceFrames(page, 10);
-  await keyUp(page, "d");
+  await advanceFrames(page, 10, { keys: ["KeyD"] });
   await expect(page).toHaveScreenshot("03-moved-right.png", SCREENSHOT_OPTIONS);
 
   // Press 'w' to move player up
-  await keyDown(page, "w");
-  await advanceFrames(page, 10);
-  await keyUp(page, "w");
+  await advanceFrames(page, 10, { keys: ["KeyW"] });
   await expect(page).toHaveScreenshot("04-moved-up.png", SCREENSHOT_OPTIONS);
 });
 
@@ -54,9 +43,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     await waitForApp(page); // App is now paused
 
     // Move player to a known position
-    await keyDown(page, "d");
-    await advanceFrames(page, 10);
-    await keyUp(page, "d");
+    await advanceFrames(page, 10, { keys: ["KeyD"] });
 
     // Capture pre-HMR state and record frame number
     await advanceFrames(page, 2);
@@ -102,20 +89,18 @@ test("HMR preserves state and input handling", async ({ page }) => {
     const box = await canvas.boundingBox();
     if (!box) throw new Error("Canvas not found");
 
-    // Seek to pre-HMR frame + 1 and set mouse position directly for deterministic state
+    // Seek to pre-HMR frame and pause for deterministic state
     await page.evaluate(
-      ({ targetFrame, mouseX, mouseY }) => {
+      (targetFrame) => {
         const app = (window as any).__BLOOP_APP__;
         app.sim.seek(targetFrame);
         app.sim.pause();
-        // Directly emit mouse event to ensure it's captured
-        app.sim.emit.mousemove(mouseX, mouseY);
       },
-      { targetFrame: preHmrFrame, mouseX: 50, mouseY: box.height - 50 },
+      preHmrFrame,
     );
 
-    // Advance one frame to process the mouse event
-    await advanceFrames(page, 1);
+    // Advance one frame with mouse position (inputs dropped while paused, must pass to advanceFrames)
+    await advanceFrames(page, 1, { mouse: { x: 50, y: box.height - 50 } });
 
     // Circle should be larger but in same position (HMR preserved state)
     await expect(page).toHaveScreenshot(
@@ -124,8 +109,7 @@ test("HMR preserves state and input handling", async ({ page }) => {
     );
 
     // Verify mouse input still works after HMR - move mouse and advance frames
-    await page.mouse.move(box.x + 300, box.y + 300);
-    await advanceFrames(page, 3);
+    await advanceFrames(page, 3, { mouse: { x: 300, y: 300 } });
     await expect(page).toHaveScreenshot(
       "07-mouse-after-hmr.png",
       HMR_SCREENSHOT_OPTIONS,
@@ -141,13 +125,8 @@ test("tape save and replay", async ({ page }) => {
   await waitForApp(page); // App is now paused
 
   // Move player around to create interesting tape
-  await keyDown(page, "d");
-  await advanceFrames(page, 15);
-  await keyUp(page, "d");
-
-  await keyDown(page, "w");
-  await advanceFrames(page, 15);
-  await keyUp(page, "w");
+  await advanceFrames(page, 15, { keys: ["KeyD"] });
+  await advanceFrames(page, 15, { keys: ["KeyW"] });
 
   // Capture final position
   await expect(page).toHaveScreenshot(
