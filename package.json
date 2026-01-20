@@ -18,6 +18,7 @@
     "ci:e2e": "(cd packages/web && bun run test:e2e)",
     "dev:engine": "bun run --filter './packages/engine' dev",
     "dev:mario": "bun run build:wasm && bun run --filter './games/mario' dev",
+    "dev:docs": "bun run --filter './docs' start",
     "publish": "bun bin/publish.ts",
     "website": "bun bin/website.ts"
   },

@@ -10,6 +10,8 @@ export type DebugUiOptions = {
   initiallyVisible?: boolean;
   /** Container element to mount to (default: document.body) */
   container?: HTMLElement;
+  /** External canvas element to use (preserves user CSS via slot projection) */
+  canvas?: HTMLCanvasElement;
 };
 
 export class DebugUi {
@@ -49,8 +51,11 @@ export class DebugUi {
     // Initialize state
     debugState.layoutMode.value = initiallyVisible ? "letterboxed" : "off";
 
-    // Create canvas element (game renders here)
-    this.#canvas = document.createElement("canvas");
+    // Use provided canvas or create new one
+    this.#canvas = options.canvas ?? document.createElement("canvas");
+
+    // Append canvas to host element (light DOM) for slot projection
+    this.#host.appendChild(this.#canvas);
 
     // Render Preact app
     this.#render();
@@ -68,10 +73,7 @@ export class DebugUi {
   }
 
   #render(): void {
-    render(
-      Root({ canvas: this.#canvas, hotkey: this.#hotkey }),
-      this.#mountPoint,
-    );
+    render(Root({ hotkey: this.#hotkey }), this.#mountPoint);
   }
 
   #setupHotkey(): () => void {

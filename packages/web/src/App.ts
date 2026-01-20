@@ -39,6 +39,8 @@ export type StartOptions = {
   debugUi?: boolean | DebugUiOptions;
   /** Tape recording options */
   tape?: MountOptions["tape"];
+  /** External canvas element to use (preserves user CSS via slot projection) */
+  canvas?: HTMLCanvasElement;
 };
 
 const DEFAULT_BROKER_URL = "wss://webrtc-divine-glade-8064.fly.dev/ws";
@@ -55,9 +57,11 @@ export async function start(opts: StartOptions): Promise<App> {
 
   const debugOpts = opts.debugUi
     ? typeof opts.debugUi === "boolean"
-      ? { initiallyVisible: true }
-      : opts.debugUi
-    : undefined;
+      ? { initiallyVisible: true, canvas: opts.canvas }
+      : { ...opts.debugUi, canvas: opts.canvas ?? opts.debugUi.canvas }
+    : opts.canvas
+      ? { canvas: opts.canvas }
+      : undefined;
 
   const app = new App(
     opts.sim,

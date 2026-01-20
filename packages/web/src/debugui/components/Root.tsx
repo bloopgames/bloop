@@ -1,4 +1,3 @@
-import { useRef, useEffect } from "preact/hooks";
 import { debugState } from "../state.ts";
 import { Stats } from "./Stats.tsx";
 import { Logs } from "./Logs.tsx";
@@ -8,18 +7,17 @@ import { VerticalBar } from "./VerticalBar.tsx";
 import { BottomBar } from "./BottomBar.tsx";
 
 type RootProps = {
-  canvas: HTMLCanvasElement;
   hotkey?: string;
 };
 
-export function Root({ canvas, hotkey = "Escape" }: RootProps) {
+export function Root({ hotkey = "Escape" }: RootProps) {
   const layoutMode = debugState.layoutMode.value;
 
   if (layoutMode === "off") {
     return (
       <>
         <main className="fullscreen">
-          <GameCanvas canvas={canvas} />
+          <CanvasSlot />
         </main>
         <DebugToggle hotkey={hotkey} />
       </>
@@ -29,7 +27,7 @@ export function Root({ canvas, hotkey = "Escape" }: RootProps) {
   if (layoutMode === "letterboxed") {
     return (
       <>
-        <LetterboxedLayout canvas={canvas} />
+        <LetterboxedLayout />
         <DebugToggle hotkey={hotkey} />
       </>
     );
@@ -40,7 +38,7 @@ export function Root({ canvas, hotkey = "Escape" }: RootProps) {
     <>
       <main className="layout">
         <section className="game">
-          <GameCanvas canvas={canvas} />
+          <CanvasSlot />
         </section>
         <section className="stats">
           <Stats />
@@ -54,7 +52,7 @@ export function Root({ canvas, hotkey = "Escape" }: RootProps) {
   );
 }
 
-function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
+function LetterboxedLayout() {
   const isOnline = debugState.netStatus.value.peers.length > 0;
   const advantage = debugState.advantage.value ?? 0;
   const frameTime = debugState.frameTime.value;
@@ -100,7 +98,7 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
         displayValue={leftDisplayValue}
       />
       <div className={gameClassName}>
-        <GameCanvas canvas={canvas} />
+        <CanvasSlot />
       </div>
       <VerticalBar
         value={rightValue}
@@ -113,19 +111,10 @@ function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   );
 }
 
-function GameCanvas({ canvas }: { canvas: HTMLCanvasElement }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (container && !container.contains(canvas)) {
-      container.appendChild(canvas);
-    }
-
-    return () => {
-      // Don't remove canvas on cleanup - it may need to persist
-    };
-  }, [canvas]);
-
-  return <div className="canvas-container" ref={containerRef} />;
+function CanvasSlot() {
+  return (
+    <div className="canvas-container">
+      <slot />
+    </div>
+  );
 }

@@ -72,6 +72,19 @@
         "vite": "^7.2.2",
       },
     },
+    "games/snake": {
+      "name": "snake",
+      "version": "0.0.0",
+      "dependencies": {
+        "@bloopjs/bloop": "workspace:*",
+        "@bloopjs/toodle": "^0.1.3",
+        "@bloopjs/web": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "~5.9.3",
+        "vite": "^7.2.2",
+      },
+    },
     "packages/bloop": {
       "name": "@bloopjs/bloop",
       "version": "0.0.0",
@@ -2234,6 +2247,8 @@
 
     "slash": ["slash@3.0.0", "", {}, "sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q=="],
 
+    "snake": ["snake@workspace:games/snake"],
+
     "snake-case": ["snake-case@3.0.4", "", { "dependencies": { "dot-case": "^3.0.4", "tslib": "^2.0.3" } }, "sha512-LAOh4z89bGQvl9pFfNF8V146i7o7/CqFPbqzYgP+yYzDIDeS9HaNFtXABamRW+AQzEVODcvE79ljJ+8a9YSdMg=="],
 
     "sockjs": ["sockjs@0.3.24", "", { "dependencies": { "faye-websocket": "^0.11.3", "uuid": "^8.3.2", "websocket-driver": "^0.7.4" } }, "sha512-GJgLTZ7vYb/JtPSSZ10hsOYIvEYsjbNU+zPdIHcUaWVNUEPivzxku31865sSSud0Da0W4lEeOPlmw93zLQchuQ=="],
@@ -2769,6 +2784,8 @@
     "serve-index/http-errors": ["http-errors@1.6.3", "", { "dependencies": { "depd": "~1.1.2", "inherits": "2.0.3", "setprototypeof": "1.1.0", "statuses": ">= 1.4.0 < 2" } }, "sha512-lks+lVC8dgGyh97jxvxeYTWQFvh4uw4yC12gVl63Cg30sjPX4wuGcdkICVXDAESr6OJGjqGA8Iz5mkeN6zlD7A=="],
 
     "sitemap/@types/node": ["@types/node@17.0.45", "", {}, "sha512-w+tIMs3rq2afQdsPJlODhoUEKzFP1ayaoyl1CcnwtIlsVe7K7bA1NGm4s3PraqTLlXnbIN84zuBlxBWo1u9BLw=="],
+
+    "snake/@bloopjs/toodle": ["@bloopjs/toodle@0.1.3", "", { "dependencies": { "webgpu-utils": "^1.9.3", "wgpu-matrix": "^3.3.0", "wgsl_reflect": "^1.0.14" }, "peerDependencies": { "typescript": "^5.7.2" } }, "sha512-XAKy3g7dabwFZwUDKcpGx+HM7nqLGIn5Jlkmyddhi0geNXIFMJ+uAYlLT1AAi0wGabqLj6i3RM9mdwjwuiNMEg=="],
 
     "source-map-support/source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 

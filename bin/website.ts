@@ -10,7 +10,7 @@ const gamesDir = path.join(rootDir, "games");
 const docsDir = path.join(rootDir, "docs");
 
 // Games to deploy (folder names under games/)
-const games = ["buzzer", "mario"];
+const games = ["buzzer", "snake", "mario"];
 
 async function main() {
   const isDryRun = process.argv.includes("--dry-run");
