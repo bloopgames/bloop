@@ -54,9 +54,6 @@ export class DebugUi {
     // Use provided canvas or create new one
     this.#canvas = options.canvas ?? document.createElement("canvas");
 
-    // Append canvas to host element (light DOM) for slot projection
-    this.#host.appendChild(this.#canvas);
-
     // Render Preact app
     this.#render();
 
@@ -73,7 +70,7 @@ export class DebugUi {
   }
 
   #render(): void {
-    render(Root({ hotkey: this.#hotkey }), this.#mountPoint);
+    render(Root({ canvas: this.#canvas, hotkey: this.#hotkey }), this.#mountPoint);
   }
 
   #setupHotkey(): () => void {

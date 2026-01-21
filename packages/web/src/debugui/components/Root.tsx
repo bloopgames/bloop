@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "preact/hooks";
 import { debugState } from "../state.ts";
 import { Stats } from "./Stats.tsx";
 import { Logs } from "./Logs.tsx";
@@ -7,17 +8,18 @@ import { VerticalBar } from "./VerticalBar.tsx";
 import { BottomBar } from "./BottomBar.tsx";
 
 type RootProps = {
+  canvas: HTMLCanvasElement;
   hotkey?: string;
 };
 
-export function Root({ hotkey = "Escape" }: RootProps) {
+export function Root({ canvas, hotkey = "Escape" }: RootProps) {
   const layoutMode = debugState.layoutMode.value;
 
   if (layoutMode === "off") {
     return (
       <>
         <main className="fullscreen">
-          <CanvasSlot />
+          <GameCanvas canvas={canvas} />
         </main>
         <DebugToggle hotkey={hotkey} />
       </>
@@ -27,7 +29,7 @@ export function Root({ hotkey = "Escape" }: RootProps) {
   if (layoutMode === "letterboxed") {
     return (
       <>
-        <LetterboxedLayout />
+        <LetterboxedLayout canvas={canvas} />
         <DebugToggle hotkey={hotkey} />
       </>
     );
@@ -38,7 +40,7 @@ export function Root({ hotkey = "Escape" }: RootProps) {
     <>
       <main className="layout">
         <section className="game">
-          <CanvasSlot />
+          <GameCanvas canvas={canvas} />
         </section>
         <section className="stats">
           <Stats />
@@ -52,7 +54,7 @@ export function Root({ hotkey = "Escape" }: RootProps) {
   );
 }
 
-function LetterboxedLayout() {
+function LetterboxedLayout({ canvas }: { canvas: HTMLCanvasElement }) {
   const isOnline = debugState.netStatus.value.peers.length > 0;
   const advantage = debugState.advantage.value ?? 0;
   const frameTime = debugState.frameTime.value;
@@ -98,7 +100,7 @@ function LetterboxedLayout() {
         displayValue={leftDisplayValue}
       />
       <div className={gameClassName}>
-        <CanvasSlot />
+        <GameCanvas canvas={canvas} />
       </div>
       <VerticalBar
         value={rightValue}
@@ -111,10 +113,15 @@ function LetterboxedLayout() {
   );
 }
 
-function CanvasSlot() {
-  return (
-    <div className="canvas-container">
-      <slot />
-    </div>
-  );
+function GameCanvas({ canvas }: { canvas: HTMLCanvasElement }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (container && !container.contains(canvas)) {
+      container.appendChild(canvas);
+    }
+  }, [canvas]);
+
+  return <div className="canvas-container" ref={containerRef} />;
 }
