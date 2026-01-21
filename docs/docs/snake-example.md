@@ -83,17 +83,6 @@ function loop() {
 loop();
 ```
 
-## What we'll change
-
-| Vanilla JS | Bloop |
-|------------|-------|
-| Local variables | `bag` properties |
-| `addEventListener("keydown")` | `keydown` system handler |
-| Logic in RAF loop | `update` system handler |
-| `performance.now()` timing | `time.dt` (delta time in seconds) |
-| `Math.random()` | `rand.int()` (deterministic for replay) |
-| Rendering mixed with update | Rendering decoupled (reads from `game.bag`) |
-
 ## Snake with bloop
 
 Here's the same game using bloop for simulation. Note that game logic would typically be in a separate `game.ts` file for hot reloading and unit testing, but we've combined it here for easy comparison.
@@ -197,6 +186,17 @@ function getCanvasAndContext() {
   return { canvas, ctx };
 }
 ```
+
+## What we changed
+
+| Vanilla JS | Bloop |
+|------------|-------|
+| Local variables | `bag` properties |
+| `addEventListener("keydown")` | `keydown` system handler |
+| Logic in RAF loop | `update` system handler |
+| `performance.now()` timing | `time.dt` (delta time in seconds) |
+| `Math.random()` | `rand.int()` (deterministic for replay) |
+| Rendering mixed with update | Rendering decoupled (reads from `game.bag`) |
 
 ## What You Get
 
