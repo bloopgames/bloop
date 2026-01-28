@@ -17,7 +17,7 @@ bun dev                    # Watch during development
 zig build test             # Run engine tests
 
 # Games
-cd games/buzzer && bun run dev
+bun dev:mario
 
 # Deploy to trybloop.gg
 bun run website

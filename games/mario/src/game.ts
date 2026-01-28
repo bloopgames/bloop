@@ -103,12 +103,16 @@ game.system("session-watcher", {
 game.system(
   "title-screen",
   PhaseSystem("title", {
-    keydown({ bag, event }) {
+    keydown({ bag, event, vcr }) {
       if (event.key === "Space") {
         // Local multiplayer - start immediately
         bag.mode = "local";
         bag.phase = "playing";
         resetGameState(bag);
+        // Start recording for local games
+        if (!vcr.isRecording && !vcr.isReplaying) {
+          vcr.wantsRecord({ maxEvents: 100_000, maxPacketBytes: 0 });
+        }
       }
     },
   }),
