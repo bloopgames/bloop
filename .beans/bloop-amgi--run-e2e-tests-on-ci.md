@@ -1,10 +1,11 @@
 ---
 # bloop-amgi
 title: Run E2E tests on CI
-status: in-progress
+status: todo
 type: task
+priority: low
 created_at: 2026-01-19T17:12:31Z
-updated_at: 2026-01-19T17:12:31Z
+updated_at: 2026-01-28T17:23:28Z
 ---
 
 E2E tests need to pass on CI. Current state:
