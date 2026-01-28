@@ -100,7 +100,8 @@ pub export fn initialize() wasmPointer {
     // 3 - pointer to network context
     // 4 - pointer to screen context
     // 5 - pointer to rand context
-    ctx_ptr = alloc(@sizeOf(u32) * 6);
+    // 6 - pointer to vcr context
+    ctx_ptr = alloc(@sizeOf(u32) * 7);
 
     // Initialize the Engine (which creates and owns Sim)
     engine = Engine.init(wasm_alloc, ctx_ptr) catch {
@@ -119,6 +120,7 @@ pub export fn initialize() wasmPointer {
     cb_data[3] = @intFromPtr(sim.net_ctx);
     cb_data[4] = @intFromPtr(sim.screen_ctx);
     cb_data[5] = @intFromPtr(sim.rand_ctx);
+    cb_data[6] = @intFromPtr(sim.vcr_ctx);
 
     // Wire up WASM callbacks
     sim.callbacks = .{
@@ -374,6 +376,11 @@ pub export fn get_net_ctx() usize {
 /// Get pointer to screen context struct
 pub export fn get_screen_ctx() usize {
     return @intFromPtr(engine.?.sim.screen_ctx);
+}
+
+/// Get pointer to VCR context struct
+pub export fn get_vcr_ctx() usize {
+    return @intFromPtr(engine.?.sim.vcr_ctx);
 }
 
 // ─────────────────────────────────────────────────────────────

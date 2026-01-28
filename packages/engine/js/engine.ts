@@ -4,6 +4,7 @@ export * from "./contexts/netContext";
 export * from "./contexts/randContext";
 export * from "./contexts/screenContext";
 export * from "./contexts/timeContext";
+export * from "./contexts/vcrContext";
 export * from "./inputs";
 export * from "./tape";
 export type * from "./wasmEngine";
@@ -34,6 +35,7 @@ export const EVENTS_OFFSET = INPUT_CTX_OFFSET + 4;
 export const NET_CTX_OFFSET = EVENTS_OFFSET + 4;
 export const SCREEN_CTX_OFFSET = NET_CTX_OFFSET + 4;
 export const RAND_CTX_OFFSET = SCREEN_CTX_OFFSET + 4;
+export const VCR_CTX_OFFSET = RAND_CTX_OFFSET + 4;
 
 /**
  * Size of snapshot header in bytes

@@ -95,6 +95,31 @@ pub const Engine = struct {
 
     fn beforeTickListener(ctx: *anyopaque) void {
         const self: *Engine = @ptrCast(@alignCast(ctx));
+
+        // Handle wants_record request (reads max_events/max_packet_bytes from VcrCtx)
+        if (self.sim.vcr_ctx.wants_record == 1) {
+            self.sim.vcr_ctx.wants_record = 0;
+            if (!self.vcr.is_recording) {
+                self.startRecording(
+                    self.sim.getUserDataLen(),
+                    self.sim.vcr_ctx.max_events,
+                    self.sim.vcr_ctx.max_packet_bytes,
+                ) catch {};
+            }
+        }
+
+        // Handle wants_stop request
+        if (self.sim.vcr_ctx.wants_stop == 1) {
+            self.sim.vcr_ctx.wants_stop = 0;
+            if (self.vcr.is_recording) {
+                self.stopRecording();
+            }
+        }
+
+        // Sync VcrCtx read-only state from VCR (after processing wants flags)
+        self.sim.vcr_ctx.is_recording = if (self.vcr.is_recording) 1 else 0;
+        self.sim.vcr_ctx.is_replaying = if (self.vcr.is_replaying) 1 else 0;
+
         self.processPlatformEvents();
     }
 

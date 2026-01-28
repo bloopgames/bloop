@@ -74,6 +74,16 @@ pub const RandCtx = extern struct {
     seed: u32 = 1, // Default seed (TS will override with Date.now() on mount)
 };
 
+/// VCR (recording/replay) context exposed to game systems
+pub const VcrCtx = extern struct {
+    is_recording: u8 = 0, // offset 0: 1 if recording (read-only for game)
+    is_replaying: u8 = 0, // offset 1: 1 if replaying (read-only for game)
+    wants_record: u8 = 0, // offset 2: game sets to 1 to request recording
+    wants_stop: u8 = 0, // offset 3: game sets to 1 to request stop
+    max_events: u32 = 0, // offset 4: max events for recording (required when wants_record=1)
+    max_packet_bytes: u32 = 0, // offset 8: max packet bytes (required when wants_record=1)
+};
+
 pub const KeyCtx = extern struct {
     /// Each byte represents last 8 frames of input
     key_states: [256]u8,
@@ -316,4 +326,14 @@ test "ScreenCtx defaults" {
     try std.testing.expectEqual(@as(u32, 0), screen.physical_width);
     try std.testing.expectEqual(@as(u32, 0), screen.physical_height);
     try std.testing.expectEqual(@as(f32, 1.0), screen.pixel_ratio);
+}
+
+test "VcrCtx layout" {
+    try std.testing.expectEqual(@as(usize, 12), @sizeOf(VcrCtx));
+    try std.testing.expectEqual(@as(usize, 0), @offsetOf(VcrCtx, "is_recording"));
+    try std.testing.expectEqual(@as(usize, 1), @offsetOf(VcrCtx, "is_replaying"));
+    try std.testing.expectEqual(@as(usize, 2), @offsetOf(VcrCtx, "wants_record"));
+    try std.testing.expectEqual(@as(usize, 3), @offsetOf(VcrCtx, "wants_stop"));
+    try std.testing.expectEqual(@as(usize, 4), @offsetOf(VcrCtx, "max_events"));
+    try std.testing.expectEqual(@as(usize, 8), @offsetOf(VcrCtx, "max_packet_bytes"));
 }

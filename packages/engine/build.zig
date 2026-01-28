@@ -51,6 +51,7 @@ pub fn build(b: *std.Build) void {
         "get_time_ctx",
         "get_net_ctx",
         "get_screen_ctx",
+        "get_vcr_ctx",
         "get_events_ptr",
         // Session / Rollback
         "session_end",

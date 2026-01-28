@@ -5,6 +5,7 @@ import type {
   RandContext,
   ScreenContext,
   TimeContext,
+  VcrContext,
 } from "@bloopjs/engine";
 import type { BloopSchema } from "./data/schema";
 import type { Players } from "./players";
@@ -42,4 +43,6 @@ export type Context<
   screen: ScreenContext;
   /** Deterministic random number generator */
   rand: RandContext;
+  /** VCR (recording/replay) control */
+  vcr: VcrContext;
 };

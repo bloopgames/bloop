@@ -79,6 +79,7 @@ pub fn main() !void {
         try writeStructOffsets(&writer, Context.KeyCtx, "KEY_CTX");
         try writeStructOffsets(&writer, Context.PlayerInputs, "PLAYER_INPUTS");
         try writeStructOffsets(&writer, Context.InputCtx, "INPUT_CTX");
+        try writeStructOffsets(&writer, Context.VcrCtx, "VCR_CTX");
 
         // Also export MAX_PLAYERS as it's a domain constant used in layouts
         try writer.interface.print("export const MAX_PLAYERS = {d};\n", .{Context.MAX_PLAYERS});

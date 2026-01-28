@@ -15,6 +15,8 @@ import {
   ScreenContext,
   TIME_CTX_OFFSET,
   TimeContext,
+  VCR_CTX_OFFSET,
+  VcrContext,
 } from "@bloopjs/engine";
 import type { Context } from "./context";
 import type { Bag, Widen } from "./data/bag";
@@ -88,6 +90,7 @@ export class Bloop<GS extends BloopSchema> {
     const net = new NetContext();
     const screen = new ScreenContext();
     const rand = new RandContext();
+    const vcr = new VcrContext();
     this.#context = {
       bag: opts.bag ?? {},
       time: new TimeContext(),
@@ -97,6 +100,7 @@ export class Bloop<GS extends BloopSchema> {
       net,
       screen,
       rand,
+      vcr,
     };
   }
 
@@ -226,6 +230,17 @@ export class Bloop<GS extends BloopSchema> {
         this.#context.rand.dataView = new DataView(
           this.#engineBuffer,
           randCtxPtr,
+        );
+      }
+
+      const vcrCtxPtr = dv.getUint32(VCR_CTX_OFFSET, true);
+      if (
+        this.#context.vcr.dataView?.buffer !== this.#engineBuffer ||
+        this.#context.vcr.dataView?.byteOffset !== vcrCtxPtr
+      ) {
+        this.#context.vcr.dataView = new DataView(
+          this.#engineBuffer,
+          vcrCtxPtr,
         );
       }
 

@@ -11,6 +11,7 @@ const NetCtx = Ctx.NetCtx;
 const NetStatus = Ctx.NetStatus;
 const ScreenCtx = Ctx.ScreenCtx;
 const RandCtx = Ctx.RandCtx;
+const VcrCtx = Ctx.VcrCtx;
 const Event = Events.Event;
 const EventBuffer = Events.EventBuffer;
 const EventType = Events.EventType;
@@ -58,6 +59,8 @@ pub const Sim = struct {
     screen_ctx: *ScreenCtx,
     /// Random number generator context (seed stored here, algorithm runs in TS)
     rand_ctx: *RandCtx,
+    /// VCR context for recording/replay control
+    vcr_ctx: *VcrCtx,
 
     // ─────────────────────────────────────────────────────────────
     // Tick Listeners (for Engine coordination)
@@ -99,6 +102,10 @@ pub const Sim = struct {
         const rand_ctx = try allocator.create(RandCtx);
         rand_ctx.* = .{};
 
+        // Allocate VcrCtx for recording/replay control
+        const vcr_ctx = try allocator.create(VcrCtx);
+        vcr_ctx.* = .{};
+
         return Sim{
             .time = time,
             .inputs = inputs,
@@ -107,6 +114,7 @@ pub const Sim = struct {
             .net_ctx = net_ctx,
             .screen_ctx = screen_ctx,
             .rand_ctx = rand_ctx,
+            .vcr_ctx = vcr_ctx,
             .allocator = allocator,
             .ctx_ptr = ctx_ptr,
         };
@@ -120,6 +128,7 @@ pub const Sim = struct {
         self.allocator.destroy(self.net_ctx);
         self.allocator.destroy(self.screen_ctx);
         self.allocator.destroy(self.rand_ctx);
+        self.allocator.destroy(self.vcr_ctx);
     }
 
     /// Get current user data length from callback (or 0 if no callback set)

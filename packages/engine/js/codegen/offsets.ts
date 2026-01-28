@@ -59,4 +59,12 @@ export const PLAYER_INPUTS_SIZE = 280;
 export const INPUT_CTX_PLAYERS_OFFSET = 0;
 export const INPUT_CTX_SIZE = 3360;
 
+export const VCR_CTX_IS_RECORDING_OFFSET = 0;
+export const VCR_CTX_IS_REPLAYING_OFFSET = 1;
+export const VCR_CTX_WANTS_RECORD_OFFSET = 2;
+export const VCR_CTX_WANTS_STOP_OFFSET = 3;
+export const VCR_CTX_MAX_EVENTS_OFFSET = 4;
+export const VCR_CTX_MAX_PACKET_BYTES_OFFSET = 8;
+export const VCR_CTX_SIZE = 12;
+
 export const MAX_PLAYERS = 12;
